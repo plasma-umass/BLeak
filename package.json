@@ -1,0 +1,27 @@
+{
+  "name": "deuterium-oxide",
+  "version": "1.0.0",
+  "description": "Automatically finds memory leaks in single page web applications.",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://bitbucket.org/jvilk/deuterium-oxide.git"
+  },
+  "keywords": [
+    "memory",
+    "leak",
+    "memory",
+    "leaks",
+    "bugs",
+    "performance",
+    "bug",
+    "detection",
+    "debugging"
+  ],
+  "author": "John Vilk <jvilk@cs.umass.edu>",
+  "license": "MIT",
+  "homepage": "https://bitbucket.org/jvilk/deuterium-oxide#readme"
+}
