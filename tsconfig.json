@@ -6,6 +6,11 @@
         "sourceMap": true,
         "noImplicitThis": true,
         "noUnusedLocals": true,
-        "noImplicitReturns": true
+        "noImplicitReturns": true,
+        "lib": [
+            "dom",
+            "es2015"
+        ],
+        "outDir": "build"
     }
 }

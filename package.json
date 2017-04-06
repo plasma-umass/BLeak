@@ -4,7 +4,9 @@
   "description": "Automatically finds memory leaks in single page web applications.",
   "main": "dist/index.js",
   "scripts": {
-    "test": "mocha"
+    "build": "tsc",
+    "test": "npm-run-all -s build nyc:test",
+    "nyc:test": "nyc mocha build/test"
   },
   "repository": {
     "type": "git",
@@ -23,5 +25,27 @@
   ],
   "author": "John Vilk <jvilk@cs.umass.edu>",
   "license": "MIT",
-  "homepage": "https://bitbucket.org/jvilk/deuterium-oxide#readme"
+  "homepage": "https://bitbucket.org/jvilk/deuterium-oxide#readme",
+  "devDependencies": {
+    "@types/babel-core": "^6.7.14",
+    "@types/escodegen": "0.0.6",
+    "@types/esprima": "^2.1.33",
+    "@types/estraverse": "^0.0.6",
+    "@types/estree": "0.0.34",
+    "@types/mocha": "^2.2.40",
+    "@types/node": "^7.0.12",
+    "@types/webdriverio": "^4.6.1",
+    "mocha": "^3.2.0",
+    "nyc": "^10.2.0"
+  },
+  "dependencies": {
+    "babel-core": "^6.24.0",
+    "escodegen": "^1.8.1",
+    "esprima": "^3.1.3",
+    "estemplate": "^0.5.1",
+    "estraverse": "^4.2.0",
+    "npm-run-all": "^4.0.2",
+    "selenium-standalone": "^6.1.0",
+    "webdriverio": "^4.6.2"
+  }
 }
