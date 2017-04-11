@@ -21,26 +21,41 @@ interface ClosureModification {
   variables: string[];
 }
 
-/**
- * Drives the application on behalf of Deuterium Oxide.
- */
-interface AppDriver extends NodeJS.EventEmitter {
+interface IProxyConstructor<T extends IProxy> {
+  listen(port: number): PromiseLike<T>;
+}
+
+interface IProxy {
   /**
    * Register a function that can rewrite *text* files requested over the network.
    */
-  registerRewriter(fcn: (f: SourceFile) => SourceFile): void;
+  onRequest(cb: (f: SourceFile) => SourceFile): void;
+  getHTTPPort(): number;
+  getHTTPSPort(): number;
+  getHost(): string;
+  shutdown(): PromiseLike<void>;
+}
+
+/**
+ * Drives the browser on behalf of Deuterium Oxide.
+ */
+interface IBrowserDriver {
   /**
    * Navigates to the given URL. Invokes promise once page loads.
    */
-  navigateTo(url: string): Promise<void>;
+  navigateTo(url: string): PromiseLike<any>;
   /**
    * Evals the given code on the webpage, and returns result as a string.
    */
-  runCode(code: string): Promise<string>;
+  runCode(code: string): PromiseLike<string>;
   /**
    * Takes a heap snapshot of the current webpage.
    */
-  takeHeapSnapshot(): Promise<HeapSnapshot>;
+  takeHeapSnapshot(): PromiseLike<HeapSnapshot>;
+}
+
+interface PromiseLike<T> {
+  catch(cb: Function): PromiseLike<T>;
 }
 
 /**
@@ -67,9 +82,9 @@ interface Step  {
   // (Optional) Name for debugging purposes.
   name?: string;
   // Return 'true' if the program has finished loading the current state
-  check: () => boolean | Promise<boolean>;
+  check: () => boolean | PromiseLike<boolean>;
   // Transitions to the next step.
-  next: () => null | undefined | Promise<void>;
+  next: () => null | undefined | PromiseLike<void>;
 }
 
 /**
