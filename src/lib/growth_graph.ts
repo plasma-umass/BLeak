@@ -1,4 +1,4 @@
-import {SnapshotEdgeType, SnapshotNodeType, ClosurePath} from '../common/interfaces';
+import {SnapshotEdgeType, SnapshotNodeType} from '../common/interfaces';
 
 export const enum NodeFlag {
   VisitBit = 1 << 31,
@@ -254,7 +254,6 @@ function safeString(s: string): string {
  */
 export class GrowthPath {
   private _path: Edge[];
-  private _accessString: string = null;
 
   constructor(path: Edge[]) {
     this._path = path;
@@ -273,20 +272,14 @@ export class GrowthPath {
   }
 
   /**
-   * Retrieves all closure paths that need to be instrumented.
+   * Retrieves the path to the object.
    */
-  public getClosurePaths(): ClosurePath[] {
-    let rv: ClosurePath[] = [];
+  public getAccessString(): string {
     let accessString = "";
     for (const link of this._path) {
       switch (link.type) {
         case EdgeType.CLOSURE:
-          rv.push({
-            path: accessString,
-            variables: [link.indexOrName],
-            sources: new Set<string>()
-          });
-          accessString += `.__closure__['${safeString(link.indexOrName)}']`;
+          accessString += `.__closure__('${safeString(link.indexOrName)}')`;
           break;
         case EdgeType.INDEX:
           accessString += `[${link.indexOrName}]`;
@@ -296,14 +289,6 @@ export class GrowthPath {
           break;
       }
     }
-    this._accessString = accessString;
-    return rv;
-  }
-
-  public getAccessString(): string {
-    if (!this._accessString) {
-      this.getClosurePaths();
-    }
-    return this._accessString;
+    return accessString;
   }
 }

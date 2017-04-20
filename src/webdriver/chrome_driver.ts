@@ -190,7 +190,7 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
     console.log(`${javaPath} -Dwebdriver.chrome.driver=${driverPath} -jar ${seleniumPath}`);
     this._selenium = spawn(javaPath, [`-Dwebdriver.chrome.driver=${driverPath}`, '-jar', seleniumPath], {
       // Change to "inherit" for debugging.
-      //stdio: "inherit"
+      stdio: "inherit"
     });
     process.on('exit', () => {
       this.close();

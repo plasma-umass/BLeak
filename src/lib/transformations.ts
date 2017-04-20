@@ -3,7 +3,6 @@ import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
 import {Node, BlockStatement, Program} from 'estree';
-import {ClosureModification} from '../common/interfaces';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
@@ -37,43 +36,24 @@ const DECLARATION_TRANSFORM_TEMPLATE = compile('{%= newBody %}');
  * Exposes variables in a closure on its function object.
  *
  * @param functionVarName The name of the variable containing the function that needs to be modified.
- * @param closureVars The variables in the closure that need to be exposed.
+ * @todo Can I turn this into a template?
  */
-function getClosureAssignment(functionVarName: string, closureVars: string[]): Node {
-  const js = `${functionVarName}.__closure__={${closureVars.map((v, i, arr) => `${v}:function(){return ${v};}`).join(",")}};`;
+function getClosureAssignment(functionVarName: string): Node {
+  const js = `${functionVarName}.__closure__ = function(name) { "use strict"; return eval(name); };`;
   return parseJavaScript(js);
 }
 
 /**
- * Given a listing of (function source code, variables) pairs, modifies the functions in the
- * source code to expose the named variables on the function object.
+ * Given a JavaScript source file, modifies all function declarations and expressions to expose
+ * their closure state on the function object.
  *
  * @param source Source of the JavaScript file.
- * @param modifications Closures to modify to expose state on their function objects.
  */
-export function exposeClosureState(source: string, modifications: ClosureModification[]): string {
-  let modificationMap: {[i: number]: ClosureModification} = {};
-  let noMods = true;
-  // Dumb algorithm now, for prototyping. Can make much faster later.
-  for (const modification of modifications) {
-    const fcnSource = modification.source;
-    let index = source.indexOf(fcnSource);
-    while (index !== -1) {
-      noMods = false;
-      modificationMap[index] = modification;
-      index = source.indexOf(fcnSource, index + 1);
-    }
-  }
-  if (noMods) {
-    return source;
-  }
-  let ast = parseJavaScript(source, {
-    range: true
-  });
-
-  // Later: Determine if modification falls within node. Need a tree.
-
+export function exposeClosureState(source: string): string {
+  let ast = parseJavaScript(source);
+  // Modifications to make to the current block.
   let blockInsertions = new Array<Node>();
+  // Stack of blocks.
   let blocks = new Array<[BlockStatement, Node[]]>();
   const newAst = rewriteJavaScript(ast, {
     // Maintain stack.
@@ -90,28 +70,15 @@ export function exposeClosureState(source: string, modifications: ClosureModific
     leave: function(node, parent) {
       switch (node.type) {
         case 'FunctionDeclaration': {
-          if (node.range) {
-            const i = node.range[0];
-            const mod = modificationMap[i];
-            if (mod) {
-              blockInsertions.push(getClosureAssignment(node.id.name, mod.variables));
-            }
-          }
+          blockInsertions.push(getClosureAssignment(node.id.name));
           break;
         }
         case 'FunctionExpression': {
-          if (node.range) {
-            const i = node.range[0];
-            const mod = modificationMap[i];
-            if (mod) {
-              // Expose closure.
-              return EXPRESSION_TRANSFORM_TEMPLATE({
-                originalFunction: node,
-                closureAssignment: getClosureAssignment('__tmp__', mod.variables)
-              });
-            }
-          }
-          break;
+          // Expose closure.
+          return EXPRESSION_TRANSFORM_TEMPLATE({
+            originalFunction: node,
+            closureAssignment: getClosureAssignment('__tmp__')
+          });
         }
         case 'ArrowFunctionExpression':
           throw new Error(`Arrow functions not yet supported.`);

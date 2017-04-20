@@ -3,5 +3,10 @@ interface PromiseLike<T> {
 }
 
 interface Function {
-  __closure__(): {[name: string]: any};
+  __closure__(name: string): any;
+}
+
+interface Window {
+  $$instrumentPaths(p: string[]): void;
+  $$getStackTraces(): string;
 }

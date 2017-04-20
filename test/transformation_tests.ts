@@ -1,14 +1,5 @@
 import {equal as assertEqual} from 'assert';
 import {injectIntoHead, exposeClosureState} from '../src/lib/transformations';
-import ClosureDeclTest from './fixtures/closure_transformations/declaration';
-import ClosureExpTest from './fixtures/closure_transformations/expression';
-import ClosureNamedExpTest from './fixtures/closure_transformations/named_expression';
-import ClosureNestedTest from './fixtures/closure_transformations/nested';
-import ClosureNoMatchesTest from './fixtures/closure_transformations/no_matches';
-import ClosureDoubleExpTest from './fixtures/closure_transformations/double_expr';
-import ClosureNestedDeclarationsTest from './fixtures/closure_transformations/nested_declaration';
-
-const REPLACE_DOUBLE_SEMICOLONS = /;+/g;
 
 describe('Transformations', function() {
   describe('injectIntoHead', function() {
@@ -32,12 +23,84 @@ describe('Transformations', function() {
   });
 
   describe('exposeClosureState', function() {
-    [ClosureDeclTest, ClosureExpTest, ClosureNamedExpTest, ClosureNestedTest, ClosureNoMatchesTest, ClosureDoubleExpTest, ClosureNestedDeclarationsTest].forEach((test) => {
-      it(test.name, function() {
-        let result = exposeClosureState(test.source, test.mods);
-        // Note: Due to an implementation artifact, some statements have two ;;'s. This is a harmless bug.
-        assertEqual(result.replace(REPLACE_DOUBLE_SEMICOLONS, ';'), test.transformed);
-      });
+    function instrumentModule<T>(source: string): T {
+      const newSource = exposeClosureState(source);
+      // Super basic CommonJS shim.
+      const exp: any = {};
+      new Function('exports', newSource)(exp);
+      return exp;
+    }
+
+    it('works with function declarations', function() {
+      const module = instrumentModule<{decl: Function}>(`
+        var a = 'hello';
+        function decl(){}
+        exports.decl = decl;
+      `);
+      assertEqual(module.decl.__closure__('a'), 'hello');
+      assertEqual(module.decl.__closure__('decl'), module.decl);
+    });
+
+    it('works with function expressions', function() {
+      const module = instrumentModule<{decl: Function}>(`
+        var a = 'hello';
+        exports.decl = function(){};
+      `);
+      assertEqual(module.decl.__closure__('a'), 'hello');
+      assertEqual(module.decl.__closure__('exports').decl, module.decl);
+    });
+
+    it(`works with named function expressions`, function() {
+      const module = instrumentModule<{decl: Function}>(`
+        var a = 'hello';
+        exports.decl = function decl2(){};
+      `);
+      assertEqual(module.decl.__closure__('a'), 'hello');
+    });
+
+    it(`works with multiple functions in the same block and multiple variables`, function() {
+      const module = instrumentModule<{decl: Function, decl2: Function}>(`
+        var a='hello';
+        var b=3;
+        exports.decl=function(){};
+        exports.decl2=function(){};
+      `);
+      assertEqual(module.decl.__closure__('a'), 'hello');
+      assertEqual(module.decl2.__closure__('a'), 'hello');
+      assertEqual(module.decl.__closure__('b'), 3);
+      assertEqual(module.decl.__closure__('b'), 3);
+    });
+
+    it(`works with nested functions`, function() {
+      const module = instrumentModule<{decl: Function, notDecl: Function}>(`
+        var a = 'hello';
+        function decl(){}
+        function notDecl(){
+          var decl = function decl(){};
+          return decl;
+        }
+        exports.decl = decl;
+        exports.notDecl = notDecl;
+      `);
+      assertEqual(module.decl.__closure__('a'), 'hello');
+      assertEqual(module.notDecl.__closure__('a'), 'hello');
+      assertEqual(module.notDecl().__closure__('a'), 'hello');
+    });
+
+    it(`works with nested function declarations`, function() {
+      const module = instrumentModule<{decl: Function, notDecl: Function}>(`
+        var a = 'hello';
+        function decl(){}
+        function notDecl(){
+          function decl(){}
+          return decl;
+        }
+        exports.decl = decl;
+        exports.notDecl = notDecl;
+      `)
+      assertEqual(module.decl.__closure__('a'), 'hello');
+      assertEqual(module.notDecl.__closure__('a'), 'hello');
+      assertEqual(module.notDecl().__closure__('a'), 'hello');
     });
   });
 });

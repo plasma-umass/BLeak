@@ -131,6 +131,6 @@ interface EventTarget {
     return JSON.stringify(rv);
   }
 
-  (<any> window)['$$instrumentPaths'] = instrumentPaths;
-  (<any> window)['$$getStackTraces'] = getStackTraces;
+  window.$$instrumentPaths = instrumentPaths;
+  window.$$getStackTraces = getStackTraces;
 })();

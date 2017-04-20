@@ -7,22 +7,6 @@ export interface SourceFile {
   contents: string;
 }
 
-/**
- * Describes a mutation of a source file.
- */
-export interface ClosureModification {
-  // Source string of function.
-  source: string;
-  // Variables to surface in closure.
-  variables: string[];
-}
-
-export interface ClosurePath {
-  path: string;
-  variables: string[];
-  sources: Set<string>;
-}
-
 export interface IProxyConstructor<T extends IProxy> {
   listen(port: number): PromiseLike<T>;
 }

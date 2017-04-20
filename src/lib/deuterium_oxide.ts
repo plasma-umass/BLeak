@@ -1,5 +1,5 @@
 import {injectIntoHead, exposeClosureState} from './transformations';
-import {IProxy, IBrowserDriver, Leak, ConfigurationFile, ClosureModification, HeapSnapshot, ClosurePath} from '../common/interfaces';
+import {IProxy, IBrowserDriver, Leak, ConfigurationFile, HeapSnapshot} from '../common/interfaces';
 import HeapGrowthTracker from './growth_tracker';
 import {GrowthPath} from './growth_graph';
 
@@ -23,18 +23,8 @@ if (!window['DeuteriumConfig']) {
   return new Promise((resolve, reject) => {
     new Function(configSource)();
     const config: ConfigurationFile = (<any> global).DeuteriumConfig;
-    const closureModifications: ClosureModification[] = [];
-    // function source => modification
-    const closureModificationMap = new Map<string, ClosureModification>();
 
-    /**
-     * Get the function string using the given closure path.
-     * @param p
-     */
-    function getFunctionString(p: ClosurePath): PromiseLike<string> {
-      return driver.runCode(`(function() { var rv = null; try { rv = ${p.path}.toString(); } catch (e) {} return rv; })()`);
-    }
-
+    let diagnosing = false;
     proxy.onRequest((f) => {
       const mime = f.mimetype.toLowerCase();
       switch (mime) {
@@ -42,7 +32,9 @@ if (!window['DeuteriumConfig']) {
           f.contents = injectIntoHead(f.contents, `${AGENT_INJECT}${CONFIG_INJECT}`);
           break;
         case 'text/javascript':
-          f.contents = exposeClosureState(f.contents, closureModifications);
+          if (diagnosing) {
+            f.contents = exposeClosureState(f.contents);
+          }
           break;
       }
       return f;
@@ -125,94 +117,33 @@ if (!window['DeuteriumConfig']) {
         growthPaths = growthTracker.getGrowthPaths();
         // No more need for the growth tracker!
         growthTracker = null;
-        let depth = 0;
-        let closurePaths = growthPaths.map((p) => {
-          const cp = p.getClosurePaths();
-          if (cp.length > depth) {
-            depth = cp.length;
-          }
-          // DEBUG.
-          cp.forEach((p, i) => {
-            console.log(`Closure path ${i}: ${p.path} [${p.variables.join(", ")}]`);
-          })
-          return cp;
-        });
-
-        // Combine equivalent closures in same round.
-        let closurePathRounds: ClosurePath[][] = [];
-        // path -> ClosurePath
-        let pathMap = new Map<string, ClosurePath>();
-        for (let i = 0; i < depth; i++) {
-          let round: ClosurePath[] = [];
-          for (const paths of closurePaths) {
-            if (paths.length > i) {
-              const path = paths[i];
-              if (pathMap.has(path.path)) {
-                // Merge variables.
-                const existingPath = pathMap.get(path.path);
-                for (const v in path.variables) {
-                  if (existingPath.variables.indexOf(v) === -1) {
-                    existingPath.variables.push(v);
-                  }
-                }
-              } else {
-                // New path.
-                round.push(path);
-                pathMap.set(path.path, path);
-              }
-            }
-          }
-          closurePathRounds.push(round);
-        }
-
-        let rv = Promise.resolve();
-        // Each promise instruments one round deeper.
-        closurePathRounds.forEach((round) => {
-          // Run a single loop from the beginning of the execution before instrumenting.
-          rv = rv.then(() => driver.navigateTo(config.url))
-            .then(() => runLoop(false))
-            .then(() => {
-              // Get the function source for all paths in round,
-              // and add them to closure modifications.
-              return Promise.all(round.map((p) => {
-                return getFunctionString(p).then((fStr) => {
-                  if (fStr.indexOf("function") !== -1) {
-                    const mod = closureModificationMap.get(fStr);
-                    if (!mod) {
-                      let mod = {
-                        source: fStr,
-                        variables: p.variables
-                      };
-                      closureModifications.push(mod);
-                      closureModificationMap.set(fStr, mod);
-                    } else {
-                      // Merge variables.
-                      for (const v of p.variables) {
-                        if (mod.variables.indexOf(v) === -1) {
-                          mod.variables.push(v);
-                        }
-                      }
-                    }
-                  }
-                });
-              }));
-            });
-        });
-        return rv;
       }).then(() => {
         // We now have all needed closure modifications ready.
         // Run once.
-        return driver.navigateTo(config.url)
-          .then(() => runLoop(false))
-          .then(() => {
-            // Instrument objects to push information to global array.
-            return instrumentGrowthPaths(growthPaths);
-          })
-          .then(() => runLoop(false))
-          .then(() => {
-            // Fetch array as string.
-            const growthStacks = getGrowthStacks();
-          });
+        if (growthPaths.length > 0) {
+          // Flip on JS instrumentation.
+          diagnosing = true;
+          return driver.navigateTo(config.url)
+            .then(() => runLoop(false))
+            .then(() => {
+              // Instrument objects to push information to global array.
+              return instrumentGrowthPaths(growthPaths);
+            })
+            // Measure growth during one more loop.
+            .then(() => runLoop(false))
+            .then(() => {
+              // Fetch array as string.
+              return getGrowthStacks().then((growthStacks) => {
+                // Log to console for now.
+                for (const p in growthStacks) {
+                  // Log paths for now.
+                  console.log(`${p} ${Object.keys(growthStacks[p]).length} properties`);
+                }
+              });
+            });
+        } else {
+          return undefined;
+        }
       });
 
       return promise;

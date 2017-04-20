@@ -2,6 +2,7 @@ import {Server as HTTPServer, IncomingMessage, request as HTTPRequest} from 'htt
 import createHTTPServer from './util/http_server';
 import Proxy from '../src/proxy/proxy';
 import {equal as assertEqual} from 'assert';
+import {SourceFile} from '../src/common/interfaces';
 
 const HTTP_PORT = 8888;
 const PROXY_PORT = 4443;
