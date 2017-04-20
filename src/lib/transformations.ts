@@ -3,6 +3,7 @@ import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
 import {Node, BlockStatement, Program} from 'estree';
+import {ClosureModification} from '../common/interfaces';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;

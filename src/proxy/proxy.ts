@@ -1,6 +1,7 @@
 import {createProxyServer} from 'http-proxy';
 import {createServer as createHTTPServer, Server as HTTPServer} from 'http';
 import {parse as parseURL} from 'url';
+import {SourceFile, IProxy, IProxyConstructor} from '../common/interfaces';
 
 /**
  * A simple HTTP proxy that supports rewriting text requests/responses.

@@ -10,6 +10,7 @@ import {IJavaHomeInfo, ILocateJavaHomeOptions} from 'locate-java-home/js/lib/int
 import {promisify} from '../common/util';
 import {get} from 'request';
 import {createConnection, Socket} from 'net';
+import {IProxy, IBrowserDriver, HeapSnapshot} from '../common/interfaces';
 
 const driverDir = join(`${tmpdir()}`, 'deuterium-oxide');
 const mkdirPromise = promisify(null, mkdir);
@@ -201,8 +202,7 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
           proxyType: 'manual',
           httpProxy: `${this._proxy.getHost()}:${this._proxy.getHTTPPort()}`,
           // TODO: SSL proxy.
-          // sslProxy: proxy.getHost(),
-          // sslProxyPort: proxy.getHTTPSPort()
+          // sslProxy: `${proxy.getHost()}:${proxy.getHTTPSPort()}`
         }
       }
     };
