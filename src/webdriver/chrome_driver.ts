@@ -158,7 +158,7 @@ function getChromeDriverURL(): string {
 }
 
 export default class ChromeBrowserDriver implements IBrowserDriver {
-  public static Launch(proxy: IProxy): PromiseLike<ChromeBrowserDriver> {
+  public static Launch(proxy: IProxy, port: number): PromiseLike<ChromeBrowserDriver> {
     return createIfNotExist(driverDir).then(() => {
         // Find Java Home, download Selenium, download ChromeDriver in parallel.
         return Promise.all<IJavaHomeInfo[], string, string>([
@@ -170,9 +170,9 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
           if (javaHomes.length === 0) {
             throw new Error(`Could not find an installation of Java 8. Java 8 is required to use WebDriver with Chrome.`);
           }
-          let rv = new ChromeBrowserDriver({}, javaHomes[0].executables.java, seleniumPath, chromeDriverPath, proxy);
+          let rv = new ChromeBrowserDriver({}, javaHomes[0].executables.java, seleniumPath, chromeDriverPath, proxy, port);
           console.log("Waiting for Selenium server to start...");
-          return waitForPort(4444, 5000).then(() => {
+          return waitForPort(port, 5000).then(() => {
             return rv._initializeSelenium();
           });
         });
@@ -185,17 +185,18 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
   private _options: ClientOptions;
   private _closed = false;
 
-  private constructor(options: ClientOptions, javaPath: string, seleniumPath: string, driverPath: string, proxy: IProxy) {
+  private constructor(options: ClientOptions, javaPath: string, seleniumPath: string, driverPath: string, proxy: IProxy, port: number) {
     this._proxy = proxy;
-    console.log(`${javaPath} -Dwebdriver.chrome.driver=${driverPath} -jar ${seleniumPath}`);
-    this._selenium = spawn(javaPath, [`-Dwebdriver.chrome.driver=${driverPath}`, '-jar', seleniumPath], {
+    console.log(`${javaPath} -Dwebdriver.chrome.driver=${driverPath} -jar ${seleniumPath} -port ${port}`);
+    this._selenium = spawn(javaPath, [`-Dwebdriver.chrome.driver=${driverPath}`, '-jar', seleniumPath, '-port', `${port}`], {
       // Change to "inherit" for debugging.
-      stdio: "inherit"
+      // stdio: "inherit"
     });
     process.on('exit', () => {
       this.close();
     });
     const proxyCapability: ClientOptions = {
+      port: port,
       desiredCapabilities: {
         browserName: 'chrome',
         proxy: {
@@ -237,7 +238,10 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
     if (!this._closed) {
       this._closed = true;
       return this._client.end().then(() => {
-        this._selenium.kill();
+        return new Promise((resolve, reject) => {
+          this._selenium.on('exit', () => resolve());
+          this._selenium.kill();
+        });
       });
     }
     return Promise.resolve();

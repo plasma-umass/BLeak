@@ -71,10 +71,11 @@ export interface Step  {
 
 /**
  * Represents a leak in the application.
+ * (For now.)
  */
 export interface Leak {
-  propertyPath: string[];
-  stackTraces: string[][];
+  path: string;
+  newProperties: {[prop: string]: string[]};
 }
 
 /**
@@ -125,6 +126,27 @@ export const enum SnapshotEdgeType {
   Weak = 6              // A weak reference (ignored by the GC).
 }
 
+export function SnapshotEdgeTypeToString(se: SnapshotEdgeType): string {
+  switch (se) {
+    case SnapshotEdgeType.ContextVariable:
+      return "ContextVariable";
+    case SnapshotEdgeType.Element:
+      return "Element";
+    case SnapshotEdgeType.Hidden:
+      return "Hidden";
+    case SnapshotEdgeType.Internal:
+      return "Internal";
+    case SnapshotEdgeType.Property:
+      return "Property";
+    case SnapshotEdgeType.Shortcut:
+      return "Shortcut";
+    case SnapshotEdgeType.Weak:
+      return "Weak";
+    default:
+      return "(Unknown)";
+  }
+}
+
 /**
  * The type of a heap snapshot node.
  * Copied from `v8-profiler.h`.
@@ -145,4 +167,39 @@ export const enum SnapshotNodeType {
   SlicedString = 11,  // Sliced string. A fragment of another string.
   Symbol = 12,        // A Symbol (ES6).
   Unresolved = 15     // (Internal) Not resolved yet.
+}
+
+export function SnapshotNodeTypeToString(sn: SnapshotNodeType): string {
+  switch (sn) {
+    case SnapshotNodeType.Array:
+      return "Array";
+    case SnapshotNodeType.Closure:
+      return "Closure";
+    case SnapshotNodeType.Code:
+      return "Code";
+    case SnapshotNodeType.ConsString:
+      return "ConsString";
+    case SnapshotNodeType.HeapNumber:
+      return "HeapNumber";
+    case SnapshotNodeType.Hidden:
+      return "Hidden";
+    case SnapshotNodeType.Native:
+      return "Native";
+    case SnapshotNodeType.Object:
+      return "Object";
+    case SnapshotNodeType.RegExp:
+      return "RegExp";
+    case SnapshotNodeType.SlicedString:
+      return "SlicedString";
+    case SnapshotNodeType.String:
+      return "String";
+    case SnapshotNodeType.Symbol:
+      return "Symbol";
+    case SnapshotNodeType.Synthetic:
+      return "Synthetic";
+    case SnapshotNodeType.Unresolved:
+      return "Unresolved";
+    default:
+      return "(Unknown";
+  }
 }

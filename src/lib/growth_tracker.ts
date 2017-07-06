@@ -71,7 +71,7 @@ export default class HeapGrowthTracker {
     const numNodes = nodes.length / nodeLength;
     const nodeTypeOffset = nodeFields.indexOf("type");
     const nodeNameOffset = nodeFields.indexOf("name");
-    const nodeIdOffset = nodeFields.indexOf("id");
+    // const nodeIdOffset = nodeFields.indexOf("id");
     const nodeSelfSizeOffset = nodeFields.indexOf("self_size");
     const nodeEdgeCountOffset = nodeFields.indexOf("edge_count");
     const edges = snapshot.edges;
@@ -81,6 +81,7 @@ export default class HeapGrowthTracker {
     const edgeTypeOffset = edgeFields.indexOf("type");
     const edgeNameOrIndexOffset = edgeFields.indexOf("name_or_index");
     const edgeToNodeOffset = edgeFields.indexOf("to_node");
+    //console.log(`Type: ${edgeTypeOffset} NameOrIndex: ${edgeNameOrIndexOffset} ToNode: ${edgeToNodeOffset}`);
 
     // Parse the snapshot into a graph.
     let nextEdge = 0;
@@ -88,17 +89,19 @@ export default class HeapGrowthTracker {
       const base = i * nodeFields.length;
       const nodeName = getString(nodes[base + nodeNameOffset]);
       // Node ID is like a pointer, I'm guessing.
-      const nodeId = nodes[base + nodeIdOffset];
+      // Ignored for now.
+      // const nodeId = nodes[base + nodeIdOffset];
       const nodeSelfSize = nodes[base + nodeSelfSizeOffset];
       const nodeType = nodes[base + nodeTypeOffset];
       const nodeEdgeCount = nodes[base + nodeEdgeCountOffset];
-      visitor.visitNode(nodeType, nodeName, nodeId, nodeSelfSize, nodeEdgeCount);
+      visitor.visitNode(nodeType, nodeName, i, nodeSelfSize, nodeEdgeCount);
       const lastEdgeIndex = nextEdge + nodeEdgeCount;
 
-      for (let i = nextEdge; i < lastEdgeIndex; i++) {
-        const edgeType: SnapshotEdgeType = edges[i + edgeTypeOffset];
-        const edgeNameOrIndex = edges[i + edgeNameOrIndexOffset];
-        const edgeToNode = edges[i + edgeToNodeOffset];
+      for (let j = nextEdge; j < lastEdgeIndex; j++) {
+        const base = j * edgeFields.length;
+        const edgeType: SnapshotEdgeType = edges[base + edgeTypeOffset];
+        const edgeNameOrIndex = edges[base + edgeNameOrIndexOffset];
+        const edgeToNode = edges[base + edgeToNodeOffset] / nodeFields.length;
         visitor.visitEdge(edgeType, edgeNameOrIndex, edgeToNode);
       }
       nextEdge = lastEdgeIndex;
@@ -123,5 +126,9 @@ export default class HeapGrowthTracker {
 
   public getGrowthPaths(): GrowthPath[] {
     return FindGrowthPaths(this._graph);
+  }
+
+  public getGraph(): Node {
+    return this._graph;
   }
 }

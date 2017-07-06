@@ -6,6 +6,7 @@ import {equal as assertEqual} from 'assert';
 
 const PROXY_PORT = 4445;
 const HTTP_PORT = 8889;
+const WEB_DRIVER_PORT = 4446;
 // Run HTTP server.
 // Load page that takes a long time to load -- blocking wait.
 // Make sure it finishes loading before it runs scripts.
@@ -27,7 +28,7 @@ describe("WebDriver", function() {
       httpServer = server;
       return Proxy.listen(PROXY_PORT).then((webProxy) => {
         proxy = webProxy;
-        return ChromeBrowserDriver.Launch(proxy).then((driver) => {
+        return ChromeBrowserDriver.Launch(proxy, WEB_DRIVER_PORT).then((driver) => {
           chromeDriver = driver;
           done();
         });
