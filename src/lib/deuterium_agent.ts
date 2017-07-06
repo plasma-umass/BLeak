@@ -102,7 +102,7 @@ interface EventTarget {
         }
       });
       // Install proxy in its place.
-      new Function(`${p} = proxy;`, 'proxy')(proxy);
+      new Function('proxy', `${p} = proxy;`)(proxy);
     } catch (e) {
       console.log(`${p} not found, ignoring.`);
     }

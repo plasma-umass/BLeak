@@ -383,7 +383,7 @@ export class GrowthPath {
    * Retrieves the path to the object.
    */
   public getAccessString(): string {
-    let accessString = "window.";
+    let accessString = "window";
     for (const link of this._path) {
       switch (link.type) {
         case EdgeType.CLOSURE:
