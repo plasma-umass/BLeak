@@ -187,6 +187,7 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
 
   private constructor(options: ClientOptions, javaPath: string, seleniumPath: string, driverPath: string, proxy: IProxy, port: number) {
     this._proxy = proxy;
+    console.log(driverPath);
     console.log(`${javaPath} -Dwebdriver.chrome.driver=${driverPath} -jar ${seleniumPath} -port ${port}`);
     this._selenium = spawn(javaPath, [`-Dwebdriver.chrome.driver=${driverPath}`, '-jar', seleniumPath, '-port', `${port}`], {
       // Change to "inherit" for debugging.

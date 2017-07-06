@@ -102,5 +102,19 @@ describe('Transformations', function() {
       assertEqual(module.notDecl.__closure__('a'), 'hello');
       assertEqual(module.notDecl().__closure__('a'), 'hello');
     });
+
+    it(`works with functions in a list`, function() {
+      const module = instrumentModule<{obj: {decl: Function, decl2: Function}}>(`
+        var a = 'hello';
+        exports.obj = {
+          decl: function() {},
+          decl2: function() {
+            return 3
+          }
+        };
+      `);
+      assertEqual(module.obj.decl.__closure__('a'), 'hello');
+      assertEqual(module.obj.decl2.__closure__('a'), 'hello');
+    });
   });
 });

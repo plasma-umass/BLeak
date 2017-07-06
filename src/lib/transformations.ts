@@ -2,7 +2,7 @@ import {parse as parseJavaScript} from 'esprima';
 import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
-import {Node, BlockStatement, Program} from 'estree';
+import {Node, BlockStatement, Program, ExpressionStatement} from 'estree';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
@@ -75,10 +75,11 @@ export function exposeClosureState(source: string): string {
         }
         case 'FunctionExpression': {
           // Expose closure.
-          return EXPRESSION_TRANSFORM_TEMPLATE({
+          const rv = <Program> EXPRESSION_TRANSFORM_TEMPLATE({
             originalFunction: node,
             closureAssignment: getClosureAssignment('__tmp__')
           });
+          return (<ExpressionStatement> rv.body[0]).expression;
         }
         case 'ArrowFunctionExpression':
           throw new Error(`Arrow functions not yet supported.`);
@@ -90,10 +91,10 @@ export function exposeClosureState(source: string): string {
             throw new Error(`Balancing block statement pop does not match expected value.`);
           }
           if (currentBlockInsertions.length > 0) {
-            const rv = DECLARATION_TRANSFORM_TEMPLATE({
+            const rv = <Program> DECLARATION_TRANSFORM_TEMPLATE({
               newBody: currentBlockInsertions.concat(node.body)
             });
-            return rv;
+            return rv.body[0];
           }
           break;
       }

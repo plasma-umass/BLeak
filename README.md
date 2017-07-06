@@ -1,4 +1,4 @@
-# Deuterium Oxide
+# BLeak
 
 Find memory leaks in your single page web application!
 

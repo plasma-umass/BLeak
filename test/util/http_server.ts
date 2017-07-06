@@ -22,7 +22,13 @@ export default function createSimpleServer(files: {[path: string]: TestFile}, po
     // Start test HTTP server + proxy.
     const httpServer = createHTTPServer(function(req, res) {
       const url = req.url.toLowerCase();
-      sendResponse(res, files[url] || files['/']);
+      const testFile = files[url] || files['/'];
+      if (testFile) {
+        sendResponse(res, testFile);
+      } else {
+        res.statusCode = 404;
+        res.end();
+      }
     });
     httpServer.listen(port, (e: any) => {
       if (e) {

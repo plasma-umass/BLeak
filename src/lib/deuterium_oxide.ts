@@ -3,7 +3,7 @@ import {IProxy, IBrowserDriver, Leak, ConfigurationFile, HeapSnapshot} from '../
 import HeapGrowthTracker from './growth_tracker';
 import {GrowthPath} from './growth_graph';
 
-const AGENT_INJECT = `<script src="text/javascript" src="/deuterium_agent.js"></script>`;
+const AGENT_INJECT = `<script type="text/javascript" src="/deuterium_agent.js"></script>`;
 
 /**
  * Find leaks in an application.
@@ -15,7 +15,7 @@ const AGENT_INJECT = `<script src="text/javascript" src="/deuterium_agent.js"></
 export function FindLeaks(configSource: string, proxy: IProxy, driver: IBrowserDriver): PromiseLike<Leak[]> {
   // TODO: Check shape of object, too.
   const CONFIG_INJECT = `
-<script src="text/javascript">
+<script type="text/javascript">
 window.DeuteriumConfig = {};
 (function(exports) {
   ${configSource}
@@ -115,17 +115,20 @@ window.DeuteriumConfig = {};
     // Instrument growing paths.
     return promise.then(() => {
       growthPaths = growthTracker.getGrowthPaths();
+      console.log(`Growing paths:\n${growthPaths.map((gp) => gp.getAccessString()).join("\n")}`);
       // No more need for the growth tracker!
       growthTracker = null;
     }).then(() => {
       // We now have all needed closure modifications ready.
       // Run once.
       if (growthPaths.length > 0) {
+        console.log("Going to diagnose now...");
         // Flip on JS instrumentation.
         diagnosing = true;
         return driver.navigateTo(config.url)
           .then(() => runLoop(false))
           .then(() => {
+            console.log("Instrumenting growth paths...");
             // Instrument objects to push information to global array.
             return instrumentGrowthPaths(growthPaths);
           })
@@ -134,8 +137,8 @@ window.DeuteriumConfig = {};
           .then(() => {
             // Fetch array as string.
             return getGrowthStacks().then((growthStacks) => {
+              console.log(`Got growth stacks:\n${JSON.stringify(growthStacks)}`);
               const rv: Leak[] = [];
-              // Log to console for now.
               for (const p in growthStacks) {
                 rv.push({
                   path: p,
