@@ -93,6 +93,10 @@
     "@types/form-data" "*"
     "@types/node" "*"
 
+"@types/source-map@^0.5.0":
+  version "0.5.0"
+  resolved "https://registry.yarnpkg.com/@types/source-map/-/source-map-0.5.0.tgz#dd34bbd8e32fe4e74f2e3d8ac07f8aa5b45a47ac"
+
 "@types/webdriverio@^4.6.1":
   version "4.8.0"
   resolved "https://registry.yarnpkg.com/@types/webdriverio/-/webdriverio-4.8.0.tgz#872ded64b7fdf9a01774add47f5ba2cca7f5676d"

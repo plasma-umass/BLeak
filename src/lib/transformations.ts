@@ -2,7 +2,7 @@ import {parse as parseJavaScript} from 'esprima';
 import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
-import {Node, BlockStatement, Program, ExpressionStatement} from 'estree';
+import {Node, BlockStatement, Program, ExpressionStatement, SourceLocation} from 'estree';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
@@ -38,9 +38,11 @@ const DECLARATION_TRANSFORM_TEMPLATE = compile('{%= newBody %}');
  * @param functionVarName The name of the variable containing the function that needs to be modified.
  * @todo Can I turn this into a template?
  */
-function getClosureAssignment(functionVarName: string): Node {
+function getClosureAssignment(functionVarName: string, loc: SourceLocation): Node {
   const js = `${functionVarName}.__closure__ = function(name) { "use strict"; return eval(name); };`;
-  return parseJavaScript(js);
+  const rv = parseJavaScript(js);
+  rv.loc = loc;
+  return rv;
 }
 
 /**
@@ -49,8 +51,8 @@ function getClosureAssignment(functionVarName: string): Node {
  *
  * @param source Source of the JavaScript file.
  */
-export function exposeClosureState(source: string): string {
-  let ast = parseJavaScript(source);
+export function exposeClosureState(filename: string, source: string): string {
+  let ast = parseJavaScript(source, { loc: true });
   // Modifications to make to the current block.
   let blockInsertions = new Array<Node>();
   // Stack of blocks.
@@ -70,16 +72,18 @@ export function exposeClosureState(source: string): string {
     leave: function(node, parent) {
       switch (node.type) {
         case 'FunctionDeclaration': {
-          blockInsertions.push(getClosureAssignment(node.id.name));
+          blockInsertions.push(getClosureAssignment(node.id.name, node.loc));
           break;
         }
         case 'FunctionExpression': {
           // Expose closure.
           const rv = <Program> EXPRESSION_TRANSFORM_TEMPLATE({
             originalFunction: node,
-            closureAssignment: getClosureAssignment('__tmp__')
+            closureAssignment: getClosureAssignment('__tmp__', node.loc)
           });
-          return (<ExpressionStatement> rv.body[0]).expression;
+          const exp = (<ExpressionStatement> rv.body[0]).expression;
+          exp.loc = node.loc;
+          return exp;
         }
         case 'ArrowFunctionExpression':
           throw new Error(`Arrow functions not yet supported.`);
@@ -94,7 +98,9 @@ export function exposeClosureState(source: string): string {
             const rv = <Program> DECLARATION_TRANSFORM_TEMPLATE({
               newBody: currentBlockInsertions.concat(node.body)
             });
-            return rv.body[0];
+            const rvExp = rv.body[0];
+            rvExp.loc = node.loc;
+            return rvExp;
           }
           break;
       }
@@ -106,9 +112,15 @@ export function exposeClosureState(source: string): string {
     const body = (<Program> newAst).body;
     body.unshift.apply(body, blockInsertions);
   }
-  return generateJavaScript(newAst, {
+  const converted = <{code: string, map: any}> <any> generateJavaScript(newAst, {
     format: {
       compact: true
-    }
+    },
+    sourceMap: filename,
+    sourceMapWithCode: true,
+    sourceContent: source
   });
+  // Embed sourcemap into code.
+  const convertedCode = `${converted.code}//# sourceMappingURL=data:application/json;base64,${new Buffer(converted.map.toString(), "utf8").toString("base64")}`;
+  return convertedCode;
 }

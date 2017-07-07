@@ -24,7 +24,7 @@ describe('Transformations', function() {
 
   describe('exposeClosureState', function() {
     function instrumentModule<T>(source: string): T {
-      const newSource = exposeClosureState(source);
+      const newSource = exposeClosureState("main.js", source);
       // Super basic CommonJS shim.
       const exp: any = {};
       new Function('exports', newSource)(exp);

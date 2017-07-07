@@ -2,6 +2,9 @@ import {injectIntoHead, exposeClosureState} from './transformations';
 import {IProxy, IBrowserDriver, Leak, ConfigurationFile, HeapSnapshot} from '../common/interfaces';
 import HeapGrowthTracker from './growth_tracker';
 import {GrowthPath} from './growth_graph';
+import {parse as parseURL} from 'url';
+import {StackFrame} from 'error-stack-parser';
+import StackFrameConverter from './stack_frame_converter';
 
 const AGENT_INJECT = `<script type="text/javascript" src="/deuterium_agent.js"></script>`;
 
@@ -33,7 +36,8 @@ window.DeuteriumConfig = {};
         break;
       case 'text/javascript':
         if (diagnosing) {
-          f.contents = exposeClosureState(f.contents);
+          const url = parseURL(f.url);
+          f.contents = exposeClosureState(url.path, f.contents);
         }
         break;
     }
@@ -102,8 +106,8 @@ window.DeuteriumConfig = {};
   /**
    * Returns all of the stack traces associated with growing objects.
    */
-  function getGrowthStacks(): PromiseLike<{[p: string]: {[prop: string]: string[]}}> {
-    return driver.runCode(`window.$$getStackTraces()`).then((data) => JSON.parse(data));
+  function getGrowthStacks(): PromiseLike<{[p: string]: {[prop: string]: StackFrame[][]}}> {
+    return driver.runCode(`window.$$getStackTraces()`).then((data) => JSON.parse(data)).then((data) => StackFrameConverter.ConvertGrowthStacks(proxy, data));
   }
 
   return driver.navigateTo(config.url).then(() => {
@@ -135,9 +139,10 @@ window.DeuteriumConfig = {};
           // Measure growth during one more loop.
           .then(() => runLoop(false))
           .then(() => {
+
             // Fetch array as string.
             return getGrowthStacks().then((growthStacks) => {
-              console.log(`Got growth stacks:\n${JSON.stringify(growthStacks)}`);
+              // console.log(`Got growth stacks:\n${JSON.stringify(growthStacks)}`);
               const rv: Leak[] = [];
               for (const p in growthStacks) {
                 rv.push({

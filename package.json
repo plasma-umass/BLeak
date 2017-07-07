@@ -38,6 +38,7 @@
     "@types/mocha": "^2.2.40",
     "@types/node": "^7.0.12",
     "@types/request": "^0.0.42",
+    "@types/source-map": "^0.5.0",
     "@types/webdriverio": "^4.6.1",
     "mocha": "^3.2.0",
     "nyc": "^10.2.0"
@@ -55,6 +56,7 @@
     "locate-java-home": "^0.1.6",
     "npm-run-all": "^4.0.2",
     "request": "^2.81.0",
+    "source-map": "^0.5.6",
     "webdriverio": "^4.6.2"
   }
 }

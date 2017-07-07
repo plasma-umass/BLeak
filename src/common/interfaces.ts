@@ -1,3 +1,5 @@
+import {StackFrame} from 'error-stack-parser';
+
 /**
  * Contains information on a source file.
  */
@@ -75,7 +77,7 @@ export interface Step  {
  */
 export interface Leak {
   path: string;
-  newProperties: {[prop: string]: string[]};
+  newProperties: {[prop: string]: StackFrame[][]};
 }
 
 /**
