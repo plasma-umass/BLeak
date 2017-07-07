@@ -15,7 +15,7 @@ const AGENT_INJECT = `<script type="text/javascript" src="/deuterium_agent.js"><
  * @param proxy The proxy instance that relays connections from the webpage.
  * @param driver The application driver.
  */
-export function FindLeaks(configSource: string, proxy: IProxy, driver: IBrowserDriver): PromiseLike<Leak[]> {
+export function FindLeaks(configSource: string, proxy: IProxy, driver: IBrowserDriver, snapshotCb: (sn: HeapSnapshot) => void = () => {}): PromiseLike<Leak[]> {
   // TODO: Check shape of object, too.
   const CONFIG_INJECT = `
 <script type="text/javascript">
@@ -51,7 +51,15 @@ window.DeuteriumConfig = {};
   }
 
   function takeSnapshot(): PromiseLike<HeapSnapshot> {
-    return driver.takeHeapSnapshot();
+    return driver.takeHeapSnapshot().then((sn) => {
+      try {
+        snapshotCb(sn);
+      } catch (e) {
+        console.log(`Snapshot callback exception:`);
+        console.log(e);
+      }
+      return sn;
+    });
   }
 
   function waitUntilTrue(i: number): PromiseLike<void> {

@@ -5,6 +5,10 @@ import {SnapshotNodeTypeToString, SnapshotEdgeTypeToString, SnapshotNodeType} fr
 
 const t = new GrowthTracker();
 const files = process.argv.slice(2);
+if (files.length === 0) {
+  console.log(`Usage: ${process.argv[0]} ${process.argv[1]} snap1.heapsnapshot snap2.heapsnapshot [more *.heapsnapshots in order...]\n\nPrints out growing paths in the heap over several snapshots.`);
+  process.exit();
+}
 for (const file of files) {
   console.log(`Processing ${file}...`);
   t.addSnapshot(JSON.parse(readFileSync(file, 'utf8')));
@@ -38,10 +42,10 @@ function column(strs: string[], lens: number[]): string {
   }
   return out;
 }
-function runRound() {
+function runRound(filter?: string) {
   console.log(`Current Node: ${node.name} [${SnapshotNodeTypeToString(node.type)}]`);
   const children = node.children ? node.children : [];
-  console.log(`[..] Previous node, [h] ${hide ? "unhide system properties" : "hide system properties"}, [q] Quit`);
+  console.log(`[..] Previous node, [h] ${hide ? "unhide system properties" : "hide system properties"}, [f (string)] Filter, [q] Quit`);
   let choices: string[][] = [];
   let sizes: number[] = [0, 0, 0, 0, 0];
   for (let i = 0; i < children.length; i++) {
@@ -59,13 +63,15 @@ function runRound() {
           continue;
       }
     }
-    let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]`];
-    choices.push(choice);
-    for (let j = 0; j < choice.length; j++) {
-      if (choice[j].length > sizes[j]) {
-        sizes[j] = choice[j].length;
-        if (sizes[j] > MAX_COL_SIZE) {
-          sizes[j] = MAX_COL_SIZE;
+    if (!filter || `${child.indexOrName}`.indexOf(filter) !== -1) {
+      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]`];
+      choices.push(choice);
+      for (let j = 0; j < choice.length; j++) {
+        if (choice[j].length > sizes[j]) {
+          sizes[j] = choice[j].length;
+          if (sizes[j] > MAX_COL_SIZE) {
+            sizes[j] = MAX_COL_SIZE;
+          }
         }
       }
     }
@@ -76,9 +82,12 @@ function runRound() {
 
   rl.question("? ", (a) => {
     const a2 = a.trim().toLowerCase();
-    switch (a2) {
-      case '..':
-        path.pop();
+    let filter: string | undefined = undefined;
+    switch (a2[0]) {
+      case '.':
+        if (a2[1] === '.') {
+          path.pop();
+        }
         break;
       case 'q':
         rl.close();
@@ -87,6 +96,10 @@ function runRound() {
       case 'h':
         hide = !hide;
         break;
+      case 'f': {
+        filter = a2.slice(2).trim();
+        break;
+      }
       default:
         const choice = parseInt(a2, 10);
         const child = node.children[choice];
@@ -101,7 +114,7 @@ function runRound() {
       path.push(t.getGraph());
     }
     node = path[path.length - 1];
-    runRound();
+    runRound(filter);
   });
 }
 runRound();

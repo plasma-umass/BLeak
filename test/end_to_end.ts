@@ -3,8 +3,9 @@ import ChromeDriver from '../src/webdriver/chrome_driver';
 import FindLeaks from '../src/lib/deuterium_oxide';
 import createHTTPServer from './util/http_server';
 import Proxy from '../src/proxy/proxy';
-import {readFileSync} from 'fs';
+import {readFileSync, writeFileSync} from 'fs';
 import {equal as assertEqual} from 'assert';
+// import {Leak} from '../src/common/interfaces';
 
 const HTTP_PORT = 8875;
 const PROXY_PORT = 5554;
@@ -15,12 +16,16 @@ interface TestFile {
   data: Buffer;
 }
 
+function getHTMLConfig(name: string): { mimeType: string, data: Buffer } {
+  return {
+    mimeType: 'text/html',
+    data: Buffer.from(`<!DOCTYPE html><html><head><title>${name}</title></head><body><button id="btn">Click Me</button><script type="text/javascript" src="/${name}.js"></script></body></html>`, 'utf8')
+  };
+}
+
 // 'Files' present in the test HTTP server
 const FILES: {[name: string]: TestFile} = {
-  '/test.html': {
-    mimeType: 'text/html',
-    data: Buffer.from('<!DOCTYPE html><html><head><title>My Web Page</title></head><body><button id="btn">Click Me</button><script type="text/javascript" src="/test.js"></script></body></html>', 'utf8')
-  },
+  '/test.html': getHTMLConfig('test'),
   '/test.js': {
     mimeType: 'text/javascript',
     data: Buffer.from(`var obj = {};
@@ -33,6 +38,62 @@ const FILES: {[name: string]: TestFile} = {
         obj[Math.random()] = Math.random();
       }
     });
+    `, 'utf8')
+  },
+  '/closure_test.html': getHTMLConfig('closure_test'),
+  '/closure_test.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`(function() {
+      var obj = {};
+      var i = 0;
+      var power = 2;
+      document.getElementById('btn').addEventListener('click', function() {
+        var top = Math.pow(2, power);
+        power++;
+        for (var j = 0; j < top; j++) {
+          obj[Math.random()] = Math.random();
+        }
+      });
+    })();
+    `, 'utf8')
+  },
+  '/reassignment_test.html': getHTMLConfig('reassignment_test'),
+  '/reassignment_test.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`
+    (function() {
+      var obj = [];
+      var i = 0;
+      var power = 2;
+      document.getElementById('btn').addEventListener('click', function() {
+        var top = Math.pow(2, power);
+        power++;
+        for (var j = 0; j < top; j++) {
+          obj = obj.concat({ val: Math.random() });
+        }
+      });
+    })();
+    `, 'utf8')
+  },
+  '/multiple_paths_test.html': getHTMLConfig('multiple_paths_test'),
+  '/multiple_paths_test.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`(function() {
+      var obj = {};
+      var obj2 = obj;
+      var i = 0;
+      var power = 2;
+      document.getElementById('btn').addEventListener('click', function() {
+        var top = Math.pow(2, power);
+        power++;
+        for (var j = 0; j < top; j++) {
+          if (obj === obj2) {
+            var target = Math.random() > 0.5 ? obj : obj2;
+            target[Math.random()] = Math.random();
+          }
+        }
+      });
+    })();
     `, 'utf8')
   },
   '/deuterium_agent.js': {
@@ -60,39 +121,50 @@ describe('End-to-end Tests', function() {
     }).catch(done);
   });
 
-  it('Catches leaks', function(done) {
-    FindLeaks(`
-      exports.url = 'http://localhost:${HTTP_PORT}/test.html';
-      exports.loop = [
-        {
-          name: 'Click Button',
-          check: function() {
-            return document.readyState === "complete";
-          },
-          next: function() {
-            document.getElementById('btn').click();
+  function createStandardLeakTest(description: string, rootFilename: string, expected_line: number): void {
+    it(description, function(done) {
+      let i = 0;
+      FindLeaks(`
+        exports.url = 'http://localhost:${HTTP_PORT}/${rootFilename}.html';
+        exports.loop = [
+          {
+            name: 'Click Button',
+            check: function() {
+              return document.readyState === "complete";
+            },
+            next: function() {
+              document.getElementById('btn').click();
+            }
           }
-        }
-      ];
-      exports.timeout = 30000;
-    `, proxy, driver).then((leaks) => {
-      // Line 8
-      leaks.forEach((leak) => {
-        const newProps = leak.newProperties;
-        for (const propName in newProps) {
-          const stacks = newProps[propName];
-          stacks.forEach((s) => {
-            assertEqual(s.length > 0, true);
-            const topFrame = s[0];
-            console.log(topFrame.toString());
-            assertEqual(topFrame.lineNumber, 8);
-            assertEqual(topFrame.fileName.indexOf("test.js") !== -1, true);
-          });
-        }
-      })
-      done();
-    }).catch(done);
-  });
+        ];
+        exports.timeout = 30000;
+      `, proxy, driver, (ss) => {
+        writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
+        i++;
+      }).then((leaks) => {
+        assertEqual(leaks.length > 0, true);
+        leaks.forEach((leak) => {
+          const newProps = leak.newProperties;
+          for (const propName in newProps) {
+            const stacks = newProps[propName];
+            stacks.forEach((s) => {
+              assertEqual(s.length > 0, true);
+              const topFrame = s[0];
+              console.log(topFrame.toString());
+              assertEqual(topFrame.lineNumber, expected_line);
+              assertEqual(topFrame.fileName.indexOf(`${rootFilename}.js`) !== -1, true);
+            });
+          }
+        })
+        done();
+      }).catch(done);
+    });
+  }
+
+  createStandardLeakTest('Catches leaks', 'test', 8);
+  createStandardLeakTest('Catches leaks in closures', 'closure_test', 9);
+  createStandardLeakTest('Catches leaks when object is copied and reassigned', 'reassignment_test', 10);
+  createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
 
   after(function(done) {
     //setTimeout(function() {
