@@ -9,4 +9,5 @@ interface Function {
 interface Window {
   $$instrumentPaths(p: string[]): void;
   $$getStackTraces(): string;
+  $$domObjects: any;
 }

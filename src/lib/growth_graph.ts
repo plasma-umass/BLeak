@@ -21,7 +21,7 @@ function isHidden(type: SnapshotEdgeType): boolean {
     case SnapshotEdgeType.Internal:
     case SnapshotEdgeType.Hidden:
     case SnapshotEdgeType.Shortcut:
-      return true;
+      return false;
     default:
       return false;
   }
@@ -239,8 +239,9 @@ export class GrowthGraphBuilder {
   public visitNode(type: SnapshotNodeType, name: number, id: number, selfSize: number, edgeCount: number): void {
     const nodeObject = this._getOrMakeNode(id);
     nodeObject.name = this._lookupString(name);
-    if (nodeObject.name && nodeObject.name.startsWith("Window ")) { // "Window / http://localhost:8080") {
-      this._roots.add([this._lookupString(name), nodeObject]);
+    if (nodeObject.name && nodeObject.name.startsWith("Window ")) { // && nodeObject.type === SnapshotNodeType.Code) {
+      // console.log(`${id} ${nodeObject.name}`);
+      this._roots.add([nodeObject.name, nodeObject]);
     //  console.log(`Has ${edgeCount} children!!!`);
     }
     //if (type === SnapshotNodeType.Synthetic) {
@@ -313,11 +314,11 @@ export function MergeGraphs(prev: Node, current: Node): void {
  * @param root The root of the heap.
  */
 export function FindGrowthPaths(root: Node): GrowthPath[] {
-  let found = new Set<Node>();
+  let visited = new Set<Node>();
   // Paths in shallow -> deep order.
   let growingPaths: GrowthPath[] = []
   let frontier: GrowthPath[] = root.children.map((e) => {
-    found.add(e.to);
+    visited.add(e.to);
     return new GrowthPath([e]);
   });
   let nextFrontier: GrowthPath[] = [];
@@ -331,9 +332,14 @@ export function FindGrowthPaths(root: Node): GrowthPath[] {
     const children = node.children;
     if (children) {
       for (const child of children) {
-        if (!found.has(child.to)) {
-          found.add(child.to);
-          nextFrontier.push(path.addEdge(child));
+        if (!visited.has(child.to)) {
+          visited.add(child.to);
+          // HACK: Ignore <symbol> properties. There may be multiple properties
+          // with the name <symbol> in a heap snapshot. There does not appear to
+          // be an easy way to disambiguate them.
+          if (child.indexOrName !== "<symbol>") {
+            nextFrontier.push(path.addEdge(child));
+          }
         }
       }
     }

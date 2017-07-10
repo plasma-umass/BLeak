@@ -60,7 +60,7 @@ export default class HeapGrowthTracker {
     // Not needed; let it get garbage collected.
     snapshot.strings = null;
     let visitor = new GrowthGraphBuilder(this._stringPool, (id: number) => {
-      return this._strings[stringLookupTable.get(id)];
+      return this._strings[getString(id)];
     });
     // Extract boilerplate information from the snapshot, which tells us how to parse
     // the snapshot.
@@ -87,7 +87,7 @@ export default class HeapGrowthTracker {
     let nextEdge = 0;
     for (let i = 0; i < numNodes; i++) {
       const base = i * nodeFields.length;
-      const nodeName = getString(nodes[base + nodeNameOffset]);
+      const nodeName = nodes[base + nodeNameOffset];
       // Node ID is like a pointer, I'm guessing.
       // Ignored for now.
       // const nodeId = nodes[base + nodeIdOffset];

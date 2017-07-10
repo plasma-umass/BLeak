@@ -2,6 +2,7 @@ import GrowthTracker from '../lib/growth_tracker';
 import {readFileSync} from 'fs';
 import * as readline from 'readline';
 import {SnapshotNodeTypeToString, SnapshotEdgeTypeToString, SnapshotNodeType} from '../common/interfaces';
+import {NodeFlag} from '../lib/growth_graph';
 
 const t = new GrowthTracker();
 const files = process.argv.slice(2);
@@ -64,7 +65,7 @@ function runRound(filter?: string) {
       }
     }
     if (!filter || `${child.indexOrName}`.indexOf(filter) !== -1) {
-      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]`];
+      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.hasFlag(NodeFlag.Growing) ? "*" : ""}`];
       choices.push(choice);
       for (let j = 0; j < choice.length; j++) {
         if (choice[j].length > sizes[j]) {
