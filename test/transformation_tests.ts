@@ -39,6 +39,11 @@ describe('Transformations', function() {
       `);
       assertEqual(module.decl.__closure__('a'), 'hello');
       assertEqual(module.decl.__closure__('decl'), module.decl);
+      module.decl.__closureAssign__('a', 'no');
+      assertEqual(module.decl.__closure__('a'), 'no');
+      const arr = [1,2,3];
+      module.decl.__closureAssign__('a', arr);
+      assertEqual(module.decl.__closure__('a'), arr);
     });
 
     it('works with function expressions', function() {

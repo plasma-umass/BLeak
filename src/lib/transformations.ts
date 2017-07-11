@@ -39,7 +39,8 @@ const DECLARATION_TRANSFORM_TEMPLATE = compile('{%= newBody %}');
  * @todo Can I turn this into a template?
  */
 function getClosureAssignment(functionVarName: string, loc: SourceLocation): Node {
-  const js = `${functionVarName}.__closure__ = function(name) { "use strict"; return eval(name); };`;
+  const js = `${functionVarName}.__closure__ = function(name) { "use strict"; return eval(name); };` +
+             `${functionVarName}.__closureAssign__ = function(name, val) { "use strict"; eval(name + " = val;"); };`;
   const rv = parseJavaScript(js);
   rv.loc = loc;
   return rv;

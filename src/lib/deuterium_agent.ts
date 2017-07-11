@@ -184,7 +184,18 @@ interface EventTarget {
         }
       });
       // Install proxy in its place.
-      new Function('proxy', `${p} = proxy;`)(proxy);
+      if (p.endsWith("')")) {
+        // `p` is a closure variable we need to reassign.
+        const closureStr = "__closure__(";
+        const closurePosition = p.lastIndexOf(closureStr);
+        const accessStr = `${p.slice(0, closurePosition)}__closureAssign__(${
+          p.slice(closurePosition + closureStr.length, -1)}, proxy);`;
+        console.log(accessStr);
+        new Function('proxy', accessStr)(proxy);
+      } else {
+        // `p` is a property we need to reassign.
+        new Function('proxy', `${p} = proxy;`)(proxy);
+      }
     } catch (e) {
       console.log(`${p} not found, ignoring.`);
     }
