@@ -27,6 +27,28 @@ function isHidden(type: SnapshotEdgeType): boolean {
   }
 }
 
+function shouldTraverse(edge: Edge): boolean {
+  // HACK: Ignore <symbol> properties. There may be multiple properties
+  // with the name <symbol> in a heap snapshot. There does not appear to
+  // be an easy way to disambiguate them.
+  if (edge.indexOrName === "<symbol>") {
+    return false;
+  }
+  if (edge.snapshotType === SnapshotEdgeType.Internal) {
+    // Whitelist of internal edges we know how to follow.
+    switch (edge.indexOrName) {
+      case "elements":
+      case "table":
+      case "properties":
+      case "context":
+        return true;
+      default:
+        return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Named property, e.g. obj['foo']
  */
@@ -266,45 +288,56 @@ export class GrowthGraphBuilder {
 }
 
 /**
- * DFS exploration of graph. Checks if nodes in the graph have grown.
+ * BFS exploration of graph. Checks if nodes in the graph have grown.
  * @param prev Node from the previous snapshot at current heap path.
  * @param current Node from the current snapshot at current heap path.
  */
-export function MergeGraphs(prev: Node, current: Node): void {
-  const visitBit = current.hasFlag(NodeFlag.VisitBit);
-  if (visitBit) {
-    // Ignore visited nodes.
-    return;
-  } else {
-    current.setFlag(NodeFlag.VisitBit);
-  }
-  // `current` has an analogue in the previous snapshot, so it is no longer 'new'.
-  current.unsetFlag(NodeFlag.New);
+export function MergeGraphs(prevGraph: Node, currentGraph: Node): void {
+  let frontier: Node[] = [];
+  let queue: Node[] = [prevGraph, currentGraph];
 
-  //console.log(`${prev} -> ${current}`);
+  while (queue.length > 0) {
+    const current = queue.pop();
+    const prev = queue.pop();
 
-  // Nodes are either 'New', 'Growing', or 'Not Growing'.
-  // Nodes begin as 'New', and transition to 'Growing' or 'Not Growing' after a snapshot.
-  // So if a node is neither new nor consistently growing, we don't care about it.
-  if ((prev.hasFlag(NodeFlag.New) || prev.hasFlag(NodeFlag.Growing)) && prev.numProperties() < current.numProperties()) {
-  //current.children && ((prev.children === null && current.children.length > 0) || (prev.children && prev.children.length < current.children.length))) {
-    current.setFlag(NodeFlag.Growing);
-  }
+    const visitBit = current.hasFlag(NodeFlag.VisitBit);
+    if (!visitBit) {
+      current.setFlag(NodeFlag.VisitBit);
+      // `current` has an analogue in the previous snapshot, so it is no longer 'new'.
+      current.unsetFlag(NodeFlag.New);
 
-  // Visit shared children. New children are ignored, and remain in the 'new' state.
-  const prevEdges = new Map<string | number, Edge>();
-  if (prev.children) {
-    for (const edge of prev.children) {
-      prevEdges.set(edge.indexOrName, edge);
-    }
-  }
+      //console.log(`${prev} -> ${current}`);
 
-  if (current.children) {
-    for (const edge of current.children) {
-      const prevEdge = prevEdges.get(edge.indexOrName);
-      if (prevEdge) {
-        MergeGraphs(prevEdge.to, edge.to);
+      // Nodes are either 'New', 'Growing', or 'Not Growing'.
+      // Nodes begin as 'New', and transition to 'Growing' or 'Not Growing' after a snapshot.
+      // So if a node is neither new nor consistently growing, we don't care about it.
+      if ((prev.hasFlag(NodeFlag.New) || prev.hasFlag(NodeFlag.Growing)) && prev.numProperties() < current.numProperties()) {
+      //current.children && ((prev.children === null && current.children.length > 0) || (prev.children && prev.children.length < current.children.length))) {
+        current.setFlag(NodeFlag.Growing);
       }
+
+      // Visit shared children. New children are ignored, and remain in the 'new' state.
+      const prevEdges = new Map<string | number, Edge>();
+      if (prev.children) {
+        for (const edge of prev.children) {
+          prevEdges.set(edge.indexOrName, edge);
+        }
+      }
+
+      if (current.children) {
+        for (const edge of current.children) {
+          const prevEdge = prevEdges.get(edge.indexOrName);
+          if (prevEdge && shouldTraverse(prevEdge)) {
+            frontier.push(prevEdge.to, edge.to);
+          }
+        }
+      }
+    }
+
+    if (queue.length === 0) {
+      const temp = queue;
+      queue = frontier;
+      frontier = temp;
     }
   }
 }
@@ -322,7 +355,6 @@ export function FindGrowthPaths(root: Node): GrowthPath[] {
     return new GrowthPath([e]);
   });
   let nextFrontier: GrowthPath[] = [];
-
   while (frontier.length > 0) {
     const path = frontier.shift();
     const node = path.end();
@@ -334,10 +366,7 @@ export function FindGrowthPaths(root: Node): GrowthPath[] {
       for (const child of children) {
         if (!visited.has(child.to)) {
           visited.add(child.to);
-          // HACK: Ignore <symbol> properties. There may be multiple properties
-          // with the name <symbol> in a heap snapshot. There does not appear to
-          // be an easy way to disambiguate them.
-          if (child.indexOrName !== "<symbol>") {
+          if (shouldTraverse(child)) {
             nextFrontier.push(path.addEdge(child));
           }
         }

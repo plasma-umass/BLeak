@@ -65,7 +65,7 @@ function runRound(filter?: string) {
       }
     }
     if (!filter || `${child.indexOrName}`.indexOf(filter) !== -1) {
-      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.hasFlag(NodeFlag.Growing) ? "*" : ""}`];
+      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.hasFlag(NodeFlag.Growing) ? "*" : ""}`, `[Count: ${child.to.numProperties()}]`, `[New? ${child.to.hasFlag(NodeFlag.New) ? "Y" : "N"}]`];
       choices.push(choice);
       for (let j = 0; j < choice.length; j++) {
         if (choice[j].length > sizes[j]) {
