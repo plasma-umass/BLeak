@@ -21,7 +21,7 @@ function isHidden(type: SnapshotEdgeType): boolean {
     case SnapshotEdgeType.Internal:
     case SnapshotEdgeType.Hidden:
     case SnapshotEdgeType.Shortcut:
-      return false;
+      return true;
     default:
       return false;
   }
@@ -361,12 +361,13 @@ export function FindGrowthPaths(root: Node): GrowthPath[] {
     if (node.hasFlag(NodeFlag.Growing)) {
       growingPaths.push(path);
     }
+    node.setFlag(NodeFlag.New);
     const children = node.children;
     if (children) {
       for (const child of children) {
         if (!visited.has(child.to)) {
-          visited.add(child.to);
           if (shouldTraverse(child)) {
+            visited.add(child.to);
             nextFrontier.push(path.addEdge(child));
           }
         }
