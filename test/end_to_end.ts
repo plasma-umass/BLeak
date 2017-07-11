@@ -145,8 +145,10 @@ describe('End-to-end Tests', function() {
         assertEqual(leaks.length > 0, true);
         leaks.forEach((leak) => {
           const newProps = leak.newProperties;
+          assertEqual(Object.keys(newProps).length > 0, true);
           for (const propName in newProps) {
             const stacks = newProps[propName];
+            assertEqual(stacks.length > 0, true);
             stacks.forEach((s) => {
               assertEqual(s.length > 0, true);
               const topFrame = s[0];
