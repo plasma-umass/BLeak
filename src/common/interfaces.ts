@@ -202,6 +202,6 @@ export function SnapshotNodeTypeToString(sn: SnapshotNodeType): string {
     case SnapshotNodeType.Unresolved:
       return "Unresolved";
     default:
-      return "(Unknown";
+      return "(Unknown)";
   }
 }

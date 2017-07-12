@@ -17,7 +17,7 @@ for (const file of files) {
 const growth = t.getGrowthPaths();
 console.log(`Found ${growth.length} growing paths.`);
 for (const g of growth) {
-  console.log(g.getAccessString());
+  console.log(JSON.stringify(g));
 }
 
 console.log(`Exploring the heap!`);

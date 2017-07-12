@@ -108,7 +108,7 @@ window.DeuteriumConfig = {};
    * @param ps
    */
   function instrumentGrowthPaths(ps: GrowthPath[]): PromiseLike<any> {
-    return driver.runCode(`window.$$instrumentPaths(${JSON.stringify(ps.map((p) => p.getAccessString()))})`);
+    return driver.runCode(`window.$$instrumentPaths(${JSON.stringify(ps)})`);
   }
 
   /**
@@ -127,7 +127,7 @@ window.DeuteriumConfig = {};
     // Instrument growing paths.
     return promise.then(() => {
       growthPaths = growthTracker.getGrowthPaths();
-      console.log(`Growing paths:\n${growthPaths.map((gp) => gp.getAccessString()).join("\n")}`);
+      console.log(`Growing paths:\n${growthPaths.map((gp) => JSON.stringify(gp)).join("\n")}`);
       // No more need for the growth tracker!
       growthTracker = null;
     }).then(() => {

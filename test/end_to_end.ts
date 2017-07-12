@@ -157,7 +157,7 @@ describe('End-to-end Tests', function() {
               assertEqual(topFrame.fileName.indexOf(`${rootFilename}.js`) !== -1, true);
             });
           }
-        })
+        });
         done();
       }).catch(done);
     });
@@ -169,7 +169,7 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
 
   after(function(done) {
-    //setTimeout(function() {
+    setTimeout(function() {
       // Shutdown both HTTP server and proxy.
       httpServer.close((e: any) => {
         if (e) {
@@ -182,6 +182,6 @@ describe('End-to-end Tests', function() {
           }).catch(done);
         }
       });
-    //}, 180000);
+    }, 99990000);
   });
 });

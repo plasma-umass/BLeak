@@ -13,82 +13,86 @@ interface EventTarget {
 (function() {
   const addEventListener = EventTarget.prototype.addEventListener;
   const removeEventListener = EventTarget.prototype.removeEventListener;
-  // Alternative store of DOM objects to facilitate fetching them. Heap snapshots treat DOM nodes weirdly.
-  const domObjects: {[xpath: string]: Node} = {};
-  window.$$domObjects = domObjects;
-
-  function isHTMLElement(el: any): el is HTMLElement {
-    return !!el.hasAttribute;
+  const r = /'/g;
+  /**
+   * Escapes single quotes in the given string.
+   * @param s
+   */
+  function safeString(s: string): string {
+    return s.replace(r, "\'");
   }
 
-  /**
-   * Remove stale DOM objects from domObjects, allowing them to be GC'd.
-   */
-  function cleanDOMObjects() {
-    for (const xpath in domObjects) {
-      // Check if path has changed.
-      const n = domObjects[xpath];
-      const newPath = getDOMPath(n);
-      if (newPath) {
-        if (newPath !== xpath) {
-          domObjects[newPath] = n;
-        } else {
-          // Node hasn't moved (common case); continue loop.
-          continue;
-        }
-      }
-      // Node is no longer at xpath. Check if path is valid.
-      // Refresh node value, as it may have changed.
-      const currentNode = document.querySelector(xpath);
-      if (currentNode) {
-        domObjects[xpath] = currentNode;
-      } else {
-        // xpath is no longer valid.
-        delete domObjects[xpath];
-      }
-    }
-  }
-
-  setInterval(cleanDOMObjects, 2000);
-
-  /**
-   * Get a string path to the given node. It's a heuristic match.
-   *
-   * Modified from http://stackoverflow.com/a/16742828
-   * @param el The HTML element.
-   */
-  function getDOMPath(el: Node): string | null {
-    const stack: string[] = [];
-    while (el.parentNode) {
-      // console.log(el.nodeName);
-      let sibCount = 0;
-      let sibIndex = 0;
-      let siblings = el.parentNode.childNodes;
-      for (let i = 0; i < siblings.length; i++ ) {
-        var sib = siblings[i];
-        if (sib.nodeName == el.nodeName) {
-          if (sib === el) {
-            sibIndex = sibCount;
+  function getOrSetObjectsForPath(get: boolean, p: SerializeableGCPath, proxies?: Map<any, any>): any[][] {
+    let accessStr = "root";
+    const root = p.root;
+    let rootObjs: any[] = [];
+    switch (root.type) {
+      case RootType.DOM: {
+        const elementType = root.elementType;
+        if (elementType.startsWith("HTML") && elementType.endsWith("Element")) {
+          const tag = elementType.slice(4, -7).toLowerCase();
+          const elements = document.getElementsByTagName(tag);
+          for (let i = 0; i < elements.length; i++) {
+            rootObjs.push(elements[i]);
           }
-          sibCount++;
         }
+        break;
       }
-      if (isHTMLElement(el) && el.hasAttribute('id') && el.id) {
-        stack.unshift(el.nodeName.toLowerCase() + '#' + el.id);
-      } else if (sibCount > 1) {
-        stack.unshift(el.nodeName.toLowerCase() + ':nth-of-type(' + sibIndex + 1 + ')');
-      } else {
-        stack.unshift(el.nodeName.toLowerCase());
-      }
-      el = el.parentNode;
+      case RootType.GLOBAL:
+        rootObjs.push(window);
+        break;
     }
+    const path = p.path;
+    const lastEdge = path[path.length - 1];
+    for (const l of path) {
+      switch(l.type) {
+        case EdgeType.CLOSURE:
+          if (!get && l === lastEdge) {
+            accessStr += `.__closureAssign__('${safeString(`${l.indexOrName}`)}', proxy)`;
+          } else {
+            accessStr += `.__closure__('${safeString(`${l.indexOrName}`)}')`;
+          }
+          break;
+        case EdgeType.INDEX:
+        case EdgeType.NAMED:
+          accessStr += `['${safeString(`${l.indexOrName}`)}']`;
+          if (!get && l === lastEdge) {
+            accessStr += ` = proxy`;
+          }
+          break;
+      }
+    }
+    if (get) {
+      return rootObjs.map((root) => {
+        "use strict";
+        try {
+          return [root, new Function("root", `return ${accessStr};`)(root)];
+        } catch (e) {
+          console.error(e);
+          return null;
+        }
+      }).filter((o) => o !== null);
+    } else {
+      rootObjs.forEach((root, i) => {
+        "use strict";
+        if (proxies.has(root)) {
+          try {
+            new Function("root", "proxy", `${accessStr};`)(root, proxies.get(root));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      });
+      return null;
+    }
+  }
 
-    const html = stack[0];
-    if (html === "html") {
-      // slice(1) removes HTML element.
-      return stack.slice(1).join(' ');
-    }
-    return null;
+  function setObjectsForPath(p: SerializeableGCPath, proxies: Map<any, any>): void {
+    getOrSetObjectsForPath(false, p, proxies);
+  }
+
+  function getObjectsForPath(p: SerializeableGCPath): any[][] {
+    return getOrSetObjectsForPath(true, p);
   }
 
   EventTarget.prototype.addEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
@@ -109,11 +113,6 @@ interface EventTarget {
       listener: listener,
       useCapture: useCapture
     });
-    if (this instanceof Node) {
-      const n = <Node> this;
-      const p = getDOMPath(n);
-      domObjects[p] = n;
-    }
   };
 
   EventTarget.prototype.removeEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
@@ -135,18 +134,18 @@ interface EventTarget {
     }
   };
 
-  const stackTraces = new Map<string, Map<string | number | symbol, Set<string>>>();
-  function instrumentPath(p: string): void {
-    try {
-      // Fetch the object.
-      const obj = new Function(`return ${p};`)();
-      let map = stackTraces.get(p);
-      if (!map) {
-        map = new Map<string | number | symbol, Set<string>>();
-        stackTraces.set(p, map);
-      }
-      // Make a proxy object to replace it.
-      const proxy = new Proxy(obj, {
+  const stackTraces = new Map<SerializeableGCPath, Map<string | number | symbol, Set<string>>>();
+  function instrumentPath(p: SerializeableGCPath): void {
+    // Fetch the object.
+    const objs = getObjectsForPath(p);
+    let map = stackTraces.get(p);
+    if (!map) {
+      map = new Map<string | number | symbol, Set<string>>();
+      stackTraces.set(p, map);
+    }
+    const proxies = new Map<any, any>();
+    for (const objSet of objs) {
+      proxies.set(objSet[0], new Proxy(objSet[1], {
         defineProperty: function(target, property, descriptor): boolean {
           // Capture a stack trace.
           try {
@@ -182,26 +181,13 @@ interface EventTarget {
           }
           return Reflect.deleteProperty(target, property);
         }
-      });
-      // Install proxy in its place.
-      if (p.endsWith("')")) {
-        // `p` is a closure variable we need to reassign.
-        const closureStr = "__closure__(";
-        const closurePosition = p.lastIndexOf(closureStr);
-        const accessStr = `${p.slice(0, closurePosition)}__closureAssign__(${
-          p.slice(closurePosition + closureStr.length, -1)}, proxy);`;
-        console.log(accessStr);
-        new Function('proxy', accessStr)(proxy);
-      } else {
-        // `p` is a property we need to reassign.
-        new Function('proxy', `${p} = proxy;`)(proxy);
-      }
-    } catch (e) {
-      console.log(`${p} not found, ignoring.`);
+      }));
     }
+    // Install proxies in the place of the roots.
+    setObjectsForPath(p, proxies);
   }
 
-  function instrumentPaths(p: string[]): void {
+  function instrumentPaths(p: SerializeableGCPath[]): void {
     for (const path of p) {
       instrumentPath(path);
     }
@@ -210,7 +196,7 @@ interface EventTarget {
   function getStackTraces(): string {
     const rv: {[p: string]: {[prop: string]: string[]}} = {};
     stackTraces.forEach((value, key) => {
-      const map: {[prop: string]: string[]} = rv[key] = {};
+      const map: {[prop: string]: string[]} = rv[JSON.stringify(key)] = {};
       value.forEach((stacks, prop) => {
         const stackArray = new Array<string>(stacks.size);
         let i = 0;

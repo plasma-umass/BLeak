@@ -10,12 +10,6 @@ export const enum NodeFlag {
 
 export type Edge = NamedEdge | IndexEdge | ClosureEdge;
 
-export const enum EdgeType {
-  INDEX = 0,
-  NAMED = 1,
-  CLOSURE = 2
-}
-
 function isHidden(type: SnapshotEdgeType): boolean {
   switch(type) {
     case SnapshotEdgeType.Internal:
@@ -43,10 +37,17 @@ function shouldTraverse(edge: Edge): boolean {
       case "context":
         return true;
       default:
-        return false;
+        return `${edge.indexOrName}`.startsWith("Document");
     }
   }
   return true;
+}
+
+function serializeEdge(e: Edge): SerializeableEdge {
+  return {
+    type: e.type,
+    indexOrName: e.indexOrName
+  };
 }
 
 /**
@@ -64,6 +65,9 @@ export class NamedEdge {
   public get type(): EdgeType.NAMED {
     return EdgeType.NAMED;
   }
+  public toJSON(): SerializeableEdge {
+    return serializeEdge(this);
+  }
 }
 
 /**
@@ -80,6 +84,9 @@ export class IndexEdge {
   }
   public get type(): EdgeType.INDEX {
     return EdgeType.INDEX;
+  }
+  public toJSON(): SerializeableEdge {
+    return serializeEdge(this);
   }
 }
 
@@ -99,6 +106,9 @@ export class ClosureEdge {
   }
   public get type(): EdgeType.CLOSURE {
     return EdgeType.CLOSURE;
+  }
+  public toJSON(): SerializeableEdge {
+    return serializeEdge(this);
   }
 }
 
@@ -229,7 +239,8 @@ export class GrowthGraphBuilder {
   private _stringPool: Map<string, number>;
   private _currentNode: Node = null;
   private _nodeMap = new Map<number, Node>();
-  private _roots = new Set<[string, Node]>();
+  private _globalRoot: Node = null;
+  private _domRoot: Node = null;
   constructor(stringPool: Map<string, number>, lookupString: (id: number) => string) {
     this._lookupString = lookupString;
     this._stringPool = stringPool;
@@ -248,12 +259,12 @@ export class GrowthGraphBuilder {
     const root = new Node();
     root.name = "root";
     root.type = SnapshotNodeType.Synthetic;
-    const edges: Edge[] = [];
-    this._roots.forEach((aRoot) => {
-      edges.push(new NamedEdge(aRoot[0], aRoot[1], SnapshotEdgeType.Hidden));
-    });
+    let edges: Edge[] = [
+      new NamedEdge("window", this._globalRoot, SnapshotEdgeType.Hidden)
+    ];
+    edges = edges.concat(this._domRoot.children.map((c) => new NamedEdge("dom", c.to, SnapshotEdgeType.Hidden)));
     root.children = edges;
-    if (root.children.length === 0) {
+    if (root.children.length === 0 || this._globalRoot === null || this._domRoot === null) {
       throw new Error(`No GC roots found in snapshot?`);
     }
     return root;
@@ -261,14 +272,21 @@ export class GrowthGraphBuilder {
   public visitNode(type: SnapshotNodeType, name: number, id: number, selfSize: number, edgeCount: number): void {
     const nodeObject = this._getOrMakeNode(id);
     nodeObject.name = this._lookupString(name);
-    if (nodeObject.name && nodeObject.name.startsWith("Window ")) { // && nodeObject.type === SnapshotNodeType.Code) {
+    if (nodeObject.name && (nodeObject.name.startsWith("Window "))) { // && nodeObject.type === SnapshotNodeType.Code) {
       // console.log(`${id} ${nodeObject.name}`);
-      this._roots.add([nodeObject.name, nodeObject]);
+      if (this._globalRoot) {
+        throw new Error(`Multiple window nodes?!?`);
+      }
+      this._globalRoot = nodeObject;
     //  console.log(`Has ${edgeCount} children!!!`);
     }
-    //if (type === SnapshotNodeType.Synthetic) {
-    //  this._roots.add([this._lookupString(name), nodeObject]);
-    //}
+    if (type === SnapshotNodeType.Synthetic && nodeObject.name === "(Document DOM trees)") {
+      console.log("Found DOM root with " + edgeCount + " children.");
+      if (edgeCount !== 1) {
+        throw new Error(`Multiple DOMs: ${edgeCount}`);
+      }
+      this._domRoot = nodeObject;
+    }
     nodeObject.type = type;
     nodeObject.size = selfSize;
     this._currentNode = nodeObject;
@@ -361,7 +379,7 @@ export function FindGrowthPaths(root: Node): GrowthPath[] {
     if (node.hasFlag(NodeFlag.Growing)) {
       growingPaths.push(path);
     }
-    node.setFlag(NodeFlag.New);
+    // node.setFlag(NodeFlag.New);
     const children = node.children;
     if (children) {
       for (const child of children) {
@@ -382,15 +400,6 @@ export function FindGrowthPaths(root: Node): GrowthPath[] {
   }
 
   return growingPaths;
-}
-
-const r = /'/g;
-/**
- * Escapes single quotes in the given string.
- * @param s
- */
-function safeString(s: string): string {
-  return s.replace(r, "\'");
 }
 
 /**
@@ -416,27 +425,38 @@ export class GrowthPath {
   }
 
   /**
-   * Retrieves the path to the object.
+   * Retrieves the path to the object in a serializeable format.
    */
-  public getAccessString(): string {
-    let accessString = "window";
-    for (const link of this._path) {
-      switch (link.type) {
-        case EdgeType.CLOSURE:
-          accessString += `.__closure__('${safeString(link.indexOrName)}')`;
-          break;
-        case EdgeType.INDEX:
-          if (!isHidden(link.snapshotType)) {
-            accessString += `[${link.indexOrName}]`;
-          }
-          break;
-        case EdgeType.NAMED:
-          if (!isHidden(link.snapshotType)) {
-            accessString += `['${safeString(link.indexOrName)}']`;
-          }
-          break;
-      }
+  public toJSON(): SerializeableGCPath {
+    let rv: SerializeableGCPath = {
+      root: null,
+      path: null
+    };
+    let path = this._path;
+    const firstLink = path[0];
+    if (firstLink.to.name.startsWith("Window ")) {
+      rv.root = {
+        type: RootType.GLOBAL
+      };
+    } else {
+      // DOM object. Skip:
+      // - DOM tree collection
+      // - index
+      rv.root = {
+        type: RootType.DOM,
+        elementType: path[1].to.name
+      };
+      path = path.slice(2);
     }
-    return accessString;
+
+    rv.path = path.filter((l) => {
+      if (l.type === EdgeType.CLOSURE) {
+        return true;
+      } else {
+        return !isHidden(l.snapshotType);
+      }
+    });
+
+    return rv;
   }
 }
