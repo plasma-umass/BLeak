@@ -362,14 +362,14 @@ export function MergeGraphs(prevGraph: Node, currentGraph: Node): void {
 
 /**
  * Performs a BFS to find the shortest path to growing objects.
+ * Returns a set of paths to each growing object.
  * @param root The root of the heap.
  */
-export function FindGrowthPaths(root: Node): GrowthPath[] {
-  let visited = new Set<Node>();
-  // Paths in shallow -> deep order.
-  let growingPaths: GrowthPath[] = []
+export function FindGrowthPaths(root: Node): GrowthPath[][] {
+  let visited = new Set<Edge>();
+  let growingPaths = new Map<Node, GrowthPath[]>();
   let frontier: GrowthPath[] = root.children.map((e) => {
-    visited.add(e.to);
+    visited.add(e);
     return new GrowthPath([e]);
   });
   let nextFrontier: GrowthPath[] = [];
@@ -377,15 +377,18 @@ export function FindGrowthPaths(root: Node): GrowthPath[] {
     const path = frontier.shift();
     const node = path.end();
     if (node.hasFlag(NodeFlag.Growing)) {
-      growingPaths.push(path);
+      if (!growingPaths.has(node)) {
+        growingPaths.set(node, []);
+      }
+      growingPaths.get(node).push(path);
     }
     // node.setFlag(NodeFlag.New);
     const children = node.children;
     if (children) {
       for (const child of children) {
-        if (!visited.has(child.to)) {
+        if (!visited.has(child)) {
           if (shouldTraverse(child)) {
-            visited.add(child.to);
+            visited.add(child);
             nextFrontier.push(path.addEdge(child));
           }
         }
@@ -399,7 +402,11 @@ export function FindGrowthPaths(root: Node): GrowthPath[] {
     }
   }
 
-  return growingPaths;
+  // Convert from map into array of arrays.
+  // We don't need to track the key anymore.
+  const rv: GrowthPath[][] = [];
+  growingPaths.forEach((paths) => rv.push(paths));
+  return rv;
 }
 
 /**

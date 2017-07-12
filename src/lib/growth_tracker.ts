@@ -124,7 +124,7 @@ export default class HeapGrowthTracker {
     }
   }
 
-  public getGrowthPaths(): GrowthPath[] {
+  public getGrowthPaths(): GrowthPath[][] {
     return FindGrowthPaths(this._graph);
   }
 

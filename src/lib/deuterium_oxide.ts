@@ -95,7 +95,7 @@ window.DeuteriumConfig = {};
   }
 
   let growthTracker = new HeapGrowthTracker();
-  let growthPaths: GrowthPath[] = null;
+  let growthPaths: GrowthPath[][] = null;
   function processSnapshot(snapshot: HeapSnapshot): PromiseLike<void> {
     return new Promise<void>((res, rej) => {
       growthTracker.addSnapshot(snapshot);
@@ -107,7 +107,7 @@ window.DeuteriumConfig = {};
    * Instruments the objects at the growth paths so they record stack traces whenever they expand.
    * @param ps
    */
-  function instrumentGrowthPaths(ps: GrowthPath[]): PromiseLike<any> {
+  function instrumentGrowthPaths(ps: GrowthPath[][]): PromiseLike<any> {
     return driver.runCode(`window.$$instrumentPaths(${JSON.stringify(ps)})`);
   }
 

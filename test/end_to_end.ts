@@ -216,6 +216,7 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
 
   after(function(done) {
+    setTimeout(function() {
     // Shutdown both HTTP server and proxy.
     httpServer.close((e: any) => {
       if (e) {
@@ -228,5 +229,6 @@ describe('End-to-end Tests', function() {
         }).catch(done);
       }
     });
+    }, 99999999);
   });
 });

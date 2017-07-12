@@ -134,60 +134,73 @@ interface EventTarget {
     }
   };
 
+  // Array of GC paths.
+  // All should point to same object.
+  //
+
   const stackTraces = new Map<SerializeableGCPath, Map<string | number | symbol, Set<string>>>();
-  function instrumentPath(p: SerializeableGCPath): void {
+  function instrumentPath(p: SerializeableGCPath[]): void {
     // Fetch the object.
-    const objs = getObjectsForPath(p);
-    let map = stackTraces.get(p);
+    const objs = [].concat(...p.map((p) => getObjectsForPath(p)));
+    // Check if first path is in map. If not, all paths should not be in map.
+    let map = stackTraces.get(p[0]);
     if (!map) {
       map = new Map<string | number | symbol, Set<string>>();
-      stackTraces.set(p, map);
+      // Use shortest (0th) path as canonical path.
+      stackTraces.set(p[0], map);
     }
     const proxies = new Map<any, any>();
+    const proxiesByObject = new Map<any, any>();
     for (const objSet of objs) {
-      proxies.set(objSet[0], new Proxy(objSet[1], {
-        defineProperty: function(target, property, descriptor): boolean {
-          // Capture a stack trace.
-          try {
-            throw new Error();
-          } catch (e) {
-            let set = map.get(property);
-            if (!set) {
-              set = new Set<string>();
-              map.set(property, set);
+      // Ensure we use same proxy for same object.
+      let finishedProxy = proxiesByObject.get(objSet[1]);
+      if (!finishedProxy) {
+        finishedProxy = new Proxy(objSet[1], {
+          defineProperty: function(target, property, descriptor): boolean {
+            // Capture a stack trace.
+            try {
+              throw new Error();
+            } catch (e) {
+              let set = map.get(property);
+              if (!set) {
+                set = new Set<string>();
+                map.set(property, set);
+              }
+              set.add(e.stack);
             }
-            set.add(e.stack);
-          }
-          return Reflect.defineProperty(target, property, descriptor);
-        },
-        set: function(target, property, value, receiver): boolean {
-          // Capture a stack trace.
-          try {
-            throw new Error();
-          } catch (e) {
-            let set = map.get(property);
-            if (!set) {
-              set = new Set<string>();
-              map.set(property, set);
+            return Reflect.defineProperty(target, property, descriptor);
+          },
+          set: function(target, property, value, receiver): boolean {
+            // Capture a stack trace.
+            try {
+              throw new Error();
+            } catch (e) {
+              let set = map.get(property);
+              if (!set) {
+                set = new Set<string>();
+                map.set(property, set);
+              }
+              set.add(e.stack);
             }
-            set.add(e.stack);
+            return Reflect.set(target, property, value, receiver);
+          },
+          deleteProperty: function(target, property): boolean {
+            // Remove stack traces that set this property.
+            if (map.has(property)) {
+              map.delete(property);
+            }
+            return Reflect.deleteProperty(target, property);
           }
-          return Reflect.set(target, property, value, receiver);
-        },
-        deleteProperty: function(target, property): boolean {
-          // Remove stack traces that set this property.
-          if (map.has(property)) {
-            map.delete(property);
-          }
-          return Reflect.deleteProperty(target, property);
-        }
-      }));
+        });
+        proxiesByObject.set(objSet[1], finishedProxy);
+      }
+      proxies.set(objSet[0], finishedProxy);
     }
     // Install proxies in the place of the roots.
-    setObjectsForPath(p, proxies);
+    p.forEach((p) => setObjectsForPath(p, proxies));
   }
 
-  function instrumentPaths(p: SerializeableGCPath[]): void {
+  function instrumentPaths(p: SerializeableGCPath[][]): void {
     for (const path of p) {
       instrumentPath(path);
     }

@@ -8,7 +8,7 @@ interface Function {
 }
 
 interface Window {
-  $$instrumentPaths(p: SerializeableGCPath[]): void;
+  $$instrumentPaths(p: SerializeableGCPath[][]): void;
   $$getStackTraces(): string;
   $$domObjects: any;
 }
