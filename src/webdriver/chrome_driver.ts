@@ -2,7 +2,7 @@ import {remote as remoteBrowser, Client, Options as ClientOptions} from 'webdriv
 import {ChildProcess, spawn} from 'child_process';
 import {parse as parseURL} from 'url';
 import {tmpdir} from 'os';
-import {mkdir, exists, createWriteStream, unlink} from 'fs';
+import {mkdir, exists, createWriteStream, unlink, openSync, closeSync} from 'fs';
 import {join, basename, dirname} from 'path';
 import * as extractZip from 'extract-zip';
 import LocateJavaHome = require('locate-java-home');
@@ -189,12 +189,17 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
     this._proxy = proxy;
     console.log(driverPath);
     console.log(`${javaPath} -Dwebdriver.chrome.driver=${driverPath} -jar ${seleniumPath} -port ${port}`);
+    // Workaround for https://github.com/webdriverio/webdriverio/issues/391#issuecomment-104068517
+    // If you do not pipe stdout/stderr somewhere (and instead "ignore" it),
+    // webdriver/selenium stops accepting commands / hangs after awhile.
+    const seleniumOut = openSync('./selenium.log', 'w');
     this._selenium = spawn(javaPath, [`-Dwebdriver.chrome.driver=${driverPath}`, '-jar', seleniumPath, '-port', `${port}`], {
       // Change to "inherit" for debugging.
-      // stdio: "inherit"
+      stdio: ["ignore", seleniumOut, seleniumOut]
     });
     process.on('exit', () => {
       this.close();
+      closeSync(seleniumOut);
     });
     const proxyCapability: ClientOptions = {
       port: port,

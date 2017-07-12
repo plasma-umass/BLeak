@@ -214,9 +214,10 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Catches leaks in closures, even with disconnected DOM fragments', 'closure_test_disconnected_dom', 10);
   createStandardLeakTest('Catches leaks when object is copied and reassigned', 'reassignment_test', 10);
   createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
+  // Ignores code that does not cause leaks.
 
   after(function(done) {
-    setTimeout(function() {
+    //setTimeout(function() {
     // Shutdown both HTTP server and proxy.
     httpServer.close((e: any) => {
       if (e) {
@@ -229,6 +230,6 @@ describe('End-to-end Tests', function() {
         }).catch(done);
       }
     });
-    }, 99999999);
+    //}, 99999999);
   });
 });
