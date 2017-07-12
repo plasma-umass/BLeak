@@ -172,6 +172,25 @@ const FILES: {[name: string]: TestFile} = {
     }
     getAddListener()();`, 'utf8')
   },
+  '/event_listener_removal.html': getHTMLConfig('event_listener_removal'),
+  '/event_listener_removal.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`
+    // Make unique functions so we can register many listeners.
+    function getAddListener() {
+      return function() {
+        document.getElementById('btn').addEventListener('click', getAddListener()); document.getElementById('btn').addEventListener('click', getAddListener()); document.getElementById('btn').addEventListener('click', getAddListener()); document.getElementById('btn').addEventListener('click', getAddListener());
+      };
+    }
+    getAddListener()();
+    // Responsible function
+    document.getElementById('btn').addEventListener('click', function() {
+      var b = document.getElementById('btn');
+      var l = getAddListener();
+      b.addEventListener('click', l);
+      b.removeEventListener('click', l);
+    });`, 'utf8')
+  },
   '/deuterium_agent.js': {
     mimeType: 'text/javascript',
     data: readFileSync(require.resolve('../src/lib/deuterium_agent'))
@@ -247,6 +266,7 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
   createStandardLeakTest('Ignores code that does not grow objects', 'irrelevant_paths_test', 8);
   createStandardLeakTest('Catches event listener leaks', 'event_listener_leak', 5);
+  createStandardLeakTest('Ignores responsible event listener removal', 'event_listener_removal', 5);
 
   after(function(done) {
     //setTimeout(function() {
