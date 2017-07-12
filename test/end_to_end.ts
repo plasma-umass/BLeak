@@ -141,6 +141,37 @@ const FILES: {[name: string]: TestFile} = {
     })();
     `, 'utf8')
   },
+  '/irrelevant_paths_test.html': getHTMLConfig('irrelevant_paths_test'),
+  '/irrelevant_paths_test.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`var obj = {};
+    var i = 0;
+    var power = 2;
+    document.getElementById('btn').addEventListener('click', function() {
+      var top = Math.pow(2, power);
+      power++;
+      for (var j = 0; j < top; j++) {
+        obj[Math.random()] = Math.random();
+      }
+      // Adds more properties, but properly deletes them.
+      // Not a leak.
+      var second = Math.random();
+      obj[second] = second;
+      delete obj[second];
+    });`, 'utf8')
+  },
+  '/event_listener_leak.html': getHTMLConfig('event_listener_leak'),
+  '/event_listener_leak.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`
+    // Make unique functions so we can register many listeners.
+    function getAddListener() {
+      return function() {
+        document.getElementById('btn').addEventListener('click', getAddListener()); document.getElementById('btn').addEventListener('click', getAddListener()); document.getElementById('btn').addEventListener('click', getAddListener()); document.getElementById('btn').addEventListener('click', getAddListener());
+      };
+    }
+    getAddListener()();`, 'utf8')
+  },
   '/deuterium_agent.js': {
     mimeType: 'text/javascript',
     data: readFileSync(require.resolve('../src/lib/deuterium_agent'))
@@ -214,7 +245,8 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Catches leaks in closures, even with disconnected DOM fragments', 'closure_test_disconnected_dom', 10);
   createStandardLeakTest('Catches leaks when object is copied and reassigned', 'reassignment_test', 10);
   createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
-  // Ignores code that does not cause leaks.
+  createStandardLeakTest('Ignores code that does not grow objects', 'irrelevant_paths_test', 8);
+  createStandardLeakTest('Catches event listener leaks', 'event_listener_leak', 5);
 
   after(function(done) {
     //setTimeout(function() {
