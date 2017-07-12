@@ -16,11 +16,15 @@ interface TestFile {
   data: Buffer;
 }
 
-function getHTMLConfig(name: string): { mimeType: string, data: Buffer } {
+function getHTMLDoc(docStr: string): { mimeType: string, data: Buffer } {
   return {
     mimeType: 'text/html',
-    data: Buffer.from(`<!DOCTYPE html><html><head><title>${name}</title></head><body><button id="btn">Click Me</button><script type="text/javascript" src="/${name}.js"></script></body></html>`, 'utf8')
+    data: Buffer.from(docStr, 'utf8')
   };
+}
+
+function getHTMLConfig(name: string): { mimeType: string, data: Buffer } {
+  return getHTMLDoc(`<!DOCTYPE html><html><head><title>${name}</title></head><body><button id="btn">Click Me</button><script type="text/javascript" src="/${name}.js"></script></body></html>`);
 }
 
 // 'Files' present in the test HTTP server
@@ -53,6 +57,47 @@ const FILES: {[name: string]: TestFile} = {
         for (var j = 0; j < top; j++) {
           obj[Math.random()] = Math.random();
         }
+      });
+    })();
+    `, 'utf8')
+  },
+  '/closure_test_irrelevant_dom.html': getHTMLDoc(`<!DOCTYPE html><html><head><title>Closure test irrelevant dom</title></head><body><button id="btn2">Don't click me</button><button id="btn">Click Me</button><button id="btn3">Don't click me, either</button><script type="text/javascript" src="/closure_test_irrelevant_dom.js"></script></body></html>`),
+  '/closure_test_irrelevant_dom.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`(function() {
+      var obj = {};
+      var i = 0;
+      var power = 2;
+      document.getElementById('btn').addEventListener('click', function() {
+        var top = Math.pow(2, power);
+        power++;
+        for (var j = 0; j < top; j++) {
+          obj[Math.random()] = Math.random();
+        }
+      });
+    })();
+    `, 'utf8')
+  },
+  '/closure_test_disconnected_dom.html': getHTMLDoc(`<!DOCTYPE html><html><head><title>Closure test disconnected dom</title></head><body><button id="btn">Click Me</button><script type="text/javascript" src="/closure_test_disconnected_dom.js"></script></body></html>`),
+  '/closure_test_disconnected_dom.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`(function() {
+      var obj = {};
+      var i = 0;
+      var power = 2;
+      var btn = document.createElement('button');
+      btn.addEventListener('click', function() {
+        var top = Math.pow(2, power);
+        power++;
+        for (var j = 0; j < top; j++) {
+          obj[Math.random()] = Math.random();
+        }
+      });
+      window.$$btn = btn;
+    })();
+    (function() {
+      document.getElementById('btn').addEventListener('click', function() {
+        window.$$btn.click();
       });
     })();
     `, 'utf8')
@@ -165,23 +210,23 @@ describe('End-to-end Tests', function() {
 
   createStandardLeakTest('Catches leaks', 'test', 8);
   createStandardLeakTest('Catches leaks in closures', 'closure_test', 9);
+  createStandardLeakTest('Catches leaks in closures, even with irrelevant DOM objects', 'closure_test_irrelevant_dom', 9);
+  createStandardLeakTest('Catches leaks in closures, even with disconnected DOM fragments', 'closure_test_disconnected_dom', 10);
   createStandardLeakTest('Catches leaks when object is copied and reassigned', 'reassignment_test', 10);
   createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
 
   after(function(done) {
-    setTimeout(function() {
-      // Shutdown both HTTP server and proxy.
-      httpServer.close((e: any) => {
-        if (e) {
-          done(e);
-        } else {
-          driver.close().then(() => {
-            return proxy.shutdown().then(() => {
-              done();
-            });
-          }).catch(done);
-        }
-      });
-    }, 99990000);
+    // Shutdown both HTTP server and proxy.
+    httpServer.close((e: any) => {
+      if (e) {
+        done(e);
+      } else {
+        driver.close().then(() => {
+          return proxy.shutdown().then(() => {
+            done();
+          });
+        }).catch(done);
+      }
+    });
   });
 });
