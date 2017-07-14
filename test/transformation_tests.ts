@@ -1,5 +1,8 @@
 import {equal as assertEqual} from 'assert';
 import {injectIntoHead, exposeClosureState} from '../src/lib/transformations';
+import {readFileSync} from 'fs';
+
+const AGENT_SOURCE = readFileSync(require.resolve('../src/lib/deuterium_agent'), "utf8");
 
 describe('Transformations', function() {
   describe('injectIntoHead', function() {
@@ -24,11 +27,11 @@ describe('Transformations', function() {
 
   describe('exposeClosureState', function() {
     function instrumentModule<T>(source: string): T {
-      const newSource = exposeClosureState("main.js", `(function(exports) { ${source} })(exports)`);
+      const newSource = exposeClosureState("main.js", AGENT_SOURCE + "\n" + source, true);
       // Super basic CommonJS shim.
       const exp: any = {};
-      //console.log("Original Source:\n" + source);
-      //console.log("\nNew Source:\n" + newSource);
+      console.log("Original Source:\n" + source);
+      console.log("\nNew Source:\n" + newSource);
       new Function('exports', newSource)(exp);
       return exp;
     }

@@ -37,7 +37,7 @@ window.DeuteriumConfig = {};
       case 'text/javascript':
         if (diagnosing) {
           const url = parseURL(f.url);
-          f.contents = exposeClosureState(url.path, f.contents);
+          f.contents = exposeClosureState(url.path, f.contents, false);
         }
         break;
     }

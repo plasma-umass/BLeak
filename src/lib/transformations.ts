@@ -2,7 +2,7 @@ import {parse as parseJavaScript} from 'esprima';
 import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
-import {Node, BlockStatement, Program, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression, Literal} from 'estree';
+import {Node, BlockStatement, Program, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
@@ -28,6 +28,7 @@ export function injectIntoHead(source: string, injection: string): string {
   }
   return source.slice(0, injectionIndex) + injection + source.slice(injectionIndex);
 }
+
 const SCOPE_ASSIGNMENT_EXPRESSION_STR = `<%= functionVarName %>.__scope__ = <%= scopeVarName %>;`;
 const EXPRESSION_TRANSFORM_TEMPLATE = compile(`(function(){var <%= functionVarName %>=<%= originalFunction %>;${SCOPE_ASSIGNMENT_EXPRESSION_STR}return <%= functionVarName %>;}())`);
 function getExpressionTransform(functionVarName: Identifier, originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
@@ -48,125 +49,30 @@ function getScopeAssignment(functionVarName: Identifier, scopeVarName: Identifie
   return <ExpressionStatement> prog.body[0];
 }
 
-const SCOPE_PROPERTY_TEMPLATE = compile(`Object.defineProperty(<%= scopeVarName %>, <%= propName %>, {
-  get: function() {
-    return scope[<%= mappedPropName %>];
-  },
-  set: function(val) {
-    if (scope["1interceptMap"] !== null && scope["1interceptMap"].has(<%= propName %>)) {
-      var map = scope["1map"];
-      $$addStackTrace(map, <%= propName %>);
-      if (val !== null && typeof(val) === "object") {
-        scope[<%= mappedPropName %>] = $$getProxy(val, map);
-      } else {
-        scope[<%= mappedPropName %>] = val;
-      }
-    } else {
-      scope[<%= mappedPropName %>] = val;
-    }
-  }
-});
-scope[<%= mappedPropName %>] = null;`);
-function getScopePropertyAssignment(scopeVarName: Identifier, propName: Literal, mappedPropName: Literal): Node[] {
-  const prog = SCOPE_PROPERTY_TEMPLATE({
-    scopeVarName,
-    propName,
-    mappedPropName
-  });
-  return prog.body;
-}
-
-const SCOPE_UNMOVED_PROPERTY_TEMPLATE = compile(`Object.defineProperty(<%= scopeVarName %>, <%= propNameLiteral %>, {
-  get: function() {
-    return <%= propName %>;
-  },
-  set: function(val) {
-    <%= propName %> = val;
-  }
-});`);
-function getScopeUnmovedPropertyAssignment(scopeVarName: Identifier, propName: string): Node[] {
-  const prog = SCOPE_UNMOVED_PROPERTY_TEMPLATE({
-    scopeVarName: scopeVarName,
-    propNameLiteral: {
-      type: "Literal",
-      value: propName,
-      raw: propName
-    },
-    propName: {
-      type: "Identifier",
-      name: propName
-    }
-  });
-  return prog.body;
-}
-
-const SCOPE_VARIABLE_DECLARATION = compile(`var <%= scopeVarName %> = Object.create(<%= parentScopeVarName %>);
-<%= scopeVarName %>["1interceptMap"] = null;
-<%= scopeVarName %>["1map"] = null;
-<%= scopeVarName %>["1INTERCEPT_VAR_ASSIGNMENT"] = function(name, map) {
-  if (!<%= scopeVarName %>.hasOwnProperty("0" + name)) {
-    // Forward to parent scope.
-    if (<%= parentScopeVarName %>["1INTERCEPT_VAR_ASSIGNMENT"]) {
-      return <%= parentScopeVarName %>["1INTERCEPT_VAR_ASSIGNMENT"](name, map);
-    } else {
-      return false;
-    }
-  } else {
-    <%= scopeVarName %>["1map"] = map;
-    if (<%= scopeVarName %>["1interceptMap"] === null) {
-      <%= scopeVarName %>["1interceptMap"] = new Set();
-    }
-    <%= scopeVarName %>["1interceptMap"].add(name);
-  }
-  return true;
-};`);
-
-function getScopeDefinition(scope: Scope): Statement[] {
+function getScopeDefinition(fcn: FunctionDeclaration | FunctionExpression, scope: Scope): Statement[] {
   if (!scope.closedOver) {
     throw new Error(`Cannot produce scope definition for non closed over scope.`);
   }
   const movedIdentifiers = scope.getMovedIdentifiers();
   const unmovedIdentifiers = scope.getUnmovedIdentifiers();
-  const scopeVarName = scope.scopeIdentifier;
-  const scopeVarIdent: Identifier = {
-    type: "Identifier",
-    name: scopeVarName
-  };
-  const modifications: Node[] = SCOPE_VARIABLE_DECLARATION({
-    scopeVarName: scopeVarIdent,
-    parentScopeVarName: {
-      type: "Identifier",
-      name: scope.parent.scopeIdentifier
-    }
-  }).body;
-  movedIdentifiers.forEach((identifier: string) => {
-    const mappedIdent = `0${identifier}`;
-    Array.prototype.push.apply(modifications, getScopePropertyAssignment(scopeVarIdent, {
-      type: "Literal",
-      value: identifier,
-      raw: identifier
-    }, {
-      type: "Literal",
-      value: mappedIdent,
-      raw: mappedIdent
-    }));
-  });
-  unmovedIdentifiers.forEach((identifier: string) => {
-    Array.prototype.push.apply(modifications, getScopeUnmovedPropertyAssignment(scopeVarIdent, identifier));
-  });
-  return <Statement[]> modifications;
-}
-
-function assignArgumentsToScopeObject(fcn: FunctionDeclaration | FunctionExpression, scope: Scope): Statement[] {
-  const name = scope.scopeIdentifier;
-  const js = fcn.params.map((p) => p.type === "Identifier" ? `${name}.${p.name} = ${p.name};` : ``).join("\n");
+  const parentScopeName = scope.parent.scopeIdentifier;
+  const params = fcn.params.map((p) => p.type === "Identifier" ? p.name : null).filter((p) => p !== null);
+  const js = `var ${scope.scopeIdentifier} = $$CREATE_SCOPE_OBJECT$$(${parentScopeName},` +
+               `${JSON.stringify(movedIdentifiers)},` +
+               `{ ${unmovedIdentifiers.map((i) => `${i}: { get: function() { return ${i}; }, set: function(val) { ${i} = val; } }`).join(",")} },` +
+               `${JSON.stringify(params)},[${params.join(",")}]);`;
+  // $$CREATE_SCOPE_OBJECT$$(parentScopeObject: Scope,
+  //    movedVariables: string[],
+  //    unmovedVariables: PropertyDescriptorMap,
+  //    args: string[],
+  //    argValues: any[])
   return <Statement[]> parseJavaScript(js).body;
 }
 
 class Scope {
   protected _identifiers = new Map<string, boolean>();
   public readonly parent: Scope;
-  private _scopeIdentifier: string = null;
+  protected _scopeIdentifier: string = null;
   private _closedOver: boolean = false;
   constructor(parent: Scope) {
     this.parent = parent;
@@ -243,11 +149,11 @@ class Scope {
     return rv;
   }
 
-  public finalize(): void {
+  public finalize(allIdentifiers: Set<string>): void {
     const base = "scope";
     let varName = base;
     let count = 0;
-    while (this.lookup(varName) !== null) {
+    while (allIdentifiers.has(varName)) {
       varName = `${base}${count}`;
       count++;
     }
@@ -276,8 +182,10 @@ class Scope {
 }
 
 class GlobalScope extends Scope {
-  constructor() {
+  private _isNode: boolean;
+  constructor(isNode: boolean) {
     super(null);
+    this._isNode = isNode;
   }
 
   public getReplacement(identifier: Identifier): Identifier {
@@ -300,7 +208,32 @@ class GlobalScope extends Scope {
   }
 
   public get scopeIdentifier(): string {
-    return "global";
+    return this._isNode ? this._scopeIdentifier : "window";
+  }
+
+  public getPrelude(): Statement[] {
+    if (this._isNode) {
+      // Mainly for testing.
+      return <Statement[]> parseJavaScript(`var ${this._scopeIdentifier} = new Proxy(global, {
+        get: function(target, name) {
+          try {
+            return eval(name);
+          } catch (e) {
+            return target[name];
+          }
+        },
+        set: function(target, name, value) {
+          try {
+            eval(name + "= value");
+          } catch (e) {
+            global[name] = value;
+          }
+          return true;
+        }
+      });`).body;
+    } else {
+      return [];
+    }
   }
 }
 
@@ -310,11 +243,13 @@ class GlobalScope extends Scope {
  *
  * @param source Source of the JavaScript file.
  */
-export function exposeClosureState(filename: string, source: string): string {
+export function exposeClosureState(filename: string, source: string, isNode: boolean): string {
   let ast = parseJavaScript(source, { loc: true });
 
-  let scope: Scope = new GlobalScope();
-  let scopeMap = new Map<FunctionDeclaration | FunctionExpression, Scope>();
+  let allIdentifiers = new Set<string>();
+  let scope: Scope = new GlobalScope(isNode);
+  let scopeMap = new Map<Program | FunctionDeclaration | FunctionExpression, Scope>();
+  scopeMap.set(ast, scope);
 
   function enterFunction(fcn: FunctionExpression | FunctionDeclaration) {
     scope.markAsClosedOver();
@@ -378,6 +313,9 @@ export function exposeClosureState(filename: string, source: string): string {
         case 'FunctionExpression':
           leaveFunction();
           break;
+        case "Identifier":
+          allIdentifiers.add(node.name);
+          break;
         case 'ArrowFunctionExpression':
           throw new Error(`Arrow functions not yet supported.`);
       }
@@ -388,7 +326,7 @@ export function exposeClosureState(filename: string, source: string): string {
   console.log("Scopes decided.");
 
   // Finalize scopes.
-  scopeMap.forEach((s) => s.finalize());
+  scopeMap.forEach((s) => s.finalize(allIdentifiers));
 
   console.log("Scopes finalized.");
 
@@ -418,6 +356,12 @@ export function exposeClosureState(filename: string, source: string): string {
       switch (node.type) {
         case 'Identifier': {
           if (scope.closedOver && (!parent || (parent.type !== "FunctionDeclaration" && parent.type !== "FunctionExpression"))) {
+            if (parent.type === "MemberExpression") {
+              // Ignore nested identifiers in member expressions.
+              if (node !== parent.object) {
+                return node;
+              }
+            }
             return scope.getReplacement(node);
           }
           return node;
@@ -481,7 +425,7 @@ export function exposeClosureState(filename: string, source: string): string {
               node.body = currentBlockInsertions.concat(node.body);
             }
             if ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression") && scope.closedOver) {
-              node.body = getScopeDefinition(scope).concat(assignArgumentsToScopeObject(parent, scope)).concat(node.body);
+              node.body = getScopeDefinition(parent, scope).concat(node.body);
             }
           }
           return node;
@@ -490,10 +434,17 @@ export function exposeClosureState(filename: string, source: string): string {
     }
   });
 
+
+  const body = (<Program> newAst).body;
   if (blockInsertions.length > 0) {
-    const body = (<Program> newAst).body;
     body.unshift.apply(body, blockInsertions);
   }
+  if (scope instanceof GlobalScope) {
+    body.unshift.apply(body, scope.getPrelude());
+  } else {
+    throw new Error(`Failed to pop a scope?`);
+  }
+
   console.log("Finished second phase.");
   const converted = <{code: string, map: any}> <any> generateJavaScript(newAst, {
     format: {

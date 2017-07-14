@@ -23,6 +23,79 @@ interface EventTarget {
   }
 
   /**
+   * Creates a scope object.
+   * @param parentScopeObject The scope object for the enclosing scope.
+   * @param movedVariables Scope variables that have been "moved" to this object.
+   * @param unmovedVariables Unmoved scope variables that are referenced from this object. Must be specified as getters/setters as this context does not have access to the unmoved variables.
+   * @param args The name of the function's arguments.
+   * @param argValues The values of the function's arguments.
+   */
+  function $$CREATE_SCOPE_OBJECT$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope {
+    const propMap: PropertyDescriptorMap = Object.assign(unmovedVariables, {
+      "1map": {
+        value: null,
+        enumerable: true
+      },
+      "1parent": {
+        value: parentScopeObject,
+        enumerable: true
+      },
+      "1INTERCEPT_VAR_ASSIGNMENT": {
+        value: function(this: Scope, name: string, map: Map<string | symbol | number, Set<string>>): boolean {
+          if (!this.hasOwnProperty("0" + name)) {
+            // Forward to parent scope.
+            if (parentScopeObject["1INTERCEPT_VAR_ASSIGNMENT"]) {
+              return parentScopeObject["1INTERCEPT_VAR_ASSIGNMENT"](name, map);
+            } else {
+              return false;
+            }
+          } else {
+            if (!this["1map"]) {
+              this["1map"] = new Map<string, Map<string | number | symbol, Set<string>>>();
+            }
+            this["1map"].set(name, map);
+          }
+          return true;
+        },
+        enumerable: true
+      }
+    });
+
+    movedVariables.concat(args).forEach((varName) => {
+      const mappedPropName = `0${varName}`;
+      propMap[varName] = {
+        get: function(this: any) {
+          return this[mappedPropName];
+        },
+        set: function(this: Scope, val: any) {
+          if (this["1map"] !== null && this["1map"].has(varName)) {
+            var map = this["1map"].get(varName);
+            window.$$addStackTrace(map, varName);
+            if (val !== null && typeof(val) === "object") {
+              this[mappedPropName] = window.$$getProxy(val, map);
+            } else {
+              this[mappedPropName] = val;
+            }
+          } else {
+            this[mappedPropName] = val;
+          }
+        }
+      };
+      propMap[mappedPropName] = {
+        value: null,
+        enumerable: true
+      };
+    });
+
+    // Initialize arguments.
+    args.forEach((argName, i) => {
+      propMap[`0${argName}`].value = argValues[i];
+    });
+
+    return Object.create(parentScopeObject, propMap);
+  }
+
+  /**
    * Get all of the possible root objects for the given path.
    * @param p
    */
@@ -68,45 +141,6 @@ interface EventTarget {
     }
     return accessStr;
   }
-
-  EventTarget.prototype.addEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
-    addEventListener.apply(this, arguments);
-    if (!this.$$listeners) {
-      this.$$listeners = {};
-    }
-    let listeners = this.$$listeners[type];
-    if (!listeners) {
-      listeners = this.$$listeners[type] = [];
-    }
-    for (const listenerInfo of listeners) {
-      if (listenerInfo.listener === listener && listenerInfo.useCapture === useCapture) {
-        return;
-      }
-    }
-    listeners.push({
-      listener: listener,
-      useCapture: useCapture
-    });
-  };
-
-  EventTarget.prototype.removeEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
-    removeEventListener.apply(this, arguments);
-    if (this.$$listeners) {
-      const listeners = this.$$listeners[type];
-      if (listeners) {
-        for (let i = 0; i < listeners.length; i++) {
-          const lInfo = listeners[i];
-          if (lInfo.listener === listener && lInfo.useCapture === useCapture) {
-            listeners.splice(i, 1);
-            if (listeners.length === 0) {
-              delete this.$$listeners[type];
-            }
-            return;
-          }
-        }
-      }
-    }
-  };
 
 
   const stackTraces = new Map<SerializeableGCPath, Map<string | number | symbol, Set<string>>>();
@@ -217,155 +251,200 @@ interface EventTarget {
     return JSON.stringify(rv);
   }
 
-  window.$$instrumentPaths = instrumentPaths;
-  window.$$getStackTraces = getStackTraces;
-  window.$$addStackTrace = addStack;
-  window.$$getProxy = getProxy;
+  // Global variables.
+  const root = <Window> (typeof(window) !== "undefined" ? window : global);
+  root.$$instrumentPaths = instrumentPaths;
+  root.$$getStackTraces = getStackTraces;
+  root.$$addStackTrace = addStack;
+  root.$$getProxy = getProxy;
+  root.$$CREATE_SCOPE_OBJECT$$ = $$CREATE_SCOPE_OBJECT$$;
 
-  // Array modeling
-  Array.prototype.push = (function(push) {
-    return function(this: Array<any>, ...items: any[]): number {
-      try {
-        disableProxies = true;
-        if ((<any> this)[secretIsProxyProperty]) {
-          const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
-          for (let i = 0; i < items.length; i++) {
-            addStack(map, `${this.length + i}`);
-          }
-        }
-        return push.apply(this, items);
-      } finally {
-        disableProxies = false;
+  if (typeof(window) !== "undefined") {
+    // Disable these in NodeJS.
+
+    EventTarget.prototype.addEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
+      addEventListener.apply(this, arguments);
+      if (!this.$$listeners) {
+        this.$$listeners = {};
       }
-    };
-  })(Array.prototype.push);
-
-  Array.prototype.unshift = (function(unshift) {
-    return function(this: Array<any>, ...items: any[]): number {
-      try {
-        disableProxies = true;
-        if ((<any> this)[secretIsProxyProperty]) {
-          const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
-          const newItemLen = items.length;
-          for (let i = items.length - 1; i >= 0; i--) {
-            map.set(`${i + newItemLen}`, map.get(`${i}`));
-          }
-          for (let i = 0; i < items.length; i++) {
-            removeStacks(map, `${i}`);
-            addStack(map, `${i}`);
-          }
-        }
-        return unshift.apply(this, items);
-      } finally {
-        disableProxies = false;
+      let listeners = this.$$listeners[type];
+      if (!listeners) {
+        listeners = this.$$listeners[type] = [];
       }
-    };
-  })(Array.prototype.unshift);
-
-  Array.prototype.pop = (function(pop) {
-    return function(this: Array<any>): any {
-      try {
-        disableProxies = true;
-        if ((<any> this)[secretIsProxyProperty]) {
-          const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
-          removeStacks(map, `${this.length - 1}`);
+      for (const listenerInfo of listeners) {
+        if (listenerInfo.listener === listener && listenerInfo.useCapture === useCapture) {
+          return;
         }
-        return pop.apply(this);
-      } finally {
-        disableProxies = false;
       }
+      listeners.push({
+        listener: listener,
+        useCapture: useCapture
+      });
     };
-  })(Array.prototype.pop);
 
-  Array.prototype.shift = (function(shift) {
-    return function(this: Array<any>): any {
-      try {
-        disableProxies = true;
-        if ((<any> this)[secretIsProxyProperty]) {
-          const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
-          removeStacks(map, "0");
-          for (let i = 1; i < this.length; i++) {
-            map.set(`${i - 1}`, map.get(`${i}`));
-          }
-          removeStacks(map, `${this.length - 1}`);
-        }
-        return shift.apply(this);
-      } finally {
-        disableProxies = false;
-      }
-    };
-  })(Array.prototype.shift);
-
-  Array.prototype.splice = (function(splice) {
-    return function(this: Array<any>, start: number, deleteCount: number, ...items: any[]): any {
-      try {
-        disableProxies = true;
-        if ((<any> this)[secretIsProxyProperty]) {
-          const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
-          let actualStart = start | 0;
-          if (actualStart === undefined) {
-            return [];
-          }
-          // If greater than the length of the array, actual starting index will be set to the length of the array.
-          if (actualStart > this.length) {
-            actualStart = this.length;
-          }
-          // If negative, will begin that many elements from the end of the array (with origin 1)
-          // and will be set to 0 if absolute value is greater than the length of the array.
-          if (actualStart < 0) {
-            actualStart = this.length + actualStart;
-            if (actualStart < 0) {
-              actualStart = 0;
+    EventTarget.prototype.removeEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
+      removeEventListener.apply(this, arguments);
+      if (this.$$listeners) {
+        const listeners = this.$$listeners[type];
+        if (listeners) {
+          for (let i = 0; i < listeners.length; i++) {
+            const lInfo = listeners[i];
+            if (lInfo.listener === listener && lInfo.useCapture === useCapture) {
+              listeners.splice(i, 1);
+              if (listeners.length === 0) {
+                delete this.$$listeners[type];
+              }
+              return;
             }
           }
-          let actualDeleteCount = deleteCount | 0;
-          // If deleteCount is omitted, or if its value is larger than array.length - start,
-          //   then all of the elements beginning with start index on through the end of the array will be deleted.
-          if (deleteCount === undefined || actualDeleteCount > this.length - actualStart) {
-            actualDeleteCount = this.length - actualStart;
-          }
-          if (actualDeleteCount < 0) {
-            actualDeleteCount = 0;
-          }
+        }
+      }
+    };
 
-          for (let i = 0; i < actualDeleteCount; i++) {
-            const index = actualStart + i;
-            removeStacks(map, `${index}`);
+    // Array modeling
+    Array.prototype.push = (function(push) {
+      return function(this: Array<any>, ...items: any[]): number {
+        try {
+          disableProxies = true;
+          if ((<any> this)[secretIsProxyProperty]) {
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
+            for (let i = 0; i < items.length; i++) {
+              addStack(map, `${this.length + i}`);
+            }
           }
+          return push.apply(this, items);
+        } finally {
+          disableProxies = false;
+        }
+      };
+    })(Array.prototype.push);
 
-          // Move existing traces into new locations.
-          const newItemCount = items.length;
-          if (newItemCount > actualDeleteCount) {
-            // Shift *upward*
-            const delta = newItemCount - actualDeleteCount;
-            for (let i = this.length - 1; i >= actualStart + actualDeleteCount; i--) {
-              map.set(`${i + delta}`, map.get(`${i}`));
+    Array.prototype.unshift = (function(unshift) {
+      return function(this: Array<any>, ...items: any[]): number {
+        try {
+          disableProxies = true;
+          if ((<any> this)[secretIsProxyProperty]) {
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
+            const newItemLen = items.length;
+            for (let i = items.length - 1; i >= 0; i--) {
+              map.set(`${i + newItemLen}`, map.get(`${i}`));
             }
-          } else if (newItemCount < actualDeleteCount) {
-            // Shift *downward*
-            const delta = newItemCount - actualDeleteCount;
-            for (let i = actualStart + actualDeleteCount; i < this.length; i++) {
-              map.set(`${i + delta}`, map.get(`${i}`));
-            }
-            // Delete extra traces for removed indexes.
-            for (let i = this.length + delta; i < this.length; i++) {
+            for (let i = 0; i < items.length; i++) {
               removeStacks(map, `${i}`);
+              addStack(map, `${i}`);
             }
           }
-
-          // Add new traces for new items.
-          for (let i = 0; i < newItemCount; i++) {
-            removeStacks(map, `${actualStart + i}`);
-            addStack(map, `${actualStart + i}`);
-          }
+          return unshift.apply(this, items);
+        } finally {
+          disableProxies = false;
         }
-        return splice.apply(this, arguments);
-      } finally {
-        disableProxies = false;
-      }
-    };
-  })(Array.prototype.splice);
+      };
+    })(Array.prototype.unshift);
 
-  // TODO: Sort, reverse, ...
+    Array.prototype.pop = (function(pop) {
+      return function(this: Array<any>): any {
+        try {
+          disableProxies = true;
+          if ((<any> this)[secretIsProxyProperty]) {
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
+            removeStacks(map, `${this.length - 1}`);
+          }
+          return pop.apply(this);
+        } finally {
+          disableProxies = false;
+        }
+      };
+    })(Array.prototype.pop);
 
+    Array.prototype.shift = (function(shift) {
+      return function(this: Array<any>): any {
+        try {
+          disableProxies = true;
+          if ((<any> this)[secretIsProxyProperty]) {
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
+            removeStacks(map, "0");
+            for (let i = 1; i < this.length; i++) {
+              map.set(`${i - 1}`, map.get(`${i}`));
+            }
+            removeStacks(map, `${this.length - 1}`);
+          }
+          return shift.apply(this);
+        } finally {
+          disableProxies = false;
+        }
+      };
+    })(Array.prototype.shift);
+
+    Array.prototype.splice = (function(splice) {
+      return function(this: Array<any>, start: number, deleteCount: number, ...items: any[]): any {
+        try {
+          disableProxies = true;
+          if ((<any> this)[secretIsProxyProperty]) {
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
+            let actualStart = start | 0;
+            if (actualStart === undefined) {
+              return [];
+            }
+            // If greater than the length of the array, actual starting index will be set to the length of the array.
+            if (actualStart > this.length) {
+              actualStart = this.length;
+            }
+            // If negative, will begin that many elements from the end of the array (with origin 1)
+            // and will be set to 0 if absolute value is greater than the length of the array.
+            if (actualStart < 0) {
+              actualStart = this.length + actualStart;
+              if (actualStart < 0) {
+                actualStart = 0;
+              }
+            }
+            let actualDeleteCount = deleteCount | 0;
+            // If deleteCount is omitted, or if its value is larger than array.length - start,
+            //   then all of the elements beginning with start index on through the end of the array will be deleted.
+            if (deleteCount === undefined || actualDeleteCount > this.length - actualStart) {
+              actualDeleteCount = this.length - actualStart;
+            }
+            if (actualDeleteCount < 0) {
+              actualDeleteCount = 0;
+            }
+
+            for (let i = 0; i < actualDeleteCount; i++) {
+              const index = actualStart + i;
+              removeStacks(map, `${index}`);
+            }
+
+            // Move existing traces into new locations.
+            const newItemCount = items.length;
+            if (newItemCount > actualDeleteCount) {
+              // Shift *upward*
+              const delta = newItemCount - actualDeleteCount;
+              for (let i = this.length - 1; i >= actualStart + actualDeleteCount; i--) {
+                map.set(`${i + delta}`, map.get(`${i}`));
+              }
+            } else if (newItemCount < actualDeleteCount) {
+              // Shift *downward*
+              const delta = newItemCount - actualDeleteCount;
+              for (let i = actualStart + actualDeleteCount; i < this.length; i++) {
+                map.set(`${i + delta}`, map.get(`${i}`));
+              }
+              // Delete extra traces for removed indexes.
+              for (let i = this.length + delta; i < this.length; i++) {
+                removeStacks(map, `${i}`);
+              }
+            }
+
+            // Add new traces for new items.
+            for (let i = 0; i < newItemCount; i++) {
+              removeStacks(map, `${actualStart + i}`);
+              addStack(map, `${actualStart + i}`);
+            }
+          }
+          return splice.apply(this, arguments);
+        } finally {
+          disableProxies = false;
+        }
+      };
+    })(Array.prototype.splice);
+
+    // TODO: Sort, reverse, ...
+  }
 })();

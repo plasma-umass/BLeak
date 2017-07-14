@@ -8,7 +8,9 @@ interface Object {
 
 interface Scope {
   [ident: string]: any;
-  "1INTERCEPT_VAR_ASSIGNMENT"(name: string, map: Map<string | number | symbol, Set<string>>): void;
+  "1INTERCEPT_VAR_ASSIGNMENT"(name: string, map: Map<string | number | symbol, Set<string>>): boolean;
+  "1map": Map<string, Map<string | number | symbol, Set<string>>>;
+  "1parent": Scope;
 }
 
 interface Function {
@@ -20,6 +22,7 @@ interface Window {
   $$getStackTraces(): string;
   $$addStackTrace(map: Map<string | symbol | number, Set<string>>, property: string | number | symbol): void;
   $$getProxy(obj: any, map: Map<string | number | symbol, Set<string>>): any;
+  $$CREATE_SCOPE_OBJECT$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope;
 }
 
 /**
