@@ -30,62 +30,9 @@ interface EventTarget {
    * @param argValues The values of the function's arguments.
    */
   function $$CREATE_SCOPE_OBJECT$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope {
-    const propMap: PropertyDescriptorMap = Object.assign(unmovedVariables, {
-      "1map": {
-        value: null,
-        enumerable: true,
-        writable: true
-      },
-      "1parent": {
-        value: parentScopeObject,
-        enumerable: true,
-        writable: true
-      },
-      "1INTERCEPT_VAR_ASSIGNMENT": {
-        value: function(this: Scope, name: string, map: Map<string | symbol | number, Set<string>>): boolean {
-          if (!this.hasOwnProperty("0" + name)) {
-            // Forward to parent scope.
-            if (parentScopeObject["1INTERCEPT_VAR_ASSIGNMENT"]) {
-              return parentScopeObject["1INTERCEPT_VAR_ASSIGNMENT"](name, map);
-            } else {
-              return false;
-            }
-          } else {
-            if (!this["1map"]) {
-              this["1map"] = new Map<string, Map<string | number | symbol, Set<string>>>();
-            }
-            this["1map"].set(name, map);
-          }
-          return true;
-        },
-        enumerable: true,
-        writable: false
-      }
-    });
-
     movedVariables.concat(args).forEach((varName) => {
-      const mappedPropName = `0${varName}`;
-      propMap[varName] = {
-        get: function(this: any) {
-          return this[mappedPropName];
-        },
-        set: function(this: Scope, val: any) {
-          if (this["1map"] !== null && this["1map"].has(varName)) {
-            var map = this["1map"].get(varName);
-            addStackTrace(map, varName);
-            if (val !== null && typeof(val) === "object") {
-              this[mappedPropName] = getProxy(val, map);
-            } else {
-              this[mappedPropName] = val;
-            }
-          } else {
-            this[mappedPropName] = val;
-          }
-          return true;
-        }
-      };
-      propMap[mappedPropName] = {
-        value: null,
+      unmovedVariables[varName] = {
+        value: undefined,
         enumerable: true,
         writable: true
       };
@@ -93,10 +40,10 @@ interface EventTarget {
 
     // Initialize arguments.
     args.forEach((argName, i) => {
-      propMap[`0${argName}`].value = argValues[i];
+      unmovedVariables[argName].value = argValues[i];
     });
 
-    return Object.create(parentScopeObject, propMap);
+    return Object.create(parentScopeObject, unmovedVariables);
   }
 
   /**
@@ -203,7 +150,8 @@ interface EventTarget {
     return obj.$$$PROXY$$$;
   }
 
-  function replaceObjectsWithProxies(roots: any[], accessStr: string, map: Map<string | number | symbol, Set<string>>): void {
+  // TODO: Use parent access str to capture sets / gets.
+  function replaceObjectsWithProxies(roots: any[], accessStr: string, parentAccessStr: string, map: Map<string | number | symbol, Set<string>>): void {
     const replaceFcn = new Function("root", "getProxy", "map", `try {
       ${accessStr} = getProxy(${accessStr}, map);
     } catch (e) {
@@ -227,8 +175,12 @@ interface EventTarget {
     // Fetch the objects.
     for (const p of paths) {
       const accessString = getAccessString(p);
+      const parentAccessString = getAccessString({
+        root: p.root,
+        path: p.path.slice(0, -1)
+      });
       const roots = getPossibleRoots(p);
-      replaceObjectsWithProxies(roots, accessString, map);
+      replaceObjectsWithProxies(roots, accessString, parentAccessString, map);
     }
   }
 

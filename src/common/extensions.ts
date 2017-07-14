@@ -8,9 +8,6 @@ interface Object {
 
 interface Scope {
   [ident: string]: any;
-  "1INTERCEPT_VAR_ASSIGNMENT"(name: string, map: Map<string | number | symbol, Set<string>>): boolean;
-  "1map": Map<string, Map<string | number | symbol, Set<string>>>;
-  "1parent": Scope;
 }
 
 interface Function {
