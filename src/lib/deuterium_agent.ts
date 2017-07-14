@@ -1,3 +1,4 @@
+"no transform";
 interface ListenerInfo {
   useCapture: boolean;
   listener: EventListenerOrEventListenerObject;
@@ -11,8 +12,6 @@ interface EventTarget {
  * Agent injected into the webpage to surface browser-hidden leaks at the JS level.
  */
 (function() {
-  const addEventListener = EventTarget.prototype.addEventListener;
-  const removeEventListener = EventTarget.prototype.removeEventListener;
   const r = /'/g;
   /**
    * Escapes single quotes in the given string.
@@ -34,11 +33,13 @@ interface EventTarget {
     const propMap: PropertyDescriptorMap = Object.assign(unmovedVariables, {
       "1map": {
         value: null,
-        enumerable: true
+        enumerable: true,
+        writable: true
       },
       "1parent": {
         value: parentScopeObject,
-        enumerable: true
+        enumerable: true,
+        writable: true
       },
       "1INTERCEPT_VAR_ASSIGNMENT": {
         value: function(this: Scope, name: string, map: Map<string | symbol | number, Set<string>>): boolean {
@@ -57,7 +58,8 @@ interface EventTarget {
           }
           return true;
         },
-        enumerable: true
+        enumerable: true,
+        writable: false
       }
     });
 
@@ -70,20 +72,22 @@ interface EventTarget {
         set: function(this: Scope, val: any) {
           if (this["1map"] !== null && this["1map"].has(varName)) {
             var map = this["1map"].get(varName);
-            window.$$addStackTrace(map, varName);
+            addStackTrace(map, varName);
             if (val !== null && typeof(val) === "object") {
-              this[mappedPropName] = window.$$getProxy(val, map);
+              this[mappedPropName] = getProxy(val, map);
             } else {
               this[mappedPropName] = val;
             }
           } else {
             this[mappedPropName] = val;
           }
+          return true;
         }
       };
       propMap[mappedPropName] = {
         value: null,
-        enumerable: true
+        enumerable: true,
+        writable: true
       };
     });
 
@@ -144,7 +148,7 @@ interface EventTarget {
 
 
   const stackTraces = new Map<SerializeableGCPath, Map<string | number | symbol, Set<string>>>();
-  function addStack(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol): void {
+  function addStackTrace(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol): void {
     try {
       throw new Error();
     } catch (e) {
@@ -167,14 +171,14 @@ interface EventTarget {
         defineProperty: function(target, property, descriptor): boolean {
           if (!disableProxies) {
             // Capture a stack trace.
-            addStack(map, property);
+            addStackTrace(map, property);
           }
           return Reflect.defineProperty(target, property, descriptor);
         },
         set: function(target, property, value, receiver): boolean {
           if (!disableProxies) {
             // Capture a stack trace.
-            addStack(map, property);
+            addStackTrace(map, property);
           }
           return Reflect.set(target, property, value, receiver);
         },
@@ -255,13 +259,15 @@ interface EventTarget {
   const root = <Window> (typeof(window) !== "undefined" ? window : global);
   root.$$instrumentPaths = instrumentPaths;
   root.$$getStackTraces = getStackTraces;
-  root.$$addStackTrace = addStack;
+  root.$$addStackTrace = addStackTrace;
   root.$$getProxy = getProxy;
   root.$$CREATE_SCOPE_OBJECT$$ = $$CREATE_SCOPE_OBJECT$$;
 
   if (typeof(window) !== "undefined") {
     // Disable these in NodeJS.
 
+    const addEventListener = EventTarget.prototype.addEventListener;
+    const removeEventListener = EventTarget.prototype.removeEventListener;
     EventTarget.prototype.addEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
       addEventListener.apply(this, arguments);
       if (!this.$$listeners) {
@@ -309,7 +315,7 @@ interface EventTarget {
           if ((<any> this)[secretIsProxyProperty]) {
             const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
             for (let i = 0; i < items.length; i++) {
-              addStack(map, `${this.length + i}`);
+              addStackTrace(map, `${this.length + i}`);
             }
           }
           return push.apply(this, items);
@@ -331,7 +337,7 @@ interface EventTarget {
             }
             for (let i = 0; i < items.length; i++) {
               removeStacks(map, `${i}`);
-              addStack(map, `${i}`);
+              addStackTrace(map, `${i}`);
             }
           }
           return unshift.apply(this, items);
@@ -435,7 +441,7 @@ interface EventTarget {
             // Add new traces for new items.
             for (let i = 0; i < newItemCount; i++) {
               removeStacks(map, `${actualStart + i}`);
-              addStack(map, `${actualStart + i}`);
+              addStackTrace(map, `${actualStart + i}`);
             }
           }
           return splice.apply(this, arguments);

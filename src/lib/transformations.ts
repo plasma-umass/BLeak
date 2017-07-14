@@ -160,6 +160,7 @@ class Scope {
     this._scopeIdentifier = varName;
     // Add self as unmoved identifier.
     this._identifiers.set(this._scopeIdentifier, true);
+    allIdentifiers.add(this._scopeIdentifier);
   }
 
   public markAsClosedOver(): void {
@@ -245,6 +246,15 @@ class GlobalScope extends Scope {
  */
 export function exposeClosureState(filename: string, source: string, isNode: boolean): string {
   let ast = parseJavaScript(source, { loc: true });
+  {
+    const firstStatement = ast.body[0];
+    if (firstStatement.type === "ExpressionStatement") {
+      // Esprima feature.
+      if ((<any> firstStatement).directive === "no transform") {
+        return source;
+      }
+    }
+  }
 
   let allIdentifiers = new Set<string>();
   let scope: Scope = new GlobalScope(isNode);
