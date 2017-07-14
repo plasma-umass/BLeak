@@ -259,17 +259,17 @@ describe('End-to-end Tests', function() {
   }
 
   createStandardLeakTest('Catches leaks', 'test', 8);
-  createStandardLeakTest('Catches leaks in closures', 'closure_test', 9);
-  createStandardLeakTest('Catches leaks in closures, even with irrelevant DOM objects', 'closure_test_irrelevant_dom', 9);
-  createStandardLeakTest('Catches leaks in closures, even with disconnected DOM fragments', 'closure_test_disconnected_dom', 10);
-  createStandardLeakTest('Catches leaks when object is copied and reassigned', 'reassignment_test', 10);
-  createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
-  createStandardLeakTest('Ignores code that does not grow objects', 'irrelevant_paths_test', 8);
-  createStandardLeakTest('Catches event listener leaks', 'event_listener_leak', 5);
-  createStandardLeakTest('Ignores responsible event listener removal', 'event_listener_removal', 5);
+  //createStandardLeakTest('Catches leaks in closures', 'closure_test', 9);
+  //createStandardLeakTest('Catches leaks in closures, even with irrelevant DOM objects', 'closure_test_irrelevant_dom', 9);
+  //createStandardLeakTest('Catches leaks in closures, even with disconnected DOM fragments', 'closure_test_disconnected_dom', 10);
+  //createStandardLeakTest('Catches leaks when object is copied and reassigned', 'reassignment_test', 10);
+  //createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
+  //createStandardLeakTest('Ignores code that does not grow objects', 'irrelevant_paths_test', 8);
+  //createStandardLeakTest('Catches event listener leaks', 'event_listener_leak', 5);
+  //createStandardLeakTest('Ignores responsible event listener removal', 'event_listener_removal', 5);
 
   after(function(done) {
-    //setTimeout(function() {
+    setTimeout(function() {
     // Shutdown both HTTP server and proxy.
     httpServer.close((e: any) => {
       if (e) {
@@ -282,6 +282,6 @@ describe('End-to-end Tests', function() {
         }).catch(done);
       }
     });
-    //}, 99999999);
+    }, 99999999);
   });
 });

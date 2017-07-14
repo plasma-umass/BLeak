@@ -1,5 +1,5 @@
 declare module 'estemplate' {
-  import {Node} from 'estree';
+  import {Node, Program} from 'estree';
   import {Options} from 'esprima';
-  export function compile(tmplString: string, options?: Options): (vars: {[name: string]: Node | Node[]}) => Node;
+  export function compile(tmplString: string, options?: Options): (vars: {[name: string]: Node | Node[]}) => Program;
 }

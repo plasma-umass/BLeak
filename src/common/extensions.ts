@@ -2,15 +2,24 @@ interface PromiseLike<T> {
   catch(cb: Function): PromiseLike<T>;
 }
 
+interface Object {
+  $$$PROXY$$$?: any;
+}
+
+interface Scope {
+  [ident: string]: any;
+  "1INTERCEPT_VAR_ASSIGNMENT"(name: string, map: Map<string | number | symbol, Set<string>>): void;
+}
+
 interface Function {
-  __closure__(name: string): any;
-  __closureAssign__(name: string, value: any): void;
+  __scope__: Scope;
 }
 
 interface Window {
   $$instrumentPaths(p: SerializeableGCPath[][]): void;
   $$getStackTraces(): string;
-  $$domObjects: any;
+  $$addStackTrace(map: Map<string | symbol | number, Set<string>>, property: string | number | symbol): void;
+  $$getProxy(obj: any, map: Map<string | number | symbol, Set<string>>): any;
 }
 
 /**

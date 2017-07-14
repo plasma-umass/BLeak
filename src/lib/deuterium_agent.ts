@@ -22,13 +22,19 @@ interface EventTarget {
     return s.replace(r, "\'");
   }
 
-  function getOrSetObjectsForPath(get: boolean, p: SerializeableGCPath, proxies?: Map<any, any>): any[][] {
-    let accessStr = "root";
+  /**
+   * Get all of the possible root objects for the given path.
+   * @param p
+   */
+  function getPossibleRoots(p: SerializeableGCPath): any[] {
     const root = p.root;
-    let rootObjs: any[] = [];
     switch (root.type) {
+      case RootType.GLOBAL: {
+        return [window];
+      }
       case RootType.DOM: {
         const elementType = root.elementType;
+        const rootObjs: any[] = [];
         if (elementType.startsWith("HTML") && elementType.endsWith("Element")) {
           const tag = elementType.slice(4, -7).toLowerCase();
           const elements = document.getElementsByTagName(tag);
@@ -36,63 +42,31 @@ interface EventTarget {
             rootObjs.push(elements[i]);
           }
         }
-        break;
+        return rootObjs;
       }
-      case RootType.GLOBAL:
-        rootObjs.push(window);
-        break;
     }
+  }
+
+  /**
+   * Returns an evaluateable JavaScript string to access the object at the given path
+   * from a root.
+   * @param p
+   */
+  function getAccessString(p: SerializeableGCPath): string {
+    let accessStr = "root";
     const path = p.path;
-    const lastEdge = path[path.length - 1];
     for (const l of path) {
       switch(l.type) {
         case EdgeType.CLOSURE:
-          if (!get && l === lastEdge) {
-            accessStr += `.__closureAssign__('${safeString(`${l.indexOrName}`)}', proxy)`;
-          } else {
-            accessStr += `.__closure__('${safeString(`${l.indexOrName}`)}')`;
-          }
+          accessStr += `.__scope__['${l.indexOrName}']`;
           break;
         case EdgeType.INDEX:
         case EdgeType.NAMED:
           accessStr += `['${safeString(`${l.indexOrName}`)}']`;
-          if (!get && l === lastEdge) {
-            accessStr += ` = proxy`;
-          }
           break;
       }
     }
-    if (get) {
-      return rootObjs.map((root) => {
-        "use strict";
-        try {
-          return [root, new Function("root", `return ${accessStr};`)(root)];
-        } catch (e) {
-          console.error(e);
-          return null;
-        }
-      }).filter((o) => o !== null);
-    } else {
-      rootObjs.forEach((root, i) => {
-        "use strict";
-        if (proxies.has(root)) {
-          try {
-            new Function("root", "proxy", `${accessStr};`)(root, proxies.get(root));
-          } catch (e) {
-            console.error(e);
-          }
-        }
-      });
-      return null;
-    }
-  }
-
-  function setObjectsForPath(p: SerializeableGCPath, proxies: Map<any, any>): void {
-    getOrSetObjectsForPath(false, p, proxies);
-  }
-
-  function getObjectsForPath(p: SerializeableGCPath): any[][] {
-    return getOrSetObjectsForPath(true, p);
+    return accessStr;
   }
 
   EventTarget.prototype.addEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
@@ -134,9 +108,6 @@ interface EventTarget {
     }
   };
 
-  // Array of GC paths.
-  // All should point to same object.
-  //
 
   const stackTraces = new Map<SerializeableGCPath, Map<string | number | symbol, Set<string>>>();
   function addStack(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol): void {
@@ -156,64 +127,71 @@ interface EventTarget {
       map.delete(property);
     }
   }
+  function getProxy(obj: any, map: Map<string | number | symbol, Set<string>>): any {
+    if (!obj.$$$PROXY$$$) {
+      obj.$$$PROXY$$$ = new Proxy(obj, {
+        defineProperty: function(target, property, descriptor): boolean {
+          if (!disableProxies) {
+            // Capture a stack trace.
+            addStack(map, property);
+          }
+          return Reflect.defineProperty(target, property, descriptor);
+        },
+        set: function(target, property, value, receiver): boolean {
+          if (!disableProxies) {
+            // Capture a stack trace.
+            addStack(map, property);
+          }
+          return Reflect.set(target, property, value, receiver);
+        },
+        get: function(target, property, receiver): any {
+          if (property === secretStackMapProperty) {
+            return map;
+          } else if (property === secretIsProxyProperty) {
+            return true;
+          } else {
+            return Reflect.get(target, property, receiver);
+          }
+        },
+        deleteProperty: function(target, property): boolean {
+          if (!disableProxies) {
+            // Remove stack traces that set this property.
+            removeStacks(map, property);
+          }
+          return Reflect.deleteProperty(target, property);
+        }
+      });
+    }
+    return obj.$$$PROXY$$$;
+  }
+
+  function replaceObjectsWithProxies(roots: any[], accessStr: string, map: Map<string | number | symbol, Set<string>>): void {
+    const replaceFcn = new Function("root", "getProxy", "map", `try {
+      ${accessStr} = getProxy(${accessStr}, map);
+    } catch (e) {
+
+    }`);
+    roots.forEach((r) => replaceFcn(r, getProxy, map));
+  }
+
   const secretStackMapProperty = "$$$stackmap$$$";
   const secretIsProxyProperty = "$$$isproxy$$$";
   // Disables proxy interception.
   let disableProxies = false;
-  function instrumentPath(p: SerializeableGCPath[]): void {
-    // Fetch the object.
-    const objs = [].concat(...p.map((p) => getObjectsForPath(p)));
+  function instrumentPath(paths: SerializeableGCPath[]): void {
     // Check if first path is in map. If not, all paths should not be in map.
-    let map = stackTraces.get(p[0]);
+    let map = stackTraces.get(paths[0]);
     if (!map) {
       map = new Map<string | number | symbol, Set<string>>();
       // Use shortest (0th) path as canonical path.
-      stackTraces.set(p[0], map);
+      stackTraces.set(paths[0], map);
     }
-    const proxies = new Map<any, any>();
-    const proxiesByObject = new Map<any, any>();
-    for (const objSet of objs) {
-      // Ensure we use same proxy for same object.
-      let finishedProxy = proxiesByObject.get(objSet[1]);
-      if (!finishedProxy) {
-        finishedProxy = new Proxy(objSet[1], {
-          defineProperty: function(target, property, descriptor): boolean {
-            if (!disableProxies) {
-              // Capture a stack trace.
-              addStack(map, property);
-            }
-            return Reflect.defineProperty(target, property, descriptor);
-          },
-          set: function(target, property, value, receiver): boolean {
-            if (!disableProxies) {
-              // Capture a stack trace.
-              addStack(map, property);
-            }
-            return Reflect.set(target, property, value, receiver);
-          },
-          get: function(target, property, receiver): any {
-            if (property === secretStackMapProperty) {
-              return map;
-            } else if (property === secretIsProxyProperty) {
-              return true;
-            } else {
-              return Reflect.get(target, property, receiver);
-            }
-          },
-          deleteProperty: function(target, property): boolean {
-            if (!disableProxies) {
-              // Remove stack traces that set this property.
-              removeStacks(map, property);
-            }
-            return Reflect.deleteProperty(target, property);
-          }
-        });
-        proxiesByObject.set(objSet[1], finishedProxy);
-      }
-      proxies.set(objSet[0], finishedProxy);
+    // Fetch the objects.
+    for (const p of paths) {
+      const accessString = getAccessString(p);
+      const roots = getPossibleRoots(p);
+      replaceObjectsWithProxies(roots, accessString, map);
     }
-    // Install proxies in the place of the roots.
-    p.forEach((p) => setObjectsForPath(p, proxies));
   }
 
   function instrumentPaths(p: SerializeableGCPath[][]): void {
@@ -241,6 +219,8 @@ interface EventTarget {
 
   window.$$instrumentPaths = instrumentPaths;
   window.$$getStackTraces = getStackTraces;
+  window.$$addStackTrace = addStack;
+  window.$$getProxy = getProxy;
 
   // Array modeling
   Array.prototype.push = (function(push) {
@@ -387,4 +367,5 @@ interface EventTarget {
   })(Array.prototype.splice);
 
   // TODO: Sort, reverse, ...
+
 })();

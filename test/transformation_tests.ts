@@ -24,9 +24,11 @@ describe('Transformations', function() {
 
   describe('exposeClosureState', function() {
     function instrumentModule<T>(source: string): T {
-      const newSource = exposeClosureState("main.js", source);
+      const newSource = exposeClosureState("main.js", `(function(exports) { ${source} })(exports)`);
       // Super basic CommonJS shim.
       const exp: any = {};
+      //console.log("Original Source:\n" + source);
+      //console.log("\nNew Source:\n" + newSource);
       new Function('exports', newSource)(exp);
       return exp;
     }
@@ -37,13 +39,13 @@ describe('Transformations', function() {
         function decl(){}
         exports.decl = decl;
       `);
-      assertEqual(module.decl.__closure__('a'), 'hello');
-      assertEqual(module.decl.__closure__('decl'), module.decl);
-      module.decl.__closureAssign__('a', 'no');
-      assertEqual(module.decl.__closure__('a'), 'no');
+      assertEqual(module.decl.__scope__['a'], 'hello');
+      assertEqual(module.decl.__scope__['decl'], module.decl);
+      module.decl.__scope__['a'] = 'no';
+      assertEqual(module.decl.__scope__['a'], 'no');
       const arr = [1,2,3];
-      module.decl.__closureAssign__('a', arr);
-      assertEqual(module.decl.__closure__('a'), arr);
+      module.decl.__scope__['a'] = arr;
+      assertEqual(module.decl.__scope__['a'], arr);
     });
 
     it('works with function expressions', function() {
@@ -51,8 +53,8 @@ describe('Transformations', function() {
         var a = 'hello';
         exports.decl = function(){};
       `);
-      assertEqual(module.decl.__closure__('a'), 'hello');
-      assertEqual(module.decl.__closure__('exports').decl, module.decl);
+      assertEqual(module.decl.__scope__['a'], 'hello');
+      assertEqual(module.decl.__scope__['exports'].decl, module.decl);
     });
 
     it(`works with named function expressions`, function() {
@@ -60,7 +62,7 @@ describe('Transformations', function() {
         var a = 'hello';
         exports.decl = function decl2(){};
       `);
-      assertEqual(module.decl.__closure__('a'), 'hello');
+      assertEqual(module.decl.__scope__['a'], 'hello');
     });
 
     it(`works with multiple functions in the same block and multiple variables`, function() {
@@ -70,10 +72,10 @@ describe('Transformations', function() {
         exports.decl=function(){};
         exports.decl2=function(){};
       `);
-      assertEqual(module.decl.__closure__('a'), 'hello');
-      assertEqual(module.decl2.__closure__('a'), 'hello');
-      assertEqual(module.decl.__closure__('b'), 3);
-      assertEqual(module.decl.__closure__('b'), 3);
+      assertEqual(module.decl.__scope__['a'], 'hello');
+      assertEqual(module.decl2.__scope__['a'], 'hello');
+      assertEqual(module.decl.__scope__['b'], 3);
+      assertEqual(module.decl.__scope__['b'], 3);
     });
 
     it(`works with nested functions`, function() {
@@ -87,9 +89,9 @@ describe('Transformations', function() {
         exports.decl = decl;
         exports.notDecl = notDecl;
       `);
-      assertEqual(module.decl.__closure__('a'), 'hello');
-      assertEqual(module.notDecl.__closure__('a'), 'hello');
-      assertEqual(module.notDecl().__closure__('a'), 'hello');
+      assertEqual(module.decl.__scope__['a'], 'hello');
+      assertEqual(module.notDecl.__scope__['a'], 'hello');
+      assertEqual(module.notDecl().__scope__['a'], 'hello');
     });
 
     it(`works with nested function declarations`, function() {
@@ -103,9 +105,9 @@ describe('Transformations', function() {
         exports.decl = decl;
         exports.notDecl = notDecl;
       `)
-      assertEqual(module.decl.__closure__('a'), 'hello');
-      assertEqual(module.notDecl.__closure__('a'), 'hello');
-      assertEqual(module.notDecl().__closure__('a'), 'hello');
+      assertEqual(module.decl.__scope__['a'], 'hello');
+      assertEqual(module.notDecl.__scope__['a'], 'hello');
+      assertEqual(module.notDecl().__scope__['a'], 'hello');
     });
 
     it(`works with functions in a list`, function() {
@@ -118,8 +120,8 @@ describe('Transformations', function() {
           }
         };
       `);
-      assertEqual(module.obj.decl.__closure__('a'), 'hello');
-      assertEqual(module.obj.decl2.__closure__('a'), 'hello');
+      assertEqual(module.obj.decl.__scope__['a'], 'hello');
+      assertEqual(module.obj.decl2.__scope__['a'], 'hello');
     });
   });
 });

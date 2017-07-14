@@ -83,12 +83,12 @@
   resolved "https://registry.yarnpkg.com/@types/mocha/-/mocha-2.2.41.tgz#e27cf0817153eb9f2713b2d3f6c68f1e1c3ca608"
 
 "@types/node@*", "@types/node@^7.0.12":
-  version "7.0.33"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-7.0.33.tgz#ae3c53ad01d7e9d62c7f1a85c5f7500d59b9d25b"
+  version "7.0.37"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-7.0.37.tgz#f129fff94d14a60c3d99eadb9fe0c98119e09c8f"
 
-"@types/request@^0.0.42":
-  version "0.0.42"
-  resolved "https://registry.yarnpkg.com/@types/request/-/request-0.0.42.tgz#e47a53bf0b130464854fb693297746a0c0479c31"
+"@types/request@^0.0.47":
+  version "0.0.47"
+  resolved "https://registry.yarnpkg.com/@types/request/-/request-0.0.47.tgz#b8093530603ffd04782bf48e95aba5a25eb4f88b"
   dependencies:
     "@types/form-data" "*"
     "@types/node" "*"
@@ -98,8 +98,8 @@
   resolved "https://registry.yarnpkg.com/@types/source-map/-/source-map-0.5.0.tgz#dd34bbd8e32fe4e74f2e3d8ac07f8aa5b45a47ac"
 
 "@types/webdriverio@^4.6.1":
-  version "4.8.0"
-  resolved "https://registry.yarnpkg.com/@types/webdriverio/-/webdriverio-4.8.0.tgz#872ded64b7fdf9a01774add47f5ba2cca7f5676d"
+  version "4.8.1"
+  resolved "https://registry.yarnpkg.com/@types/webdriverio/-/webdriverio-4.8.1.tgz#addbce5abf06c0ed3155add975106bb51131ab35"
   dependencies:
     "@types/node" "*"
 
@@ -2225,6 +2225,10 @@ type-check@~0.3.2:
 typedarray@^0.0.6:
   version "0.0.6"
   resolved "https://registry.yarnpkg.com/typedarray/-/typedarray-0.0.6.tgz#867ac74e3864187b1d3d47d996a78ec5c8830777"
+
+typescript@^2.4.1:
+  version "2.4.1"
+  resolved "https://registry.yarnpkg.com/typescript/-/typescript-2.4.1.tgz#c3ccb16ddaa0b2314de031e7e6fee89e5ba346bc"
 
 uglify-js@^2.6:
   version "2.8.29"
