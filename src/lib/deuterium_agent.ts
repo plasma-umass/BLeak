@@ -76,10 +76,18 @@ interface EventTarget {
    * from a root.
    * @param p
    */
-  function getAccessString(p: SerializeableGCPath): string {
+  function getAccessString(p: SerializeableGCPath, parent: boolean): string {
     let accessStr = "root";
     const path = p.path;
+    const end = path[path.length - 1];
     for (const l of path) {
+      if (parent && l === end) {
+        if (l.type === EdgeType.CLOSURE) {
+          return accessStr + `.__scope__`;
+        } else {
+          return accessStr;
+        }
+      }
       switch(l.type) {
         case EdgeType.CLOSURE:
           accessStr += `.__scope__['${l.indexOrName}']`;
@@ -150,10 +158,20 @@ interface EventTarget {
     return obj.$$$PROXY$$$;
   }
 
-  // TODO: Use parent access str to capture sets / gets.
-  function replaceObjectsWithProxies(roots: any[], accessStr: string, parentAccessStr: string, map: Map<string | number | symbol, Set<string>>): void {
+  function replaceObjectsWithProxies(roots: any[], propName: string | number, accessStr: string, parentAccessStr: string, map: Map<string | number | symbol, Set<string>>): void {
     const replaceFcn = new Function("root", "getProxy", "map", `try {
-      ${accessStr} = getProxy(${accessStr}, map);
+      var proxy = getProxy(${accessStr}, map);
+      var parent = ${parentAccessStr};
+      Object.defineProperty(parent, "${propName}", {
+        get: function() {
+          return proxy;
+        },
+        set: function(val) {
+          proxy = getProxy(val, map);
+          $$addStackTrace(map, propName);
+          return true;
+        }
+      });
     } catch (e) {
 
     }`);
@@ -174,13 +192,10 @@ interface EventTarget {
     }
     // Fetch the objects.
     for (const p of paths) {
-      const accessString = getAccessString(p);
-      const parentAccessString = getAccessString({
-        root: p.root,
-        path: p.path.slice(0, -1)
-      });
+      const accessString = getAccessString(p, false);
+      const parentAccessString = getAccessString(p, true);
       const roots = getPossibleRoots(p);
-      replaceObjectsWithProxies(roots, accessString, parentAccessString, map);
+      replaceObjectsWithProxies(roots, p.path[p.path.length - 1].indexOrName, accessString, parentAccessString, map);
     }
   }
 
