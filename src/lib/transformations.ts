@@ -106,6 +106,9 @@ class Scope {
    */
   public getReplacement(identifier: Identifier): Identifier | MemberExpression {
     if (this._identifiers.has(identifier.name)) {
+      if (!this.closedOver) {
+        return identifier;
+      }
       const unmoved = this._identifiers.get(identifier.name);
       if (unmoved) {
         return identifier;
@@ -333,12 +336,12 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
     }
   });
 
-  console.log("Scopes decided.");
+  //console.log("Scopes decided.");
 
   // Finalize scopes.
   scopeMap.forEach((s) => s.finalize(allIdentifiers));
 
-  console.log("Scopes finalized.");
+  //console.log("Scopes finalized.");
 
   // Modifications to make to the current block.
   let blockInsertions = new Array<Statement>();
@@ -365,7 +368,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
     leave: function(node, parent) {
       switch (node.type) {
         case 'Identifier': {
-          if (scope.closedOver && (!parent || (parent.type !== "FunctionDeclaration" && parent.type !== "FunctionExpression"))) {
+          if (!parent || (parent.type !== "FunctionDeclaration" && parent.type !== "FunctionExpression")) {
             if (parent.type === "MemberExpression") {
               // Ignore nested identifiers in member expressions.
               if (node !== parent.object) {
@@ -455,7 +458,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
     throw new Error(`Failed to pop a scope?`);
   }
 
-  console.log("Finished second phase.");
+  // console.log("Finished second phase.");
   const converted = <{code: string, map: any}> <any> generateJavaScript(newAst, {
     format: {
       compact: true
