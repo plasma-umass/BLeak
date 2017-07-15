@@ -169,7 +169,7 @@ interface EventTarget {
         },
         set: function(val) {
           proxy = getProxy(val, map);
-          $$addStackTrace(map, propName);
+          $$addStackTrace(map, "${propName}");
           return true;
         }
       });

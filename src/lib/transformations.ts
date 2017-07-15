@@ -37,7 +37,9 @@ function getExpressionTransform(functionVarName: Identifier, originalFunction: F
     originalFunction,
     scopeVarName
   });
-  return <CallExpression> (<ExpressionStatement> prog.body[0]).expression;
+  const rv = <CallExpression> (<ExpressionStatement> prog.body[0]).expression;
+  rv.loc = originalFunction.loc;
+  return rv;
 }
 
 const SCOPE_ASSIGNMENT_TEMPLATE = compile(SCOPE_ASSIGNMENT_EXPRESSION_STR);
@@ -105,11 +107,13 @@ class Scope {
           computed: false,
           object: {
             type: "Identifier",
-            name: this.scopeIdentifier
+            name: this.scopeIdentifier,
+            loc: identifier.loc
           },
           property: {
             type: "Identifier",
-            name: identifier.name
+            name: identifier.name,
+            loc: identifier.loc
           },
           loc: identifier.loc
         };
@@ -335,21 +339,26 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
           //console.log("Leaving VD");
           // Remove if no initialization.
           // If initialized, though, change into an assignment.
-          return <BlockStatement> {
-            type: "BlockStatement",
-            body: <Node[]> node.declarations.map((decl) => {
-              if (!decl.init) {
-                return null;
-              }
-              return <AssignmentExpression> {
-                type: "AssignmentExpression",
-                operator: "=",
-                left: decl.id,
-                right: decl.init,
-                loc: decl.loc
-              };
-            }).filter((assgn) => assgn !== null)
-          }
+          return <ExpressionStatement> {
+            type: "ExpressionStatement",
+            expression: {
+              type: "SequenceExpression",
+              expressions: node.declarations.map((decl) => {
+                if (!decl.init) {
+                  return null;
+                }
+                return <AssignmentExpression> {
+                  type: "AssignmentExpression",
+                  operator: "=",
+                  left: decl.id,
+                  right: decl.init,
+                  loc: decl.loc
+                };
+              }).filter((assgn) => assgn !== null),
+              loc: node.loc
+            },
+            loc: node.loc
+          };
         }
         case 'FunctionDeclaration': {
           scope = scope.parent;

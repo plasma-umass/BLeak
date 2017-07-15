@@ -77,7 +77,9 @@ export default class StackFrameConverter {
       const convertedPathStacks: {[prop: string]: StackFrame[][]} = convertedStacks[path] = {};
       Object.keys(pathStacks).forEach((propName) => {
         const stacks = pathStacks[propName].map((stack) => {
-          const frames = ErrorStackParser(<any> {stack: stack}).filter((f) => f.fileName ? f.fileName.indexOf('deuterium_agent.js') === -1 : true);
+          const frames = ErrorStackParser(<any> {stack: stack})
+            .filter((f) => f.fileName ? f.fileName.indexOf('deuterium_agent.js') === -1 : true)
+            .filter((f) => f.functionName ? f.functionName.indexOf("eval") === -1 || f.functionName.indexOf('deuterium_agent.js') === -1 : true);
           frames.forEach((frame) => {
             urls.add(frame.fileName);
           })
