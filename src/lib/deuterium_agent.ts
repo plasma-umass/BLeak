@@ -34,7 +34,8 @@ interface EventTarget {
       unmovedVariables[varName] = {
         value: undefined,
         enumerable: true,
-        writable: true
+        writable: true,
+        configurable: true
       };
     });
 

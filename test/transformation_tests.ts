@@ -27,11 +27,11 @@ describe('Transformations', function() {
 
   describe('exposeClosureState', function() {
     function instrumentModule<T>(source: string): T {
-      const newSource = exposeClosureState("main.js", source, true);
+      const newSource = exposeClosureState("main.js", `(function(exports) { ${source} })(exports);`, true);
       // Super basic CommonJS shim.
       const exp: any = {};
-      // console.log("Original Source:\n" + source);
-      // console.log("\nNew Source:\n" + newSource);
+      //console.log("Original Source:\n" + source);
+      //console.log("\nNew Source:\n" + newSource);
       new Function('exports', AGENT_SOURCE + "\n" + newSource)(exp);
       return exp;
     }

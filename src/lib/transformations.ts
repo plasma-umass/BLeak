@@ -88,20 +88,7 @@ class Scope {
   }
 
   /**
-   * Find the scope that contains the given identifier.
-   * @param identifier
-   */
-  public lookup(identifier: string): Scope {
-    if (this._identifiers.has(identifier)) {
-      return this;
-    } else {
-      return this.parent.lookup(identifier);
-    }
-  }
-
-  /**
    * Get the new location for the given identifier.
-   * Performs lookup.
    * @param identifier
    */
   public getReplacement(identifier: Identifier): Identifier | MemberExpression {
@@ -127,8 +114,10 @@ class Scope {
           loc: identifier.loc
         };
       }
-    } else {
+    } else if (this.parent !== null) {
       return this.parent.getReplacement(identifier);
+    } else {
+      return identifier;
     }
   }
 
@@ -192,52 +181,12 @@ class GlobalScope extends Scope {
     this._isNode = isNode;
   }
 
-  public getReplacement(identifier: Identifier): Identifier {
-    return identifier;
-  }
-
-  public getMovedIdentifiers(): string[] {
-    return [];
-  }
-
-  public getUnmovedIdentifiers(): string[] {
-    return [];
-  }
-
-  public lookup(identifier: string): Scope {
-    if (this._identifiers.has(identifier)) {
-      return this;
-    }
-    return null;
+  public finalize() {
+    // NOP.
   }
 
   public get scopeIdentifier(): string {
-    return this._isNode ? this._scopeIdentifier : "window";
-  }
-
-  public getPrelude(): Statement[] {
-    if (this._isNode) {
-      // Mainly for testing.
-      return <Statement[]> parseJavaScript(`var ${this._scopeIdentifier} = new Proxy(global, {
-        get: function(target, name) {
-          try {
-            return eval(name);
-          } catch (e) {
-            return target[name];
-          }
-        },
-        set: function(target, name, value) {
-          try {
-            eval(name + "= value");
-          } catch (e) {
-            global[name] = value;
-          }
-          return true;
-        }
-      });`).body;
-    } else {
-      return [];
-    }
+    return this._isNode ? "global" : "window";
   }
 }
 
@@ -380,7 +329,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
           return node;
         }
         case 'VariableDeclaration': {
-          if (scope instanceof GlobalScope || !scope.closedOver) {
+          if (!scope.closedOver) {
             return node;
           }
           //console.log("Leaving VD");
@@ -447,15 +396,14 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
     }
   });
 
-
   const body = (<Program> newAst).body;
+  if (scope instanceof GlobalScope) {
+    //body.unshift.apply(body, scope.getPrelude());
+  } else {
+    throw new Error(`Forgot to pop  a scope?`);
+  }
   if (blockInsertions.length > 0) {
     body.unshift.apply(body, blockInsertions);
-  }
-  if (scope instanceof GlobalScope) {
-    body.unshift.apply(body, scope.getPrelude());
-  } else {
-    throw new Error(`Failed to pop a scope?`);
   }
 
   // console.log("Finished second phase.");
