@@ -29,7 +29,10 @@ window.DeuteriumConfig = {};
 
   let diagnosing = false;
   proxy.onRequest((f) => {
-    const mime = f.mimetype.toLowerCase();
+    let mime = f.mimetype.toLowerCase();
+    if (mime.indexOf(";") !== -1) {
+      mime = mime.slice(0, mime.indexOf(";"));
+    }
     switch (mime) {
       case 'text/html':
         f.contents = injectIntoHead(f.contents, `${AGENT_INJECT}${CONFIG_INJECT}`);

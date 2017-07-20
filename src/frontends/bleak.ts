@@ -40,5 +40,8 @@ Proxy.listen(PROXY_PORT).then((proxy) => {
     }
     console.log(``);
   });
+}).catch((e) => {
+  console.error("Failure!");
+  console.error(e);
 });
 

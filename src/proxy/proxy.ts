@@ -25,26 +25,50 @@ export default class Proxy implements IProxy {
       req.headers['accept-encoding'] = '';
       if (req.method.toLowerCase() === 'get') {
         const write = res.write;
+        const allData = new Array<Buffer>();
         res.write = (data: Buffer| string, arg2?: string | Function, arg3?: string | Function): boolean => {
+          if (typeof(data) === "string") {
+            allData.push(Buffer.from(data, "utf8"));
+          } else {
+            allData.push(data);
+          }
+          return true;
+        };
+        const end = res.end;
+        res.end = (...args: any[]) => {
           // Disable caching.
           // From: https://stackoverflow.com/questions/9884513/avoid-caching-of-the-http-responses
           // NOTE: Need to do this elsewhere? Maybe headers were already sent.
           //res.setHeader('expires', 'Tue, 03 Jul 2001 06:00:00 GMT');
           //res.setHeader('last-modified', `${(new Date()).toUTCString()}`);
           //res.setHeader('cache-control', 'max-age=0, no-cache, must-revalidate, proxy-revalidate');
-
+          if (args[0]) {
+            if (typeof(args[0]) === "string") {
+              allData.push(Buffer.from(args[0], "utf8"));
+              args.shift();
+            } else if (Buffer.isBuffer(args[0])) {
+              allData.push(args[0]);
+              args.shift();
+            }
+          }
+          const data = Buffer.concat(allData);
+          let rewrote = false;
           let mimeType = res.getHeader('content-type');
           if (mimeType) {
             mimeType = mimeType.toLowerCase();
             if (mimeType.indexOf('text') !== -1) {
-              return write.call(res, this._requestCb({
+              rewrote = true;
+              write.call(res, this._requestCb({
                 mimetype: mimeType,
                 url: req.url,
                 contents: data.toString()
               }).contents);
             }
           }
-          return write.call(res, data);
+          if (!rewrote) {
+            write.call(res, data);
+          }
+          return end.apply(res, args);
         };
       }
       this._proxy.web(req, res, { target: `${dest.protocol}//${dest.host}` });

@@ -102,6 +102,32 @@ const FILES: {[name: string]: TestFile} = {
     })();
     `, 'utf8')
   },
+  /*'/closure_test_disconnected_dom_collection.html': getHTMLDoc(`<!DOCTYPE html><html><head><title>Closure test disconnected dom collection</title></head><body><button id="btn">Click Me</button><script type="text/javascript" src="/closure_test_disconnected_dom_collection.js"></script></body></html>`),
+  '/closure_test_disconnected_dom_collection.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`(function() {
+      var obj = {};
+      var i = 0;
+      var power = 2;
+      document.body.appendChild(document.createElement('button'));
+      var buttons = document.getElementsByTagName('button');
+      buttons[1].addEventListener('click', function() {
+        var top = Math.pow(2, power);
+        power++;
+        for (var j = 0; j < top; j++) {
+          obj[Math.random()] = Math.random();
+        }
+      });
+      document.body.removeChild(buttons[1]);
+      window.$$btns = buttons;
+    })();
+    (function() {
+      document.getElementById('btn').addEventListener('click', function() {
+        window.$$btns[1].click();
+      });
+    })();
+    `, 'utf8')
+  },*/
   '/reassignment_test.html': getHTMLConfig('reassignment_test'),
   '/reassignment_test.js': {
     mimeType: 'text/javascript',
@@ -262,6 +288,8 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Catches leaks in closures', 'closure_test', 9);
   createStandardLeakTest('Catches leaks in closures, even with irrelevant DOM objects', 'closure_test_irrelevant_dom', 9);
   createStandardLeakTest('Catches leaks in closures, even with disconnected DOM fragments', 'closure_test_disconnected_dom', 10);
+  // Not supported.
+  // createStandardLeakTest('Catches leaks in closures, even with disconnected DOM collections', 'closure_test_disconnected_dom_collection', 11);
   createStandardLeakTest('Catches leaks when object is copied and reassigned', 'reassignment_test', 10);
   createStandardLeakTest('Catches leaks when object stored in multiple paths', 'multiple_paths_test', 12);
   createStandardLeakTest('Ignores code that does not grow objects', 'irrelevant_paths_test', 8);

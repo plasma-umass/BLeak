@@ -26,6 +26,15 @@ const FILES: {[name: string]: TestFile} = {
     mimeType: 'image/jpeg',
     data: Buffer.alloc(1025, 0)
   },
+  '/huge.html': {
+    mimeType: 'text/html',
+    // 10MB file filled w/ a's.
+    data: Buffer.alloc(1024*1024*10, 97)
+  },
+  '/huge.jpg': {
+    mimeType: 'image/jpeg',
+    data: Buffer.alloc(1024*1024*10, 0)
+  },
   '/': {
     mimeType: 'text/html',
     data: Buffer.from('<!DOCTYPE html><html><title>Not Found</title></html>', 'utf8')
@@ -105,6 +114,21 @@ describe('Proxy', function() {
     });
     promises.push(requestFile('/test.jpg', FILES['/test.jpg'].data));
     Promise.all(promises).then(() => done()).catch(done);
+  });
+
+  it("Properly proxies huge binary files", function(done) {
+    proxy.onRequest((f) => f);
+    requestFile('/huge.jpg', FILES['/huge.jpg'].data).then(() => done()).catch(done);
+  });
+
+  it("Properly proxies huge text files", function(done) {
+    const raw = FILES['/huge.html'].data;
+    const expected = Buffer.alloc(raw.length, 98);
+    proxy.onRequest((f) => {
+      f.contents = f.contents.replace(/a/g, 'b');
+      return f;
+    });
+    requestFile('/huge.html', expected).then(() => done()).catch(done);
   });
 
   after(function(done) {
