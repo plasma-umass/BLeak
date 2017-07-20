@@ -50,6 +50,8 @@ export interface ConfigurationFile {
   url: string;
   // (Optional) Globs for script files that should be *black boxed* during leak detection.
   blackBox?: string[];
+  login?: Step[];
+  setup?: Step[];
   // Runs your program in a loop. Each step has a "check" function, and a "next" function
   // to transition to the next step in the loop.
   // Deuterium oxide assumes your program is in the first step when it navigates to the URL,

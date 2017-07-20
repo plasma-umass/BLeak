@@ -65,34 +65,36 @@ window.DeuteriumConfig = {};
     });
   }
 
-  function waitUntilTrue(i: number): PromiseLike<void> {
-    return driver.runCode(`DeuteriumConfig.loop[${i}].check()`).then((success) => {
+  function waitUntilTrue(i: number, prop: string): PromiseLike<void> {
+    return driver.runCode(`DeuteriumConfig.${prop}[${i}].check()`).then((success) => {
       if (success !== "true") {
-        return wait(1000).then(() => waitUntilTrue(i));
+        return wait(1000).then(() => waitUntilTrue(i, prop));
       } else {
         return undefined;
       }
     });
   }
 
-  function nextStep(i: number): PromiseLike<string> {
-    return waitUntilTrue(i).then(() => {
-      return driver.runCode(`DeuteriumConfig.loop[${i}].next()`);
+  function nextStep(i: number, prop: string): PromiseLike<string> {
+    return waitUntilTrue(i, prop).then(() => {
+      return driver.runCode(`DeuteriumConfig.${prop}[${i}].next()`);
     });
   }
 
-  function runLoop(snapshotAtEnd: false): PromiseLike<string | void>;
-  function runLoop(snapshotAtEnd: true): PromiseLike<HeapSnapshot>;
-  function runLoop(snapshotAtEnd: boolean): PromiseLike<HeapSnapshot | string | void> {
-    const numSteps = config.loop.length;
-    let promise: PromiseLike<string | void> = nextStep(0);
+  function runLoop(snapshotAtEnd: false, prop: string, isLoop: boolean): PromiseLike<string | void>;
+  function runLoop(snapshotAtEnd: true, prop: string, isLoop: boolean): PromiseLike<HeapSnapshot>;
+  function runLoop(snapshotAtEnd: boolean, prop: string, isLoop: boolean): PromiseLike<HeapSnapshot | string | void> {
+    const numSteps: number = (<any> config)[prop].length;
+    let promise: PromiseLike<string | void> = nextStep(0, prop);
     if (numSteps > 1) {
       for (let i = 1; i < numSteps; i++) {
-        promise = promise.then(() => nextStep(i));
+        promise = promise.then(() => nextStep(i, prop));
       }
     }
-    // Wait for loop to finish.
-    promise = promise.then(() => waitUntilTrue(0));
+    if (isLoop) {
+      // Wait for loop to finish.
+      promise = promise.then(() => waitUntilTrue(0, prop));
+    }
     if (snapshotAtEnd) {
       return promise.then(takeSnapshot);
     }
@@ -125,9 +127,12 @@ window.DeuteriumConfig = {};
 
   return driver.navigateTo(config.url).then(() => {
     // Capture 5 heap snapshots.
-    let promise = runLoop(true).then(processSnapshot);
+    let promise = (config.login ? runLoop(false, 'login', false).then(() => driver.navigateTo(config.url)) : Promise.resolve())
+      .then(() => config.setup ? runLoop(false, 'setup', false) : Promise.resolve())
+      .then(() => runLoop(true, 'loop', true)
+      .then(processSnapshot));
     for (let i = 0; i < 4; i++) {
-      promise = promise.then(() => runLoop(true).then(processSnapshot));
+      promise = promise.then(() => runLoop(true, 'loop', true).then(processSnapshot));
     }
     // Instrument growing paths.
     return promise.then(() => {
@@ -143,14 +148,15 @@ window.DeuteriumConfig = {};
         // Flip on JS instrumentation.
         diagnosing = true;
         return driver.navigateTo(config.url)
-          .then(() => runLoop(false))
+          .then(() => config.setup ? runLoop(false, 'setup', false) : Promise.resolve())
+          .then(() => runLoop(false, 'loop', true))
           .then(() => {
             console.log("Instrumenting growth paths...");
             // Instrument objects to push information to global array.
             return instrumentGrowthPaths(growthPaths);
           })
           // Measure growth during one more loop.
-          .then(() => runLoop(false))
+          .then(() => runLoop(false, 'loop', true))
           .then(() => {
 
             // Fetch array as string.

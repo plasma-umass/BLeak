@@ -1,4 +1,4 @@
-import {readFileSync} from 'fs';
+import {readFileSync, openSync, writeSync, closeSync} from 'fs';
 import FindLeaks from '../lib/deuterium_oxide';
 import Proxy from '../proxy/proxy';
 import ChromeDriver from '../webdriver/chrome_driver';
@@ -6,40 +6,53 @@ const PROXY_PORT = 5554;
 const CHROME_DRIVER_PORT = 4444;
 
 const configFileName = process.argv[2];
-if (!configFileName) {
-  console.log(`Usage: ${process.argv[0]} ${process.argv[1]} config.js`);
+const outFileName = process.argv[3];
+if (!configFileName || !outFileName) {
+  console.log(`Usage: ${process.argv[0]} ${process.argv[1]} config.js outfile.log`);
   process.exit(0);
 }
 
+const outFile = openSync(outFileName, "w");
+function LOG(str: string): void {
+  console.log(str);
+  writeSync(outFile, str + "\n");
+}
+
+let proxyGlobal: Proxy = null;
 const configFileSource = readFileSync(configFileName).toString();
-Proxy.listen(PROXY_PORT).then((proxy) => {
-  return ChromeDriver.Launch(proxy, CHROME_DRIVER_PORT).then((driver) => {
-    return FindLeaks(configFileSource, proxy, driver);
-  });
-}).then((leaks) => {
+Proxy.listen(PROXY_PORT)
+  .then((proxy) => {
+    proxyGlobal = proxy;
+    return ChromeDriver.Launch(proxy, CHROME_DRIVER_PORT)
+  })
+  .then((driver) => FindLeaks(configFileSource, proxyGlobal, driver))
+  .then((leaks) => proxyGlobal.shutdown().then(() => leaks))
+  .then((leaks) => {
   leaks.forEach((leak, i) => {
-    console.log(`Leak ${i+1}: ${leak.path}`);
-    console.log(`  Properties:`);
+    LOG(`Leak ${i+1}: ${leak.path}`);
+    LOG(`  Properties:`);
     const newProps = leak.newProperties;
     for (const newPropName in newProps) {
       const stacks = newProps[newPropName];
-      console.log(`    "${newPropName}", added by ${stacks.length} locations:`);
+      LOG(`    "${newPropName}", added by ${stacks.length} locations:`);
       stacks.forEach((stack, i) => {
-        console.log(`      Stack ${i+1}:`);
+        LOG(`      Stack ${i+1}:`);
         stack.forEach((f, j) => {
-          if (j < 5) {
-            console.log(`        [${j}] ${f.fileName}:${f.lineNumber}:${f.columnNumber}`);
+          if (j < 10) {
+            LOG(`        [${j}] ${f.fileName}:${f.lineNumber}:${f.columnNumber}`);
           }
         });
-        if (stack.length > 5) {
-          console.log(`        (${stack.length - 5} more...)`);
+        if (stack.length > 10) {
+          LOG(`        (${stack.length - 10} more...)`);
         }
-        console.log(``);
+        LOG(``);
       });
-      console.log(``);
+      LOG(``);
     }
-    console.log(``);
+    LOG(``);
   });
+  closeSync(outFile);
+  console.log(`Leaks written to ${outFileName}`);
 }).catch((e) => {
   console.error("Failure!");
   console.error(e);

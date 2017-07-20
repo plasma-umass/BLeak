@@ -121,6 +121,11 @@ interface EventTarget {
       map.delete(property);
     }
   }
+  function copyStacks(map: Map<string | number | symbol, Set<string>>, from: string | number | symbol, to: string | number | symbol): void {
+    if (map.has(from)) {
+      map.set(to, map.get(from));
+    }
+  }
   function getProxy(obj: any, map: Map<string | number | symbol, Set<string>>): any {
     if (!obj.$$$PROXY$$$) {
       obj.$$$PROXY$$$ = new Proxy(obj, {
@@ -301,7 +306,7 @@ interface EventTarget {
             const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
             const newItemLen = items.length;
             for (let i = items.length - 1; i >= 0; i--) {
-              map.set(`${i + newItemLen}`, map.get(`${i}`));
+              copyStacks(map, `${i}`, `${i + newItemLen}`);
             }
             for (let i = 0; i < items.length; i++) {
               removeStacks(map, `${i}`);
@@ -338,7 +343,7 @@ interface EventTarget {
             const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
             removeStacks(map, "0");
             for (let i = 1; i < this.length; i++) {
-              map.set(`${i - 1}`, map.get(`${i}`));
+              copyStacks(map, `${i}`, `${i - 1}`);
             }
             removeStacks(map, `${this.length - 1}`);
           }
@@ -392,13 +397,13 @@ interface EventTarget {
               // Shift *upward*
               const delta = newItemCount - actualDeleteCount;
               for (let i = this.length - 1; i >= actualStart + actualDeleteCount; i--) {
-                map.set(`${i + delta}`, map.get(`${i}`));
+                copyStacks(map, `${i}`, `${i + delta}`);
               }
             } else if (newItemCount < actualDeleteCount) {
               // Shift *downward*
               const delta = newItemCount - actualDeleteCount;
               for (let i = actualStart + actualDeleteCount; i < this.length; i++) {
-                map.set(`${i + delta}`, map.get(`${i}`));
+                copyStacks(map, `${i}`, `${i + delta}`);
               }
               // Delete extra traces for removed indexes.
               for (let i = this.length + delta; i < this.length; i++) {

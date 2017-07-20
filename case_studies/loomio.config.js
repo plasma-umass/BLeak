@@ -1,9 +1,5 @@
 exports.url = "http://localhost:3000/dashboard";
-// Runs your program in a loop. Each step has a "check" function, and a "next" function
-// to transition to the next step in the loop.
-// Deuterium oxide assumes your program is in the first step when it navigates to the URL,
-// and that the last step transitions to the first step.
-exports.loop = [
+exports.login = [
   {
     // (Optional) Name for debugging purposes.
     name: "login-username",
@@ -50,6 +46,38 @@ exports.loop = [
       const submitBtn = document.getElementsByTagName('button')[3];
       submitBtn.click();
     }
+  }
+];
+exports.setup = [
+  {
+    name: "open-menu-setup",
+    check: function() {
+      const tp = document.getElementsByClassName('thread-preview');
+      if (tp.length > 0) {
+        const thread = tp[0];
+        return thread.childNodes.length > 0 && thread.childNodes[0].tagName === "A" && thread.childNodes[0].getAttribute('href') === "/d/Ysv5jUz1/how-to-use-loomio";
+      }
+      return false;
+    },
+    next: function() {
+      document.getElementsByTagName('md_icon_button')[0].click();
+    }
+  }
+];
+// Runs your program in a loop. Each step has a "check" function, and a "next" function
+// to transition to the next step in the loop.
+// Deuterium oxide assumes your program is in the first step when it navigates to the URL,
+// and that the last step transitions to the first step.
+exports.loop = [
+  {
+    name: "fun-group-1",
+    check: function() {
+      const span = document.getElementsByTagName('span')[6];
+      return !!span && span.innerText === "Fun Group 1";
+    },
+    next: function() {
+      document.getElementsByTagName('span')[6].click();
+    }
   },
   {
     name: "thread-browse",
@@ -78,16 +106,6 @@ exports.loop = [
     next: function() {
       // Opens menu w/ logout.
       document.getElementsByTagName('md_icon_button')[0].click();
-    }
-  },
-  {
-    name: "logout",
-    check: function() {
-      return document.getElementsByTagName('span')[12].innerText === "Sign out";
-    },
-    next: function() {
-      // Log out of the application. Returns to login page.
-      document.getElementsByTagName('span')[12].click();
     }
   }
 ];
