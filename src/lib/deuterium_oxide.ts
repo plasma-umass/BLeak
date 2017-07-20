@@ -67,7 +67,7 @@ window.DeuteriumConfig = {};
 
   function waitUntilTrue(i: number): PromiseLike<void> {
     return driver.runCode(`DeuteriumConfig.loop[${i}].check()`).then((success) => {
-      if (!success) {
+      if (success !== "true") {
         return wait(1000).then(() => waitUntilTrue(i));
       } else {
         return undefined;
@@ -81,16 +81,18 @@ window.DeuteriumConfig = {};
     });
   }
 
-  function runLoop(snapshotAtEnd: false): PromiseLike<string>;
+  function runLoop(snapshotAtEnd: false): PromiseLike<string | void>;
   function runLoop(snapshotAtEnd: true): PromiseLike<HeapSnapshot>;
-  function runLoop(snapshotAtEnd: boolean): PromiseLike<HeapSnapshot | string> {
+  function runLoop(snapshotAtEnd: boolean): PromiseLike<HeapSnapshot | string | void> {
     const numSteps = config.loop.length;
-    let promise = nextStep(0);
+    let promise: PromiseLike<string | void> = nextStep(0);
     if (numSteps > 1) {
       for (let i = 1; i < numSteps; i++) {
         promise = promise.then(() => nextStep(i));
       }
     }
+    // Wait for loop to finish.
+    promise = promise.then(() => waitUntilTrue(0));
     if (snapshotAtEnd) {
       return promise.then(takeSnapshot);
     }

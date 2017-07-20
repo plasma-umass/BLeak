@@ -1,5 +1,5 @@
 import {createProxyServer} from 'http-proxy';
-import {createServer as createHTTPServer, Server as HTTPServer} from 'http';
+import {createServer as createHTTPServer, Server as HTTPServer, ServerResponse} from 'http';
 import {parse as parseURL} from 'url';
 import {SourceFile, IProxy, IProxyConstructor} from '../common/interfaces';
 
@@ -23,14 +23,36 @@ export default class Proxy implements IProxy {
       const dest = parseURL(req.url);
       // Disable compression for now.
       req.headers['accept-encoding'] = '';
+      const write = res.write;
+      function writePromise(data: Buffer): Promise<void> {
+        return new Promise<void>((success, rej) => {
+          write.call(res, data, (e: any) => {
+            e ? rej(e) : success();
+          });
+        });
+      }
       if (req.method.toLowerCase() === 'get') {
-        const write = res.write;
         const allData = new Array<Buffer>();
-        res.write = (data: Buffer| string, arg2?: string | Function, arg3?: string | Function): boolean => {
+        const writeHead = res.writeHead;
+        let writeHeadArgs: any[] = null;
+        res.writeHead = function(this: ServerResponse, ...args: any[]): void {
+          writeHeadArgs = args;
+        };
+        res.write = function(this: ServerResponse, data: Buffer| string, arg2?: string | Function, arg3?: string | Function): boolean {
           if (typeof(data) === "string") {
             allData.push(Buffer.from(data, "utf8"));
           } else {
             allData.push(data);
+          }
+          let cb: Function = null;
+          if (typeof(arg2) === "function") {
+            cb = arg2;
+          }
+          if (typeof(arg3) === "function") {
+            cb = arg3;
+          }
+          if (typeof(cb) === "function") {
+            setImmediate(cb);
           }
           return true;
         };
@@ -44,31 +66,46 @@ export default class Proxy implements IProxy {
           //res.setHeader('cache-control', 'max-age=0, no-cache, must-revalidate, proxy-revalidate');
           if (args[0]) {
             if (typeof(args[0]) === "string") {
-              allData.push(Buffer.from(args[0], "utf8"));
-              args.shift();
+              allData.push(Buffer.from(args.shift(), "utf8"));
             } else if (Buffer.isBuffer(args[0])) {
-              allData.push(args[0]);
-              args.shift();
+              allData.push(args.shift());
             }
           }
-          const data = Buffer.concat(allData);
-          let rewrote = false;
+          let data: Buffer = Buffer.concat(allData);
           let mimeType = res.getHeader('content-type');
           if (mimeType) {
             mimeType = mimeType.toLowerCase();
             if (mimeType.indexOf('text') !== -1) {
-              rewrote = true;
-              write.call(res, this._requestCb({
+              data = Buffer.from(this._requestCb({
                 mimetype: mimeType,
                 url: req.url,
                 contents: data.toString()
-              }).contents);
+              }).contents, "utf8");
             }
           }
-          if (!rewrote) {
-            write.call(res, data);
+
+          if (res.getHeader('content-length')) {
+            res.removeHeader('content-length');
+            res.setHeader('content-length', `${data.length}`);
           }
-          return end.apply(res, args);
+          if (writeHeadArgs !== null) {
+            writeHead.apply(res, writeHeadArgs);
+          }
+
+          if (data.length > 0) {
+            // Transmit data in 64K chunks.
+            const numChunks = Math.ceil(data.length / 65536);
+            let p = writePromise(data.slice(0, numChunks === 1 ? data.length : 65536));
+            for (let i = 1; i < numChunks; i++) {
+              const offset = i * 65536;
+              p = p.then(() => writePromise(data.slice(offset, i === numChunks - 1 ? data.length : offset + 65536)));
+            }
+            p.catch((e) => { throw new Error(`??? Write failed! ${e}`) });
+            p.then(() => end.apply(res, args));
+          } else {
+            end.apply(res, args);
+          }
+          return;
         };
       }
       this._proxy.web(req, res, { target: `${dest.protocol}//${dest.host}` });
