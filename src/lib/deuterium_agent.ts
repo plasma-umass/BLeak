@@ -164,9 +164,27 @@ interface EventTarget {
     return obj.$$$PROXY$$$;
   }
 
+  function updateMapForChangedProps(map: Map<string | number | symbol, Set<string>>, oldObj: Object, newObj: Object): void {
+    const oldProps = Object.keys(oldObj);
+    const newProps = Object.keys(newObj);
+    const oldPropSet = new Set(oldProps);
+    const newPropSet = new Set(newProps);
+    oldProps.forEach((prop) => {
+      if (!newPropSet.has(prop)) {
+        removeStacks(map, prop);
+      }
+    });
+    newProps.forEach((prop) => {
+      if (!oldPropSet.has(prop)) {
+        addStackTrace(map, prop);
+      }
+    });
+  }
+
   function replaceObjectsWithProxies(roots: any[], propName: string | number, accessStr: string, parentAccessStr: string, map: Map<string | number | symbol, Set<string>>): void {
-    const replaceFcn = new Function("root", "getProxy", "map", `try {
-      var proxy = getProxy(${accessStr}, map);
+    const replaceFcn = new Function("root", "getProxy", "map", "updateMapForChangedProps", `try {
+      var obj = ${accessStr};
+      var proxy = getProxy(obj, map);
       var parent = ${parentAccessStr};
       Object.defineProperty(parent, "${propName}", {
         get: function() {
@@ -174,14 +192,15 @@ interface EventTarget {
         },
         set: function(val) {
           proxy = getProxy(val, map);
-          $$addStackTrace(map, "${propName}");
+          updateMapForChangedProps(map, obj, val);
+          obj = val;
           return true;
         }
       });
     } catch (e) {
 
     }`);
-    roots.forEach((r) => replaceFcn(r, getProxy, map));
+    roots.forEach((r) => replaceFcn(r, getProxy, map, updateMapForChangedProps));
   }
 
   const secretStackMapProperty = "$$$stackmap$$$";

@@ -26,14 +26,6 @@ exports.login = [
   {
     name: "login-password",
     check: function() {
-      //console.log("CHECK");
-      //if (!window.__timer__) {
-      //  window.__timer__ = Date.now();
-      //}
-      //if (Date.now() - window.__timer__ < 60000) {
-      //  return false;
-      //}
-      //console.log("DONE");
       const pswdField = document.getElementsByTagName('input')[1];
       const modalHeader = document.getElementsByTagName('h2')[3];
       const submitBtn = document.getElementsByTagName('button')[3];

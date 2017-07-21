@@ -158,7 +158,6 @@ window.DeuteriumConfig = {};
           // Measure growth during one more loop.
           .then(() => runLoop(false, 'loop', true))
           .then(() => {
-
             // Fetch array as string.
             return getGrowthStacks().then((growthStacks) => {
               // console.log(`Got growth stacks:\n${JSON.stringify(growthStacks)}`);
