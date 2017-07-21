@@ -2,6 +2,7 @@ import {readFileSync, openSync, writeSync, closeSync} from 'fs';
 import FindLeaks from '../lib/deuterium_oxide';
 import Proxy from '../proxy/proxy';
 import ChromeDriver from '../webdriver/chrome_driver';
+import {Leak} from '../common/interfaces';
 const PROXY_PORT = 5554;
 const CHROME_DRIVER_PORT = 4444;
 
@@ -45,6 +46,38 @@ function path2string(p: SerializeableGCPath): string {
   return rv;
 }
 
+/**
+ * Print the given leak in the log.
+ * @param l
+ * @param metric
+ * @param rank
+ */
+function printLeak(l: Leak, metric: string, rank: number): void {
+  const obj = l.obj;
+  const paths = obj.paths.map((p) => p.toJSON()).map(path2string);
+  LOG(`## Object ${rank} [Score: ${l.rankMetrics[metric]}]`);
+  LOG(``);
+  LOG(`### GC Paths`);
+  LOG(``);
+  LOG(`* ` + paths.join('\n* '));
+  LOG(``);
+  LOG(`### Stack Traces Responsible`);
+  LOG(``);
+  l.stacks.forEach((stack, i) => {
+    LOG(``);
+    stack.forEach((f, j) => {
+      if (j < 10) {
+        LOG(`        [${j}] ${f.fileName}:${f.lineNumber}:${f.columnNumber}`);
+      }
+    });
+    if (stack.length > 10) {
+      LOG(`        (${stack.length - 10} more...)`);
+    }
+    LOG(``);
+  });
+  LOG(``);
+}
+
 let proxyGlobal: Proxy = null;
 let driverGlobal: ChromeDriver = null;
 const configFileSource = readFileSync(configFileName).toString();
@@ -59,30 +92,19 @@ Proxy.listen(PROXY_PORT)
   })
   .then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => leaks))
   .then((leaks) => {
-  leaks.forEach((leak, i) => {
-    const p: SerializeableGCPath = JSON.parse(leak.path);
-    LOG(`Leak ${i+1}: ${path2string(p)}`);
-    LOG(`  Properties:`);
-    const newProps = leak.newProperties;
-    for (const newPropName in newProps) {
-      const stacks = newProps[newPropName];
-      LOG(`    "${newPropName}", added by ${stacks.length} locations:`);
-      stacks.forEach((stack, i) => {
-        LOG(`      Stack ${i+1}:`);
-        stack.forEach((f, j) => {
-          if (j < 10) {
-            LOG(`        [${j}] ${f.fileName}:${f.lineNumber}:${f.columnNumber}`);
-          }
-        });
-        if (stack.length > 10) {
-          LOG(`        (${stack.length - 10} more...)`);
-        }
-        LOG(``);
+  if (leaks.length === 0) {
+    LOG(`No leaks found.`);
+  } else {
+    const metrics = Object.keys(leaks[0].rankMetrics);
+    metrics.forEach((m) => {
+      LOG(`# Ranking Metric ${m}`);
+      LOG(``);
+      leaks.sort((a, b) => b.rankMetrics[m] - a.rankMetrics[m]).forEach((l, i) => {
+        printLeak(l, m, i);
       });
       LOG(``);
-    }
-    LOG(``);
-  });
+    });
+  }
   closeSync(outFile);
   console.log(`Leaks written to ${outFileName}`);
 }).catch((e) => {

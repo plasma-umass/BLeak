@@ -2,7 +2,7 @@ import {parse as parseJavaScript} from 'esprima';
 import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
-import {Node, BlockStatement, Program, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
+import {BlockStatement, Program, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;

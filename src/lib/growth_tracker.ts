@@ -1,4 +1,4 @@
-import {GrowthGraphBuilder, MergeGraphs, Node, GrowthPath, FindGrowthPaths} from './growth_graph';
+import {GrowthGraphBuilder, MergeGraphs, Node, GrowthObject, FindGrowingObjects, RankGrowingObjects} from './growth_graph';
 import {SnapshotEdgeType, HeapSnapshot} from '../common/interfaces';
 
 /**
@@ -124,8 +124,12 @@ export default class HeapGrowthTracker {
     }
   }
 
-  public getGrowthPaths(): GrowthPath[][] {
-    return FindGrowthPaths(this._graph);
+  public getGrowingObjects(): GrowthObject[] {
+    return FindGrowingObjects(this._graph);
+  }
+
+  public rankGrowingObjects(objs: GrowthObject[]): Map<GrowthObject, [string, number][]> {
+    return RankGrowingObjects(this._graph, objs);
   }
 
   public getGraph(): Node {

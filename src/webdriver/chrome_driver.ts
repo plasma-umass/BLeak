@@ -218,7 +218,7 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
 
   private _initializeSelenium(): PromiseLike<this> {
     this._client = remoteBrowser(this._options).init();
-    return this._client.then(() => this);
+    return <any> this._client.then(() => this);
   }
 
   public navigateTo(url: string): PromiseLike<any> {
@@ -229,13 +229,13 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
     });
   }
   public runCode(code: string): PromiseLike<string> {
-    return this._client.execute(`return ${code}`).then((result) => {
+    return <any> this._client.execute(`return ${code}`).then((result) => {
       console.log(code + " => " + result.value);
       return "" + result.value;
     });
   }
   public takeHeapSnapshot(): PromiseLike<HeapSnapshot> {
-    return this._client.execute(`:takeHeapSnapshot`).then((result) => {
+    return <any> this._client.execute(`:takeHeapSnapshot`).then((result) => {
       return result.value;
     });
   }
@@ -243,7 +243,7 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
   public close(): PromiseLike<any> {
     if (!this._closed) {
       this._closed = true;
-      return this._client.end().then(() => {
+      return <any> this._client.end().then(() => {
         return new Promise((resolve, reject) => {
           this._selenium.on('exit', () => resolve());
           this._selenium.kill();

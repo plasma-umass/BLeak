@@ -13,7 +13,7 @@ const magicString = '//# sourceMappingURL=data:application/json;base64,';
 export default class StackFrameConverter {
   private _maps = new Map<string, SourceMapConsumer>();
 
-  public static ConvertGrowthStacks(proxy: IProxy, stacks: {[p: string]: {[prop: string]: string[]}}): Promise<{[p: string]: {[prop: string]: StackFrame[][]}}> {
+  public static ConvertGrowthStacks(proxy: IProxy, stacks: {[p: string]: string[]}): Promise<{[p: string]: StackFrame[][]}> {
     return new StackFrameConverter().convertGrowthStacks(proxy, stacks);
   }
 
@@ -68,35 +68,28 @@ export default class StackFrameConverter {
     });
   }
 
-  public convertGrowthStacks(proxy: IProxy, stacks: {[p: string]: {[prop: string]: string[]}}): Promise<{[p: string]: {[prop: string]: StackFrame[][]}}> {
+  public convertGrowthStacks(proxy: IProxy, stacks: {[p: string]: string[]}): Promise<{[p: string]: StackFrame[][]}> {
     // First pass: Get all unique URLs and their source maps.
     const urls = new Set<string>();
-    const convertedStacks: {[p: string]: {[prop: string]: StackFrame[][]}} = {};
+    const convertedStacks: {[p: string]: StackFrame[][]} = {};
     Object.keys(stacks).forEach((path) => {
       const pathStacks = stacks[path];
-      const convertedPathStacks: {[prop: string]: StackFrame[][]} = convertedStacks[path] = {};
-      Object.keys(pathStacks).forEach((propName) => {
-        const stacks = pathStacks[propName].map((stack) => {
-          const frames = ErrorStackParser(<any> {stack: stack})
-            .filter((f) => f.fileName ? f.fileName.indexOf('deuterium_agent.js') === -1 : true)
-            .filter((f) => f.functionName ? f.functionName.indexOf("eval") === -1 || f.functionName.indexOf('deuterium_agent.js') === -1 : true);
-          frames.forEach((frame) => {
-            urls.add(frame.fileName);
-          })
-          return frames;
+      convertedStacks[path] = pathStacks.map((stack) => {
+        const frames = ErrorStackParser(<any> {stack: stack})
+          .filter((f) => f.fileName ? f.fileName.indexOf('deuterium_agent.js') === -1 : true)
+          .filter((f) => f.functionName ? f.functionName.indexOf("eval") === -1 || f.functionName.indexOf('deuterium_agent.js') === -1 : true);
+        frames.forEach((frame) => {
+          urls.add(frame.fileName);
         });
-        convertedPathStacks[propName] = stacks;
+        return frames;
       });
     });
     const urlArray: string[] = [];
     urls.forEach((url) => urlArray.push(url));
     return Promise.all(urlArray.map((url) => this._fetchMap(proxy, url))).then(() => {
       Object.keys(convertedStacks).forEach((path) => {
-        const pathStacks = convertedStacks[path];
-        Object.keys(pathStacks).forEach((propName) => {
-          const stacks = pathStacks[propName];
-          pathStacks[propName] = stacks.map((stack) => this._convertStack(stack));
-        });
+        const stacks = convertedStacks[path];
+        convertedStacks[path] = stacks.map((stack) => this._convertStack(stack));
       });
       return convertedStacks;
     });

@@ -5,12 +5,12 @@
  *
  * If you pass a `receiver`, the `nodeFunction` will be called as a method on the `receiver`.
  */
-export function promisify<T>(thisArg: any, func: (callback: (err: any, result: T) => void) => void): () => Promise<T>;
-export function promisify<T, A1>(thisArg: any, func: (arg1: A1, callback: (err: any, result: T) => void) => void): (arg1: A1) => Promise<T>;
-export function promisify<T, A1, A2>(thisArg: any, func: (arg1: A1, arg2: A2, callback: (err: any, result: T) => void) => void): (arg1: A1, arg2: A2) => Promise<T>;
-export function promisify<T, A1, A2, A3>(thisArg: any, func: (arg1: A1, arg2: A2, arg3: A3, callback: (err: any, result: T) => void) => void): (arg1: A1, arg2: A2, arg3: A3) => Promise<T>;
-export function promisify<T, A1, A2, A3, A4>(thisArg: any, func: (arg1: A1, arg2: A2, arg3: A3, arg4: A4, callback: (err: any, result: T) => void) => void): (arg1: A1, arg2: A2, arg3: A3, arg4: A4) => Promise<T>;
-export function promisify<T, A1, A2, A3, A4, A5>(thisArg: any, func: (arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, callback: (err: any, result: T) => void) => void): (arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5) => Promise<T>;
+export function promisify<T>(thisArg: any, func: (callback: (err: any, result?: T) => void) => void): () => Promise<T>;
+export function promisify<T, A1>(thisArg: any, func: (arg1: A1, callback: (err: any, result?: T) => void) => void): (arg1: A1) => Promise<T>;
+export function promisify<T, A1, A2>(thisArg: any, func: (arg1: A1, arg2: A2, callback: (err: any, result?: T) => void) => void): (arg1: A1, arg2: A2) => Promise<T>;
+export function promisify<T, A1, A2, A3>(thisArg: any, func: (arg1: A1, arg2: A2, arg3: A3, callback: (err: any, result?: T) => void) => void): (arg1: A1, arg2: A2, arg3: A3) => Promise<T>;
+export function promisify<T, A1, A2, A3, A4>(thisArg: any, func: (arg1: A1, arg2: A2, arg3: A3, arg4: A4, callback: (err: any, result?: T) => void) => void): (arg1: A1, arg2: A2, arg3: A3, arg4: A4) => Promise<T>;
+export function promisify<T, A1, A2, A3, A4, A5>(thisArg: any, func: (arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, callback: (err: any, result?: T) => void) => void): (arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5) => Promise<T>;
 export function promisify(thisArg: any, func: (arg1: any, arg2: any, arg3: any, arg4: any, arg5: any, arg6: any) => void): (arg1: any, arg2: any, arg3: any, arg4: any, arg5: any, arg6: any) => Promise<any> {
   return function(...args: any[]): Promise<any> {
     return new Promise<any>((res, rej) => {

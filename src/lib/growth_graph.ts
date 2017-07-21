@@ -5,7 +5,8 @@ export const enum NodeFlag {
   Growing = 1 << 30,
   New = 1 << 29,
   // Maximum value of data in the 32-bit field.
-  DataMask = ~(NodeFlag.VisitBit | NodeFlag.Growing | NodeFlag.New)
+  DataMask = ~(NodeFlag.VisitBit | NodeFlag.Growing | NodeFlag.New),
+  SignMask = 0x10000000
 }
 
 export type Edge = NamedEdge | IndexEdge | ClosureEdge;
@@ -136,10 +137,10 @@ function MakeEdge(edgeType: SnapshotEdgeType, nameOrIndex: number, toNode: Node,
  * Node class that forms the heap graph.
  */
 export class Node {
-  private _flagsAndType = SnapshotNodeType.Unresolved;
+  private _flagsAndType = SnapshotNodeType.Unresolved | 0;
   public children: Edge[] = null;
   public name: string = "(unknown)";
-  public size: number = 0;
+  public size: number = 0 | 0;
 
   public set type(type: SnapshotNodeType) {
     this._flagsAndType &= ~(NodeFlag.DataMask);
@@ -156,6 +157,21 @@ export class Node {
   }
   public hasFlag(flag: NodeFlag): boolean {
     return !!(this._flagsAndType & flag);
+  }
+  /**
+   * Store signed integer in the flag integer.
+   */
+  public set dataValue(data: number) {
+    // Store sign.
+    this._flagsAndType |= (data & NodeFlag.DataMask) | ((data & 0x80000000) >>> 3);
+  }
+  public get dataValue(): number {
+    // Sign extend.
+    let sign = 0;
+    if ((this._flagsAndType & NodeFlag.SignMask) !== 0) {
+      sign = 0xF0000000;
+    }
+    return sign | (this._flagsAndType & NodeFlag.DataMask & ~NodeFlag.SignMask);
   }
   /**
    * Measures the number of properties on the node.
@@ -281,7 +297,7 @@ export class GrowthGraphBuilder {
     //  console.log(`Has ${edgeCount} children!!!`);
     }
     if (type === SnapshotNodeType.Synthetic && nodeObject.name === "(Document DOM trees)") {
-      console.log("Found DOM root with " + edgeCount + " children.");
+      // console.log("Found DOM root with " + edgeCount + " children.");
       if (edgeCount !== 1) {
         throw new Error(`Multiple DOMs: ${edgeCount}`);
       }
@@ -365,7 +381,7 @@ export function MergeGraphs(prevGraph: Node, currentGraph: Node): void {
  * Returns a set of paths to each growing object.
  * @param root The root of the heap.
  */
-export function FindGrowthPaths(root: Node): GrowthPath[][] {
+export function FindGrowingObjects(root: Node): GrowthObject[] {
   let visited = new Set<Edge>();
   let growingPaths = new Map<Node, GrowthPath[]>();
   let frontier: GrowthPath[] = root.children.map((e) => {
@@ -404,8 +420,85 @@ export function FindGrowthPaths(root: Node): GrowthPath[][] {
 
   // Convert from map into array of arrays.
   // We don't need to track the key anymore.
-  const rv: GrowthPath[][] = [];
-  growingPaths.forEach((paths) => rv.push(paths));
+  const rv: GrowthObject[] = [];
+  growingPaths.forEach((paths, node) => rv.push(new GrowthObject(node, paths)));
+  return rv;
+}
+
+/**
+ * Rank the given growing objects by their impact on the heap according to different metrics
+ * @param root The root of the graph.
+ * @param growthObjs The growing objects.
+ * @return The growth paths in growth order, along with their score.
+ */
+export function RankGrowingObjects(root: Node, growthObjs: GrowthObject[]): Map<GrowthObject, [string, number][]> {
+  let growingObjects = new Set<Node>(growthObjs.map((g) => g.node));
+  function getEdgeNode(e: Edge): Node {
+    return e.to;
+  }
+  // DFS traverse from root, marking everything as -1 (except stopping at growth paths).
+  {
+    let stack = [root];
+    let visited = new Set<Node>();
+    const hasntVisited = (n: Node) => !visited.has(n);
+    while (stack.length > 0) {
+      const node = stack.pop();
+      visited.add(node);
+      // Stop at growing objects.
+      if (!growingObjects.has(node)) {
+        node.dataValue = -1;
+        if (node.children) {
+          stack.push(...node.children.filter(shouldTraverse).map(getEdgeNode).filter(hasntVisited));
+        }
+      }
+    }
+  }
+
+  // DFS traverse from each growth path, ignoring things marked as -1, and incrementing from 0.
+  growthObjs.forEach((obj) => {
+    let stack = [obj.node];
+    let visited = new Set<Node>();
+    // -1 nodes have been visited.
+    const hasntVisited = (n: Node) => !visited.has(n) && n.dataValue !== -1;
+    while (stack.length > 0) {
+      const node = stack.pop();
+      visited.add(node);
+      node.dataValue = node.dataValue + 1;
+      if (node.children) {
+        stack.push(...node.children.filter(shouldTraverse).map(getEdgeNode).filter(hasntVisited));
+      }
+    }
+  });
+
+  // DFS traverse from each growth path and sum their sizes.
+  let rv = new Map<GrowthObject, [string, number][]>();
+  growthObjs.forEach((obj) => {
+    const data = new Array<[string, number]>();
+    rv.set(obj, data);
+    let retainedSize = 0;
+    let adjustedRetainedSize = 0;
+    let stack = [obj.node];
+    let visited = new Set<Node>();
+    const hasntVisited = (n: Node) => !visited.has(n) && n.dataValue !== -1;
+    while (stack.length > 0) {
+      const node = stack.pop();
+      visited.add(node);
+      const refCount = node.dataValue;
+      if (node.size < 0) {
+        console.log(`WTF`);
+      }
+      if (refCount === 1) {
+        retainedSize += node.size;
+      }
+      adjustedRetainedSize += node.size / refCount;
+      if (node.children) {
+        stack.push(...node.children.filter(shouldTraverse).map(getEdgeNode).filter(hasntVisited));
+      }
+    }
+    data.push(["Retained Size", retainedSize]);
+    data.push(["Adjusted Retained Size", adjustedRetainedSize]);
+  });
+
   return rv;
 }
 
@@ -465,5 +558,27 @@ export class GrowthPath {
     });
 
     return rv;
+  }
+}
+
+export class GrowthObject {
+  private _paths: GrowthPath[];
+  public readonly node: Node;
+  constructor(node: Node, paths: GrowthPath[]) {
+    this.node = node;
+    this._paths = paths;
+  }
+
+  public addPath(p: GrowthPath) {
+    this._paths.push(p);
+  }
+  public get paths(): GrowthPath[] {
+    return this._paths;
+  }
+  public toJSON(): any {
+    return this._paths;
+  }
+  public get key(): string {
+    return JSON.stringify(this._paths[0]);
   }
 }

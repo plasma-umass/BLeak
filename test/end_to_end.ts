@@ -265,19 +265,15 @@ describe('End-to-end Tests', function() {
       }).then((leaks) => {
         assertEqual(leaks.length > 0, true);
         leaks.forEach((leak) => {
-          const newProps = leak.newProperties;
-          assertEqual(Object.keys(newProps).length > 0, true);
-          for (const propName in newProps) {
-            const stacks = newProps[propName];
-            assertEqual(stacks.length > 0, true);
-            stacks.forEach((s) => {
-              assertEqual(s.length > 0, true);
-              const topFrame = s[0];
-              //console.log(topFrame.toString());
-              assertEqual(topFrame.lineNumber, expected_line);
-              assertEqual(topFrame.fileName.indexOf(`${rootFilename}.js`) !== -1, true);
-            });
-          }
+          const stacks = leak.stacks;
+          assertEqual(stacks.length > 0, true);
+          stacks.forEach((s) => {
+            assertEqual(s.length > 0, true);
+            const topFrame = s[0];
+            //console.log(topFrame.toString());
+            assertEqual(topFrame.lineNumber, expected_line);
+            assertEqual(topFrame.fileName.indexOf(`${rootFilename}.js`) !== -1, true);
+          });
         });
         done();
       }).catch(done);

@@ -220,7 +220,9 @@ interface EventTarget {
       const accessString = getAccessString(p, false);
       const parentAccessString = getAccessString(p, true);
       const roots = getPossibleRoots(p);
-      replaceObjectsWithProxies(roots, p.path[p.path.length - 1].indexOrName, accessString, parentAccessString, map);
+      if (p.path.length > 0) {
+        replaceObjectsWithProxies(roots, p.path[p.path.length - 1].indexOrName, accessString, parentAccessString, map);
+      }
     }
   }
 
@@ -231,18 +233,20 @@ interface EventTarget {
   }
 
   function getStackTraces(): string {
-    const rv: {[p: string]: {[prop: string]: string[]}} = {};
+    const rv: {[p: string]: string[]} = {};
     stackTraces.forEach((value, key) => {
-      const map: {[prop: string]: string[]} = rv[JSON.stringify(key)] = {};
+      const stackSet = new Set<string>();
       value.forEach((stacks, prop) => {
-        const stackArray = new Array<string>(stacks.size);
-        let i = 0;
         stacks.forEach((v) => {
-          stackArray[i] = v;
-          i++;
+          stackSet.add(v);
         });
-        map[prop] = stackArray;
       });
+      const stackArray = new Array(stackSet.size);
+      let i = 0;
+      stackSet.forEach((s) => {
+        stackArray[i++] = s;
+      });
+      rv[JSON.stringify(key)] = stackArray;
     });
     return JSON.stringify(rv);
   }

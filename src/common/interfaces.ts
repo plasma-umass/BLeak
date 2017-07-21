@@ -1,4 +1,5 @@
 import {StackFrame} from 'error-stack-parser';
+import {GrowthObject} from '../lib/growth_graph';
 
 /**
  * Contains information on a source file.
@@ -78,8 +79,9 @@ export interface Step  {
  * (For now.)
  */
 export interface Leak {
-  path: string;
-  newProperties: {[prop: string]: StackFrame[][]};
+  obj: GrowthObject;
+  stacks: StackFrame[][];
+  rankMetrics: {[metric: string]: number};
 }
 
 /**

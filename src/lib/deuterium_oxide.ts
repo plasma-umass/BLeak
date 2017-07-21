@@ -1,7 +1,7 @@
 import {injectIntoHead, exposeClosureState} from './transformations';
 import {IProxy, IBrowserDriver, Leak, ConfigurationFile, HeapSnapshot} from '../common/interfaces';
 import HeapGrowthTracker from './growth_tracker';
-import {GrowthPath} from './growth_graph';
+import {GrowthObject} from './growth_graph';
 import {parse as parseURL} from 'url';
 import {StackFrame} from 'error-stack-parser';
 import StackFrameConverter from './stack_frame_converter';
@@ -66,7 +66,7 @@ window.DeuteriumConfig = {};
   }
 
   function waitUntilTrue(i: number, prop: string): PromiseLike<void> {
-    return driver.runCode(`DeuteriumConfig.${prop}[${i}].check()`).then((success) => {
+    return <any> driver.runCode(`DeuteriumConfig.${prop}[${i}].check()`).then((success) => {
       if (success !== "true") {
         return wait(1000).then(() => waitUntilTrue(i, prop));
       } else {
@@ -102,7 +102,7 @@ window.DeuteriumConfig = {};
   }
 
   let growthTracker = new HeapGrowthTracker();
-  let growthPaths: GrowthPath[][] = null;
+  let growthObjects: GrowthObject[] = null;
   function processSnapshot(snapshot: HeapSnapshot): PromiseLike<void> {
     return new Promise<void>((res, rej) => {
       growthTracker.addSnapshot(snapshot);
@@ -114,15 +114,15 @@ window.DeuteriumConfig = {};
    * Instruments the objects at the growth paths so they record stack traces whenever they expand.
    * @param ps
    */
-  function instrumentGrowthPaths(ps: GrowthPath[][]): PromiseLike<any> {
+  function instrumentGrowingObjects(ps: GrowthObject[]): PromiseLike<any> {
     return driver.runCode(`window.$$instrumentPaths(${JSON.stringify(ps)})`);
   }
 
   /**
    * Returns all of the stack traces associated with growing objects.
    */
-  function getGrowthStacks(): PromiseLike<{[p: string]: {[prop: string]: StackFrame[][]}}> {
-    return driver.runCode(`window.$$getStackTraces()`).then((data) => JSON.parse(data)).then((data) => StackFrameConverter.ConvertGrowthStacks(proxy, data));
+  function getGrowthStacks(): PromiseLike<{[p: string]: StackFrame[][]}> {
+    return <any> driver.runCode(`window.$$getStackTraces()`).then((data) => JSON.parse(data)).then((data) => StackFrameConverter.ConvertGrowthStacks(proxy, data));
   }
 
   return driver.navigateTo(config.url).then(() => {
@@ -136,14 +136,12 @@ window.DeuteriumConfig = {};
     }
     // Instrument growing paths.
     return promise.then(() => {
-      growthPaths = growthTracker.getGrowthPaths();
-      console.log(`Growing paths:\n${growthPaths.map((gp) => JSON.stringify(gp)).join("\n")}`);
-      // No more need for the growth tracker!
-      growthTracker = null;
+      growthObjects = growthTracker.getGrowingObjects();
+      console.log(`Growing paths:\n${growthObjects.map((gp) => JSON.stringify(gp)).join("\n")}`);
     }).then(() => {
       // We now have all needed closure modifications ready.
       // Run once.
-      if (growthPaths.length > 0) {
+      if (growthObjects.length > 0) {
         console.log("Going to diagnose now...");
         // Flip on JS instrumentation.
         diagnosing = true;
@@ -153,7 +151,7 @@ window.DeuteriumConfig = {};
           .then(() => {
             console.log("Instrumenting growth paths...");
             // Instrument objects to push information to global array.
-            return instrumentGrowthPaths(growthPaths);
+            return instrumentGrowingObjects(growthObjects);
           })
           // Measure growth during one more loop.
           .then(() => runLoop(false, 'loop', true))
@@ -162,17 +160,25 @@ window.DeuteriumConfig = {};
             return getGrowthStacks().then((growthStacks) => {
               // console.log(`Got growth stacks:\n${JSON.stringify(growthStacks)}`);
               const rv: Leak[] = [];
+              const lookup = new Map<string, GrowthObject>();
+              const ranked = growthTracker.rankGrowingObjects(growthObjects);
+              growthObjects.forEach((g) => lookup.set(g.key, g));
               for (const p in growthStacks) {
+                const obj = lookup.get(p);
+                const rm: {[m: string]: number} = {};
+                ranked.get(obj).forEach((v) => rm[v[0]] = v[1]);
                 rv.push({
-                  path: p,
-                  newProperties: growthStacks[p]
+                  obj: obj,
+                  stacks: growthStacks[p],
+                  rankMetrics: rm
                 });
               }
               return rv;
             });
           });
       } else {
-        return undefined;
+        console.log(`No growth objects found!`);
+        return [];
       }
     });
   });

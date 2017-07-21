@@ -86,9 +86,9 @@
   version "7.0.37"
   resolved "https://registry.yarnpkg.com/@types/node/-/node-7.0.37.tgz#f129fff94d14a60c3d99eadb9fe0c98119e09c8f"
 
-"@types/request@^0.0.47":
-  version "0.0.47"
-  resolved "https://registry.yarnpkg.com/@types/request/-/request-0.0.47.tgz#b8093530603ffd04782bf48e95aba5a25eb4f88b"
+"@types/request@^2.0.0":
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/@types/request/-/request-2.0.0.tgz#7d6fd2a1ef48ad07d0e3333471b8267156d707a4"
   dependencies:
     "@types/form-data" "*"
     "@types/node" "*"
@@ -97,9 +97,9 @@
   version "0.5.0"
   resolved "https://registry.yarnpkg.com/@types/source-map/-/source-map-0.5.0.tgz#dd34bbd8e32fe4e74f2e3d8ac07f8aa5b45a47ac"
 
-"@types/webdriverio@^4.6.1":
-  version "4.8.1"
-  resolved "https://registry.yarnpkg.com/@types/webdriverio/-/webdriverio-4.8.1.tgz#addbce5abf06c0ed3155add975106bb51131ab35"
+"@types/webdriverio@^4.8.2":
+  version "4.8.2"
+  resolved "https://registry.yarnpkg.com/@types/webdriverio/-/webdriverio-4.8.2.tgz#080d5254719cf5d0e43a152b76145a02419f2e62"
   dependencies:
     "@types/node" "*"
 
@@ -2226,9 +2226,9 @@ typedarray@^0.0.6:
   version "0.0.6"
   resolved "https://registry.yarnpkg.com/typedarray/-/typedarray-0.0.6.tgz#867ac74e3864187b1d3d47d996a78ec5c8830777"
 
-typescript@^2.4.1:
-  version "2.4.1"
-  resolved "https://registry.yarnpkg.com/typescript/-/typescript-2.4.1.tgz#c3ccb16ddaa0b2314de031e7e6fee89e5ba346bc"
+typescript@^2.4.2:
+  version "2.4.2"
+  resolved "https://registry.yarnpkg.com/typescript/-/typescript-2.4.2.tgz#f8395f85d459276067c988aa41837a8f82870844"
 
 uglify-js@^2.6:
   version "2.8.29"

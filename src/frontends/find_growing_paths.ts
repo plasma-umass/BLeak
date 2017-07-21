@@ -14,11 +14,13 @@ for (const file of files) {
   console.log(`Processing ${file}...`);
   t.addSnapshot(JSON.parse(readFileSync(file, 'utf8')));
 }
-const growth = t.getGrowthPaths();
+const growth = t.getGrowingObjects();
 console.log(`Found ${growth.length} growing paths.`);
 for (const g of growth) {
   console.log(JSON.stringify(g));
 }
+// For side effects.
+t.rankGrowingObjects(growth);
 
 console.log(`Exploring the heap!`);
 const rl = readline.createInterface({
@@ -65,7 +67,7 @@ function runRound(filter?: string) {
       }
     }
     if (!filter || `${child.indexOrName}`.indexOf(filter) !== -1) {
-      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.hasFlag(NodeFlag.Growing) ? "*" : ""}`, `[Count: ${child.to.numProperties()}]`, `[New? ${child.to.hasFlag(NodeFlag.New) ? "Y" : "N"}]`];
+      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.hasFlag(NodeFlag.Growing) ? "*" : ""}`, `[Count: ${child.to.numProperties()}]`, `[New? ${child.to.hasFlag(NodeFlag.New) ? "Y" : "N"}]`, `[DV: ${child.to.dataValue}]`];
       choices.push(choice);
       for (let j = 0; j < choice.length; j++) {
         if (choice[j].length > sizes[j]) {
