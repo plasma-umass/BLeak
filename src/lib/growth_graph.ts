@@ -138,10 +138,14 @@ function MakeEdge(edgeType: SnapshotEdgeType, nameOrIndex: number, toNode: Node,
  * Node class that forms the heap graph.
  */
 export class Node {
-  private _flagsAndType = SnapshotNodeType.Unresolved | 0;
+  private _flagsAndType: number;
   public children: Edge[] = null;
   public name: string = "(unknown)";
   public size: number = 0 | 0;
+
+  constructor() {
+    this.type = SnapshotNodeType.Unresolved;
+  }
 
   public set type(type: SnapshotNodeType) {
     // Max value of type is 15.
