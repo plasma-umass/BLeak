@@ -2,7 +2,7 @@ import GrowthTracker from '../lib/growth_tracker';
 import {readFileSync} from 'fs';
 import * as readline from 'readline';
 import {SnapshotNodeTypeToString, SnapshotEdgeTypeToString, SnapshotNodeType} from '../common/interfaces';
-import {NodeFlag} from '../lib/growth_graph';
+import {path2string} from '../common/util';
 
 const t = new GrowthTracker();
 const files = process.argv.slice(2);
@@ -15,12 +15,11 @@ for (const file of files) {
   t.addSnapshot(JSON.parse(readFileSync(file, 'utf8')));
 }
 const growth = t.getGrowingObjects();
+const ranks = t.rankGrowingObjects(growth);
 console.log(`Found ${growth.length} growing paths.`);
-for (const g of growth) {
-  console.log(JSON.stringify(g));
-}
-// For side effects.
-t.rankGrowingObjects(growth);
+ranks.forEach((ranks, obj) => {
+  console.log(`${path2string(obj.paths[0].toJSON())} ${ranks.map((v) => `${v[0]}: ${v[1]}`).join(", ")}`);
+});
 
 console.log(`Exploring the heap!`);
 const rl = readline.createInterface({
@@ -66,8 +65,8 @@ function runRound(filter?: string) {
           continue;
       }
     }
-    if (!filter || `${child.indexOrName}`.indexOf(filter) !== -1) {
-      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.hasFlag(NodeFlag.Growing) ? "*" : ""}`, `[Count: ${child.to.numProperties()}]`, `[New? ${child.to.hasFlag(NodeFlag.New) ? "Y" : "N"}]`, `[DV: ${child.to.dataValue}]`];
+    if (!filter || `${child.indexOrName}`.toLowerCase().indexOf(filter) !== -1) {
+      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.growing ? "*" : ""}`, `[Count: ${child.to.numProperties()}]`, `[New? ${child.to.isNew ? "Y" : "N"}]`, `[DV: ${child.to.dataValue}]`];
       choices.push(choice);
       for (let j = 0; j < choice.length; j++) {
         if (choice[j].length > sizes[j]) {

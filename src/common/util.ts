@@ -25,3 +25,30 @@ export function promisify(thisArg: any, func: (arg1: any, arg2: any, arg3: any, 
     });
   };
 }
+
+export function path2string(p: SerializeableGCPath): string {
+  let rv = "";
+  switch (p.root.type) {
+    case RootType.DOM:
+      rv = `<${p.root.elementType}>`;
+      break;
+    case RootType.GLOBAL:
+      rv = `window`;
+      break;
+  }
+  const path = p.path;
+  for (const l of path) {
+    switch (l.type) {
+      case EdgeType.CLOSURE:
+        rv += `.__closure__(${l.indexOrName})`;
+        break;
+      case EdgeType.INDEX:
+        rv += `['${l.indexOrName}']`;
+        break;
+      case EdgeType.NAMED:
+        rv += `.${l.indexOrName}`;
+        break;
+    }
+  }
+  return rv;
+}

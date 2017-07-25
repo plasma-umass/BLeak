@@ -4,9 +4,10 @@ export const enum NodeFlag {
   VisitBit = 1 << 31,
   Growing = 1 << 30,
   New = 1 << 29,
+  TypeMask = 0xF000000,
   // Maximum value of data in the 32-bit field.
-  DataMask = ~(NodeFlag.VisitBit | NodeFlag.Growing | NodeFlag.New),
-  SignMask = 0x10000000
+  DataMask = 0xFFFFFF,
+  SignMask = 0x800000
 }
 
 export type Edge = NamedEdge | IndexEdge | ClosureEdge;
@@ -143,35 +144,69 @@ export class Node {
   public size: number = 0 | 0;
 
   public set type(type: SnapshotNodeType) {
-    this._flagsAndType &= ~(NodeFlag.DataMask);
-    this._flagsAndType |= type;
+    // Max value of type is 15.
+    const modType = type & 0xF;
+    // Reset type.
+    this._flagsAndType &= ~(NodeFlag.TypeMask)
+    this._flagsAndType |= (modType << 24);
   }
   public get type(): SnapshotNodeType {
-    return this._flagsAndType & NodeFlag.DataMask;
+    return (this._flagsAndType & NodeFlag.TypeMask) >> 24;
   }
-  public setFlag(flag: NodeFlag): void {
-    this._flagsAndType |= flag;
-  }
-  public unsetFlag(flag: NodeFlag): void {
-    this._flagsAndType &= ~flag;
-  }
-  public hasFlag(flag: NodeFlag): boolean {
-    return !!(this._flagsAndType & flag);
-  }
+
   /**
    * Store signed integer in the flag integer.
    */
   public set dataValue(data: number) {
-    // Store sign.
-    this._flagsAndType |= (data & NodeFlag.DataMask) | ((data & 0x80000000) >>> 3);
+    // Clear data field.
+    this._flagsAndType &= ~(NodeFlag.DataMask);
+    // Reset and store mask.
+    this._flagsAndType |= (data & NodeFlag.DataMask) | ((data & 0x80000000) >>> 8);
   }
+
   public get dataValue(): number {
     // Sign extend.
     let sign = 0;
     if ((this._flagsAndType & NodeFlag.SignMask) !== 0) {
-      sign = 0xF0000000;
+      sign = 0xFF000000;
     }
-    return sign | (this._flagsAndType & NodeFlag.DataMask & ~NodeFlag.SignMask);
+    return sign | (this._flagsAndType & NodeFlag.DataMask);
+  }
+
+  public get isNew(): boolean {
+    return this._hasFlag(NodeFlag.New);
+  }
+
+  public set isNew(v: boolean) {
+    this._setFlag(NodeFlag.New, v);
+  }
+
+  public get growing(): boolean {
+    return this._hasFlag(NodeFlag.Growing);
+  }
+
+  public set growing(v: boolean) {
+    this._setFlag(NodeFlag.Growing, v);
+  }
+
+  public get visited(): boolean {
+    return this._hasFlag(NodeFlag.VisitBit);
+  }
+
+  public set visited(v: boolean) {
+    this._setFlag(NodeFlag.VisitBit, v);
+  }
+
+  private _setFlag(flag: NodeFlag, enable: boolean): void {
+    if (enable) {
+      this._flagsAndType |= flag;
+    } else {
+      this._flagsAndType &= ~flag;
+    }
+  }
+
+  private _hasFlag(flag: NodeFlag): boolean {
+    return !!(this._flagsAndType & flag);
   }
   /**
    * Measures the number of properties on the node.
@@ -229,13 +264,13 @@ export class Node {
   }
   public toString(): string {
     let rv: string[] = [];
-    if (this.hasFlag(NodeFlag.VisitBit)) {
+    if (this.visited) {
       rv.push("[V]");
     }
-    if (this.hasFlag(NodeFlag.New)) {
+    if (this.isNew) {
       rv.push("New");
     }
-    if (this.hasFlag(NodeFlag.Growing)) {
+    if (this.growing) {
       rv.push("Growing");
     }
     if (this.children) {
@@ -265,7 +300,7 @@ export class GrowthGraphBuilder {
     const node = this._nodeMap.get(id);
     if (!node) {
       const node = new Node();
-      node.setFlag(NodeFlag.New);
+      node.isNew = true;
       this._nodeMap.set(id, node);
       return node;
     }
@@ -334,20 +369,19 @@ export function MergeGraphs(prevGraph: Node, currentGraph: Node): void {
     const current = queue.pop();
     const prev = queue.pop();
 
-    const visitBit = current.hasFlag(NodeFlag.VisitBit);
-    if (!visitBit) {
-      current.setFlag(NodeFlag.VisitBit);
+    if (!current.visited) {
+      current.visited = true;
       // `current` has an analogue in the previous snapshot, so it is no longer 'new'.
-      current.unsetFlag(NodeFlag.New);
+      current.isNew = false;
 
       //console.log(`${prev} -> ${current}`);
 
       // Nodes are either 'New', 'Growing', or 'Not Growing'.
       // Nodes begin as 'New', and transition to 'Growing' or 'Not Growing' after a snapshot.
       // So if a node is neither new nor consistently growing, we don't care about it.
-      if ((prev.hasFlag(NodeFlag.New) || prev.hasFlag(NodeFlag.Growing)) && prev.numProperties() < current.numProperties()) {
+      if ((prev.isNew || prev.growing) && prev.numProperties() < current.numProperties()) {
       //current.children && ((prev.children === null && current.children.length > 0) || (prev.children && prev.children.length < current.children.length))) {
-        current.setFlag(NodeFlag.Growing);
+        current.growing = true;
       }
 
       // Visit shared children. New children are ignored, and remain in the 'new' state.
@@ -392,7 +426,7 @@ export function FindGrowingObjects(root: Node): GrowthObject[] {
   while (frontier.length > 0) {
     const path = frontier.shift();
     const node = path.end();
-    if (node.hasFlag(NodeFlag.Growing)) {
+    if (node.growing) {
       if (!growingPaths.has(node)) {
         growingPaths.set(node, []);
       }

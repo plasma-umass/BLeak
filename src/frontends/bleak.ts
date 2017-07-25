@@ -1,8 +1,10 @@
-import {readFileSync, openSync, writeSync, closeSync} from 'fs';
+import {readFileSync, openSync, writeSync, closeSync, writeFileSync} from 'fs';
+import {extname} from 'path';
 import FindLeaks from '../lib/deuterium_oxide';
 import Proxy from '../proxy/proxy';
 import ChromeDriver from '../webdriver/chrome_driver';
 import {Leak} from '../common/interfaces';
+import {path2string} from '../common/util';
 const PROXY_PORT = 5554;
 const CHROME_DRIVER_PORT = 4444;
 
@@ -17,33 +19,6 @@ const outFile = openSync(outFileName, "w");
 function LOG(str: string): void {
   console.log(str);
   writeSync(outFile, str + "\n");
-}
-
-function path2string(p: SerializeableGCPath): string {
-  let rv = "";
-  switch (p.root.type) {
-    case RootType.DOM:
-      rv = `<${p.root.elementType}>`;
-      break;
-    case RootType.GLOBAL:
-      rv = `window`;
-      break;
-  }
-  const path = p.path;
-  for (const l of path) {
-    switch (l.type) {
-      case EdgeType.CLOSURE:
-        rv += `.__closure__(${l.indexOrName})`;
-        break;
-      case EdgeType.INDEX:
-        rv += `['${l.indexOrName}']`;
-        break;
-      case EdgeType.NAMED:
-        rv += `.${l.indexOrName}`;
-        break;
-    }
-  }
-  return rv;
 }
 
 /**
@@ -88,7 +63,14 @@ Proxy.listen(PROXY_PORT)
   })
   .then((driver) => {
     driverGlobal = driver;
-    return FindLeaks(configFileSource, proxyGlobal, driver);
+    let i = 0;
+    let base = outFileName.slice(0, -1 * extname(outFileName).length);
+    return FindLeaks(configFileSource, proxyGlobal, driver, (ss) => {
+      const p = `${base}${i}.heapsnapshot`;
+      console.log(`Writing ${p}...`);
+      writeFileSync(p, Buffer.from(JSON.stringify(ss), 'utf8'));
+      i++;
+    });
   })
   .then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => leaks))
   .then((leaks) => {
