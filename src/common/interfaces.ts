@@ -47,6 +47,8 @@ export interface IBrowserDriver {
  * A Deuterium Oxide configuration file.
  */
 export interface ConfigurationFile {
+  // Number of iterations to do
+  iterations?: number;
   // URL to web page to check for memory leaks.
   url: string;
   // (Optional) Globs for script files that should be *black boxed* during leak detection.

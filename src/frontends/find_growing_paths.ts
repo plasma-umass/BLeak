@@ -2,7 +2,7 @@ import GrowthTracker from '../lib/growth_tracker';
 import {readFileSync} from 'fs';
 import * as readline from 'readline';
 import {SnapshotNodeTypeToString, SnapshotEdgeTypeToString, SnapshotNodeType} from '../common/interfaces';
-import {path2string} from '../common/util';
+import {path2string, time} from '../common/util';
 
 const t = new GrowthTracker();
 const files = process.argv.slice(2);
@@ -12,13 +12,25 @@ if (files.length === 0) {
 }
 for (const file of files) {
   console.log(`Processing ${file}...`);
-  t.addSnapshot(JSON.parse(readFileSync(file, 'utf8')));
+  time('Add Snapshot', () => t.addSnapshot(JSON.parse(readFileSync(file, 'utf8'))));
 }
-const growth = t.getGrowingObjects();
-const ranks = t.rankGrowingObjects(growth);
+
+const growth = time('Get Growing Objects', () => t.getGrowingObjects());
+const ranks = time('Rank Growing Objects', () => t.rankGrowingObjects(growth));
 console.log(`Found ${growth.length} growing paths.`);
+console.log(``);
+console.log(`Report`);
+console.log(`======`);
+console.log(``);
 ranks.forEach((ranks, obj) => {
-  console.log(`${path2string(obj.paths[0].toJSON())} ${ranks.map((v) => `${v[0]}: ${v[1]}`).join(", ")}`);
+  console.log(`* ${ranks.map((v) => `${v[0]}: ${v[1]}`).join(", ")}`);
+  console.log(``)
+  obj.paths.slice(0, 5).forEach((p, i) => {
+    console.log(`   * ${path2string(p.toJSON(), true)}`);
+  });
+  if (obj.paths.length > 5) {
+    console.log(`   * (${obj.paths.length - 5} more...)`);
+  }
 });
 
 console.log(`Exploring the heap!`);
@@ -66,7 +78,7 @@ function runRound(filter?: string) {
       }
     }
     if (!filter || `${child.indexOrName}`.toLowerCase().indexOf(filter) !== -1) {
-      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.growing ? "*" : ""}`, `[Count: ${child.to.numProperties()}]`, `[New? ${child.to.isNew ? "Y" : "N"}]`, `[DV: ${child.to.dataValue}]`];
+      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.growing ? "*" : ""}`, `[Count: ${child.to.numProperties()}]`, `[New? ${child.to.isNew ? "Y" : "N"}]`, `[DV: ${child.to.leakReferences}]`];
       choices.push(choice);
       for (let j = 0; j < choice.length; j++) {
         if (choice[j].length > sizes[j]) {

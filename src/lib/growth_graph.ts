@@ -5,9 +5,8 @@ export const enum NodeFlag {
   Growing = 1 << 30,
   New = 1 << 29,
   TypeMask = 0xF000000,
-  // Maximum value of data in the 32-bit field.
-  DataMask = 0xFFFFFF,
-  SignMask = 0x800000
+  LeakReferenceMask = 0xFFF,
+  LastVisitMask = 0xFFF000
 }
 
 export type Edge = NamedEdge | IndexEdge | ClosureEdge;
@@ -58,11 +57,24 @@ function serializeEdge(e: Edge): SerializeableEdge {
 export class NamedEdge {
   public readonly indexOrName: string;
   public to: Node;
-  public snapshotType: SnapshotEdgeType;
+  public data: number;
   constructor(name: string, to: Node, type: SnapshotEdgeType) {
     this.indexOrName = name;
     this.to = to;
-    this.snapshotType = type;
+    this.data = type;
+  }
+  public get snapshotType(): SnapshotEdgeType {
+    return this.data & 0xF;
+  }
+  public get visited(): boolean {
+    return (this.data & 0x80000000) !== 0;
+  }
+  public set visited(v: boolean) {
+    if (v) {
+      this.data |= 0x80000000;
+    } else {
+      this.data &= ~0x80000000;
+    }
   }
   public get type(): EdgeType.NAMED {
     return EdgeType.NAMED;
@@ -78,11 +90,24 @@ export class NamedEdge {
 export class IndexEdge {
   public readonly indexOrName: number;
   public to: Node;
-  public snapshotType: SnapshotEdgeType;
+  public data: number;
   constructor(indexOrName: number, to: Node, type: SnapshotEdgeType) {
     this.indexOrName = indexOrName;
     this.to = to;
-    this.snapshotType = type;
+    this.data = type;
+  }
+  public get snapshotType(): SnapshotEdgeType {
+    return this.data & 0xF;
+  }
+  public get visited(): boolean {
+    return (this.data & 0x80000000) !== 0;
+  }
+  public set visited(v: boolean) {
+    if (v) {
+      this.data |= 0x80000000;
+    } else {
+      this.data &= ~0x80000000;
+    }
   }
   public get type(): EdgeType.INDEX {
     return EdgeType.INDEX;
@@ -100,11 +125,24 @@ export class IndexEdge {
 export class ClosureEdge {
   public readonly indexOrName: string;
   public to: Node;
-  public snapshotType: SnapshotEdgeType;
+  public data: SnapshotEdgeType;
   constructor(name: string, to: Node, type: SnapshotEdgeType) {
     this.indexOrName = name;
     this.to = to;
-    this.snapshotType = type;
+    this.data = type;
+  }
+  public get snapshotType(): SnapshotEdgeType {
+    return this.data & 0xF;
+  }
+  public get visited(): boolean {
+    return (this.data & 0x80000000) !== 0;
+  }
+  public set visited(v: boolean) {
+    if (v) {
+      this.data |= 0x80000000;
+    } else {
+      this.data &= ~0x80000000;
+    }
   }
   public get type(): EdgeType.CLOSURE {
     return EdgeType.CLOSURE;
@@ -138,7 +176,7 @@ function MakeEdge(edgeType: SnapshotEdgeType, nameOrIndex: number, toNode: Node,
  * Node class that forms the heap graph.
  */
 export class Node {
-  private _flagsAndType: number;
+  private _flagsAndType: number = 0 | 0;
   public children: Edge[] = null;
   public name: string = "(unknown)";
   public size: number = 0 | 0;
@@ -159,22 +197,27 @@ export class Node {
   }
 
   /**
-   * Store signed integer in the flag integer.
+   * The number of leaks that reference this node. Unsigned.
    */
-  public set dataValue(data: number) {
+  public set leakReferences(data: number) {
     // Clear data field.
-    this._flagsAndType &= ~(NodeFlag.DataMask);
+    this._flagsAndType &= ~(NodeFlag.LeakReferenceMask);
     // Reset and store mask.
-    this._flagsAndType |= (data & NodeFlag.DataMask) | ((data & 0x80000000) >>> 8);
+    this._flagsAndType |= data & NodeFlag.LeakReferenceMask;
   }
 
-  public get dataValue(): number {
-    // Sign extend.
-    let sign = 0;
-    if ((this._flagsAndType & NodeFlag.SignMask) !== 0) {
-      sign = 0xFF000000;
-    }
-    return sign | (this._flagsAndType & NodeFlag.DataMask);
+  public get leakReferences(): number {
+    return this._flagsAndType & NodeFlag.LeakReferenceMask;
+  }
+
+  public get lastVisit(): number {
+    return (this._flagsAndType & NodeFlag.LastVisitMask) >> 12;
+  }
+
+  public set lastVisit(data: number) {
+    // Clear last visit field.
+    this._flagsAndType &= ~NodeFlag.LastVisitMask;
+    this._flagsAndType |= ((data & 0xFFF) << 12);
   }
 
   public get isNew(): boolean {
@@ -420,11 +463,11 @@ export function MergeGraphs(prevGraph: Node, currentGraph: Node): void {
  * @param root The root of the heap.
  */
 export function FindGrowingObjects(root: Node): GrowthObject[] {
-  let visited = new Set<Edge>();
+  const visitBit = !root.children[0].visited;
   let growingPaths = new Map<Node, GrowthPath[]>();
   let frontier: GrowthPath[] = root.children.map((e) => {
-    visited.add(e);
-    return new GrowthPath([e]);
+    e.visited = visitBit;
+    return new GrowthPath(e, null);
   });
   let nextFrontier: GrowthPath[] = [];
   while (frontier.length > 0) {
@@ -436,13 +479,13 @@ export function FindGrowingObjects(root: Node): GrowthObject[] {
       }
       growingPaths.get(node).push(path);
     }
-    // node.setFlag(NodeFlag.New);
+
     const children = node.children;
     if (children) {
       for (const child of children) {
-        if (!visited.has(child)) {
+        if (child.visited !== visitBit) {
           if (shouldTraverse(child)) {
-            visited.add(child);
+            child.visited = visitBit;
             nextFrontier.push(path.addEdge(child));
           }
         }
@@ -470,21 +513,21 @@ export function FindGrowingObjects(root: Node): GrowthObject[] {
  * @return The growth paths in growth order, along with their score.
  */
 export function RankGrowingObjects(root: Node, growthObjs: GrowthObject[]): Map<GrowthObject, [string, number][]> {
+  console.log("Ranking...");
   let growingObjects = new Set<Node>(growthObjs.map((g) => g.node));
   function getEdgeNode(e: Edge): Node {
     return e.to;
   }
-  // DFS traverse from root, marking everything as -1 (except stopping at growth paths).
+  const visitBit = !root.visited;
+  // DFS traverse from root, marking things as visited (except stopping at growth paths).
   {
     let stack = [root];
-    let visited = new Set<Node>();
-    const hasntVisited = (n: Node) => !visited.has(n);
+    const hasntVisited = (n: Node) => n.visited !== visitBit;
     while (stack.length > 0) {
       const node = stack.pop();
-      visited.add(node);
+      node.visited = visitBit;
       // Stop at growing objects.
       if (!growingObjects.has(node)) {
-        node.dataValue = -1;
         if (node.children) {
           stack.push(...node.children.filter(shouldTraverse).map(getEdgeNode).filter(hasntVisited));
         }
@@ -492,16 +535,15 @@ export function RankGrowingObjects(root: Node, growthObjs: GrowthObject[]): Map<
     }
   }
 
-  // DFS traverse from each growth path, ignoring things marked as -1, and incrementing from 0.
-  growthObjs.forEach((obj) => {
+  // DFS traverse from each growth path, ignoring things visited previously, and incrementing from 0.
+  growthObjs.forEach((obj, i) => {
     let stack = [obj.node];
-    let visited = new Set<Node>();
-    // -1 nodes have been visited.
-    const hasntVisited = (n: Node) => !visited.has(n) && n.dataValue !== -1;
+    const visitNum = i + 1;
+    const hasntVisited = (n: Node) => n.lastVisit !== visitNum && n.visited !== visitBit;
     while (stack.length > 0) {
       const node = stack.pop();
-      visited.add(node);
-      node.dataValue = node.dataValue + 1;
+      node.lastVisit = visitNum;
+      node.leakReferences = node.leakReferences + 1;
       if (node.children) {
         stack.push(...node.children.filter(shouldTraverse).map(getEdgeNode).filter(hasntVisited));
       }
@@ -510,18 +552,18 @@ export function RankGrowingObjects(root: Node, growthObjs: GrowthObject[]): Map<
 
   // DFS traverse from each growth path and sum their sizes.
   let rv = new Map<GrowthObject, [string, number][]>();
-  growthObjs.forEach((obj) => {
+  growthObjs.forEach((obj, i) => {
     const data = new Array<[string, number]>();
     rv.set(obj, data);
     let retainedSize = 0;
     let adjustedRetainedSize = 0;
     let stack = [obj.node];
-    let visited = new Set<Node>();
-    const hasntVisited = (n: Node) => !visited.has(n) && n.dataValue !== -1;
+    const visitNum = growthObjs.length + i + 1;
+    const hasntVisited = (n: Node) => n.lastVisit !== visitNum && n.visited !== visitBit;
     while (stack.length > 0) {
       const node = stack.pop();
-      visited.add(node);
-      const refCount = node.dataValue;
+      node.lastVisit = visitNum;
+      const refCount = node.leakReferences;
       if (node.size < 0) {
         console.log(`WTF`);
       }
@@ -542,24 +584,23 @@ export function RankGrowingObjects(root: Node, growthObjs: GrowthObject[]): Map<
 
 /**
  * A path from GC root to a growing heap object.
+ * Implemented as a linked list for memory efficiency.
  */
 export class GrowthPath {
-  private _path: Edge[];
+  private _previous: GrowthPath | null;
+  private _edge: Edge;
 
-  constructor(path: Edge[]) {
-    this._path = path;
+  constructor(edge: Edge, previous: GrowthPath | null) {
+    this._edge = edge;
+    this._previous = previous;
   }
 
   public addEdge(e: Edge): GrowthPath {
-    return new GrowthPath(this._path.concat(e));
+    return new GrowthPath(e, this);
   }
 
   public end(): Node {
-    const len = this._path.length;
-    if (len > 0) {
-      return this._path[len - 1].to;
-    }
-    return null;
+    return this._edge.to;
   }
 
   /**
@@ -570,7 +611,14 @@ export class GrowthPath {
       root: null,
       path: null
     };
-    let path = this._path;
+    let path: Edge[] = [];
+    {
+      let n: GrowthPath | null = this;
+      while (n !== null) {
+        path.unshift(n._edge);
+        n = n._previous;
+      }
+    }
     const firstLink = path[0];
     if (firstLink.to.name.startsWith("Window ")) {
       rv.root = {

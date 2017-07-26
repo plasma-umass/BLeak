@@ -17,7 +17,7 @@ const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
  */
 export function injectIntoHead(source: string, injection: string): string {
   const headPosition = headRegex.exec(source);
-  let injectionIndex = 0;
+  let injectionIndex = -1;
   if (headPosition) {
     injectionIndex = headPosition.index + headPosition[0].length;
   } else {
@@ -26,7 +26,12 @@ export function injectIntoHead(source: string, injection: string): string {
       injectionIndex = htmlPosition.index + htmlPosition[0].length;
     }
   }
-  return source.slice(0, injectionIndex) + injection + source.slice(injectionIndex);
+  if (injectionIndex !== -1) {
+    return source.slice(0, injectionIndex) + injection + source.slice(injectionIndex);
+  } else {
+    // This might be an HTML fragment, such as an AngularJS template, that lacks a root <html> node.
+    return source;
+  }
 }
 
 const SCOPE_ASSIGNMENT_EXPRESSION_STR = `<%= functionVarName %>.__scope__ = <%= scopeVarName %>;`;

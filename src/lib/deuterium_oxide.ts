@@ -24,7 +24,7 @@ window.DeuteriumConfig = {};
   ${configSource}
 })(window.DeuteriumConfig);
 </script>`;
-  const config: ConfigurationFile = <any> {};
+  const config: ConfigurationFile = <any> { iterations: 4 };
   new Function('exports', configSource)(config);
 
   let diagnosing = false;
@@ -105,7 +105,10 @@ window.DeuteriumConfig = {};
   let growthObjects: GrowthObject[] = null;
   function processSnapshot(snapshot: HeapSnapshot): PromiseLike<void> {
     return new Promise<void>((res, rej) => {
+      const start = Date.now();
       growthTracker.addSnapshot(snapshot);
+      const end = Date.now();
+      console.log(`Adding snapshot took ${(end-start) / 1000} seconds.`);
       res();
     });
   }
@@ -131,12 +134,16 @@ window.DeuteriumConfig = {};
       .then(() => config.setup ? runLoop(false, 'setup', false) : Promise.resolve())
       .then(() => runLoop(true, 'loop', true)
       .then(processSnapshot));
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < config.iterations; i++) {
       promise = promise.then(() => runLoop(true, 'loop', true).then(processSnapshot));
     }
     // Instrument growing paths.
     return promise.then(() => {
+      console.log(`Calculating growing paths...`);
+      const start = Date.now();
       growthObjects = growthTracker.getGrowingObjects();
+      const end = Date.now();
+      console.log(`Growing paths took ${(end - start) / 1000} s to process; number: ${growthObjects.length}`);
       console.log(`Growing paths:\n${growthObjects.map((gp) => JSON.stringify(gp)).join("\n")}`);
     }).then(() => {
       // We now have all needed closure modifications ready.

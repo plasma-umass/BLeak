@@ -1,5 +1,5 @@
-import {readFileSync, openSync, writeSync, closeSync, writeFileSync} from 'fs';
-import {extname} from 'path';
+import {readFileSync, openSync, writeSync, closeSync} from 'fs';
+//import {extname} from 'path';
 import FindLeaks from '../lib/deuterium_oxide';
 import Proxy from '../proxy/proxy';
 import ChromeDriver from '../webdriver/chrome_driver';
@@ -29,7 +29,7 @@ function LOG(str: string): void {
  */
 function printLeak(l: Leak, metric: string, rank: number): void {
   const obj = l.obj;
-  const paths = obj.paths.map((p) => p.toJSON()).map(path2string);
+  const paths = obj.paths.map((p) => p.toJSON()).map((p) => path2string(p, true));
   LOG(`## Object ${rank} [Score: ${l.rankMetrics[metric]}]`);
   LOG(``);
   LOG(`### GC Paths`);
@@ -63,14 +63,14 @@ Proxy.listen(PROXY_PORT)
   })
   .then((driver) => {
     driverGlobal = driver;
-    let i = 0;
-    let base = outFileName.slice(0, -1 * extname(outFileName).length);
-    return FindLeaks(configFileSource, proxyGlobal, driver, (ss) => {
+    //let i = 0;
+    //let base = outFileName.slice(0, -1 * extname(outFileName).length);
+    return FindLeaks(configFileSource, proxyGlobal, driver/*, (ss) => {
       const p = `${base}${i}.heapsnapshot`;
       console.log(`Writing ${p}...`);
       writeFileSync(p, Buffer.from(JSON.stringify(ss), 'utf8'));
       i++;
-    });
+    }*/);
   })
   .then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => leaks))
   .then((leaks) => {

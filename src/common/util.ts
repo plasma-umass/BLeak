@@ -26,11 +26,15 @@ export function promisify(thisArg: any, func: (arg1: any, arg2: any, arg3: any, 
   };
 }
 
-export function path2string(p: SerializeableGCPath): string {
+export function path2string(p: SerializeableGCPath, escapeForMarkdown: boolean = false): string {
   let rv = "";
   switch (p.root.type) {
     case RootType.DOM:
-      rv = `<${p.root.elementType}>`;
+      if (escapeForMarkdown) {
+        rv = `\<${p.root.elementType}\>`;
+      } else {
+        rv = `<${p.root.elementType}>`;
+      }
       break;
     case RootType.GLOBAL:
       rv = `window`;
@@ -40,7 +44,11 @@ export function path2string(p: SerializeableGCPath): string {
   for (const l of path) {
     switch (l.type) {
       case EdgeType.CLOSURE:
-        rv += `.__closure__(${l.indexOrName})`;
+        if (escapeForMarkdown) {
+          rv += `.\_\_closure\_\_(${l.indexOrName})`;
+        } else {
+          rv += `.__closure__(${l.indexOrName})`;
+        }
         break;
       case EdgeType.INDEX:
         rv += `['${l.indexOrName}']`;
@@ -49,6 +57,19 @@ export function path2string(p: SerializeableGCPath): string {
         rv += `.${l.indexOrName}`;
         break;
     }
+  }
+  return rv;
+}
+
+export function time<T>(n: string, action: () => T, log?: (s: string) => void): T {
+  const start = Date.now();
+  const rv = action();
+  const end = Date.now();
+  const str = `Time to run ${n}: ${(end - start) / 1000} seconds.`;
+  if (log) {
+    log(str);
+  } else {
+    console.log(str);
   }
   return rv;
 }
