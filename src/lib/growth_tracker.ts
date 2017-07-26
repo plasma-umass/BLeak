@@ -81,6 +81,7 @@ export default class HeapGrowthTracker {
     const edgeTypeOffset = edgeFields.indexOf("type");
     const edgeNameOrIndexOffset = edgeFields.indexOf("name_or_index");
     const edgeToNodeOffset = edgeFields.indexOf("to_node");
+    console.log(`[Nodes: ${numNodes}, Edges: ${numEdges}]`);
     //console.log(`Type: ${edgeTypeOffset} NameOrIndex: ${edgeNameOrIndexOffset} ToNode: ${edgeToNodeOffset}`);
 
     // Parse the snapshot into a graph.

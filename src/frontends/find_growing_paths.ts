@@ -24,7 +24,6 @@ console.log(`======`);
 console.log(``);
 ranks.forEach((ranks, obj) => {
   console.log(`* ${ranks.map((v) => `${v[0]}: ${v[1]}`).join(", ")}`);
-  console.log(``)
   obj.paths.slice(0, 5).forEach((p, i) => {
     console.log(`   * ${path2string(p.toJSON(), true)}`);
   });

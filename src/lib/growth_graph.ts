@@ -457,41 +457,113 @@ export function MergeGraphs(prevGraph: Node, currentGraph: Node): void {
   }
 }
 
+class LinkedListNode<T> {
+  public readonly v: T;
+  public parent: LinkedListNode<T> | null;
+  public child: LinkedListNode<T> | null = null;
+  constructor(parent: LinkedListNode<T> | null, v: T) {
+    this.parent = parent;
+    this.v = v;
+  }
+}
+
+class LinkedList<T> {
+  private _head: LinkedListNode<T> | null = null;
+  private _tail: LinkedListNode<T> | null = null;
+
+  public push(v: T): void {
+    const node = new LinkedListNode(null, v);
+    if (!this._tail) {
+      // Empty list case.
+      this._head = this._tail = node;
+    } else {
+      const oldT = this._tail;
+      this._tail = node;
+      node.parent = oldT;
+      oldT.child = node;
+    }
+  }
+
+  public pop(): T | undefined {
+    if (!this._tail) {
+      // Empty list case.
+      return undefined;
+    } else {
+      const t = this._tail;
+      const v = t.v;
+      const p = t.parent;
+      this._tail = p;
+      if (p !== null) {
+        p.child = null;
+      }
+      if (this._head === t) {
+        // List of size 1 -> 0 case.
+        this._head = null;
+      }
+      return v;
+    }
+  }
+
+  public shift(): T | undefined {
+    if (!this._head) {
+      // Empty list case.
+      return undefined;
+    } else {
+      const h = this._head;
+      const v = h.v;
+      const c = h.child;
+      this._head = c;
+      if (c) {
+        c.parent = null;
+      }
+      if (this._tail === h) {
+        // List of size 1 -> 0 case.
+        this._tail = null;
+      }
+      return v;
+    }
+  }
+
+  public empty(): boolean {
+    return this._head === null;
+  }
+}
+
 /**
- * Performs a BFS to find the shortest path to growing objects.
- * Returns a set of paths to each growing object.
+ * Performs a BFS to find all paths to growing objects.
  * @param root The root of the heap.
  */
 export function FindGrowingObjects(root: Node): GrowthObject[] {
   const visitBit = !root.children[0].visited;
   let growingPaths = new Map<Node, GrowthPath[]>();
-  let frontier: GrowthPath[] = root.children.map((e) => {
+  let frontier = new LinkedList<GrowthPath>();
+  root.children.forEach((e) => {
     e.visited = visitBit;
-    return new GrowthPath(e, null);
+    frontier.push(new GrowthPath(e, null));
   });
-  let nextFrontier: GrowthPath[] = [];
-  while (frontier.length > 0) {
+  let nextFrontier = new LinkedList<GrowthPath>();
+  while (!frontier.empty()) {
     const path = frontier.shift();
     const node = path.end();
     if (node.growing) {
-      if (!growingPaths.has(node)) {
-        growingPaths.set(node, []);
+      let gps = growingPaths.get(node);
+      if (!gps) {
+        gps = [];
+        growingPaths.set(node, gps);
       }
-      growingPaths.get(node).push(path);
+      gps.push(path);
     }
 
     const children = node.children;
     if (children) {
       for (const child of children) {
-        if (child.visited !== visitBit) {
-          if (shouldTraverse(child)) {
-            child.visited = visitBit;
-            nextFrontier.push(path.addEdge(child));
-          }
+        if (child.visited !== visitBit && shouldTraverse(child)) {
+          child.visited = visitBit;
+          nextFrontier.push(path.addEdge(child));
         }
       }
     }
-    if (frontier.length === 0) {
+    if (frontier.empty()) {
       const temp = frontier;
       // Swap buffers; go one deeper.
       frontier = nextFrontier;
@@ -513,7 +585,6 @@ export function FindGrowingObjects(root: Node): GrowthObject[] {
  * @return The growth paths in growth order, along with their score.
  */
 export function RankGrowingObjects(root: Node, growthObjs: GrowthObject[]): Map<GrowthObject, [string, number][]> {
-  console.log("Ranking...");
   let growingObjects = new Set<Node>(growthObjs.map((g) => g.node));
   function getEdgeNode(e: Edge): Node {
     return e.to;
