@@ -251,6 +251,12 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
   // Pass 1: Build up scope information.
   rewriteJavaScript(ast, {
     enter: function(node, parent) {
+      // Workaround for Esprima bug
+      // https://github.com/jquery/esprima/issues/1844
+      if (node.loc && node.loc.start.column < 0) {
+        node.loc.start.column = 0;
+      }
+
       switch(node.type) {
         case 'VariableDeclaration': {
           const decls = node.declarations;

@@ -33,13 +33,16 @@ window.DeuteriumConfig = {};
     if (mime.indexOf(";") !== -1) {
       mime = mime.slice(0, mime.indexOf(";"));
     }
+    console.log(`${f.url}: ${mime}`);
     switch (mime) {
       case 'text/html':
         f.contents = injectIntoHead(f.contents, `${AGENT_INJECT}${CONFIG_INJECT}`);
         break;
       case 'text/javascript':
+      case 'application/javascript':
         if (diagnosing) {
           const url = parseURL(f.url);
+          console.log(`Rewriting ${f.url}...`);
           f.contents = exposeClosureState(url.path, f.contents, false);
         }
         break;

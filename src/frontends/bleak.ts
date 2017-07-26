@@ -72,7 +72,7 @@ Proxy.listen(PROXY_PORT)
       i++;
     }*/);
   })
-  .then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => leaks))
+  //.then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => leaks))
   .then((leaks) => {
   if (leaks.length === 0) {
     LOG(`No leaks found.`);

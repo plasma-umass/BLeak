@@ -182,25 +182,29 @@ interface EventTarget {
   }
 
   function replaceObjectsWithProxies(roots: any[], propName: string | number, accessStr: string, parentAccessStr: string, map: Map<string | number | symbol, Set<string>>): void {
-    const replaceFcn = new Function("root", "getProxy", "map", "updateMapForChangedProps", `try {
-      var obj = ${accessStr};
-      var proxy = getProxy(obj, map);
-      var parent = ${parentAccessStr};
-      Object.defineProperty(parent, "${propName}", {
-        get: function() {
-          return proxy;
-        },
-        set: function(val) {
-          proxy = getProxy(val, map);
-          updateMapForChangedProps(map, obj, val);
-          obj = val;
-          return true;
-        }
-      });
-    } catch (e) {
+    try {
+      const replaceFcn = new Function("root", "getProxy", "map", "updateMapForChangedProps", `try {
+        var obj = ${accessStr};
+        var proxy = getProxy(obj, map);
+        var parent = ${parentAccessStr};
+        Object.defineProperty(parent, "${propName}", {
+          get: function() {
+            return proxy;
+          },
+          set: function(val) {
+            proxy = getProxy(val, map);
+            updateMapForChangedProps(map, obj, val);
+            obj = val;
+            return true;
+          }
+        });
+      } catch (e) {
 
-    }`);
-    roots.forEach((r) => replaceFcn(r, getProxy, map, updateMapForChangedProps));
+      }`);
+      roots.forEach((r) => replaceFcn(r, getProxy, map, updateMapForChangedProps));
+    } catch (e) {
+      throw e;
+    }
   }
 
   const secretStackMapProperty = "$$$stackmap$$$";
