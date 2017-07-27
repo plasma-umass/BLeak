@@ -2,7 +2,7 @@ import {parse as parseJavaScript} from 'esprima';
 import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
-import {BlockStatement, Program, SequenceExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
+import {BlockStatement, Program, SequenceExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
@@ -34,7 +34,7 @@ export function injectIntoHead(source: string, injection: string): string {
   }
 }
 
-const SCOPE_ASSIGNMENT_EXPRESSION_STR = `<%= functionVarName %>.__scope__ = <%= scopeVarName %>;`;
+const SCOPE_ASSIGNMENT_EXPRESSION_STR = `Object.defineProperty(<%= functionVarName %>, '__scope__', { get: function() { return <%= scopeVarName %>; } });`;
 const EXPRESSION_TRANSFORM_TEMPLATE = compile(`(function(){var <%= functionVarName %>=<%= originalFunction %>;${SCOPE_ASSIGNMENT_EXPRESSION_STR}return <%= functionVarName %>;}())`);
 function getExpressionTransform(functionVarName: Identifier | MemberExpression, originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
   let fvn: Identifier;
@@ -91,8 +91,19 @@ function getScopeDefinition(fcn: FunctionDeclaration | FunctionExpression, scope
   return <Statement[]> parseJavaScript(js).body;
 }
 
+const enum VariableType {
+  // Identifier will be moved into scope object.
+  MOVED,
+  // Identifier will not be moved into scope object.
+  UNMOVED,
+  // Identifier is an argument. It can be moved, but must be updated
+  // to maintain the `arguments` object.
+  ARGUMENT,
+  UNKNOWN
+}
+
 class Scope {
-  protected _identifiers = new Map<string, boolean>();
+  protected _identifiers = new Map<string, VariableType>();
   public readonly parent: Scope;
   protected _scopeIdentifier: string = null;
   private _closedOver: boolean = true;
@@ -103,10 +114,24 @@ class Scope {
   /**
    * Add an identifier to the scope.
    * @param identifier The identifier to add to the scope.
-   * @param unmoved If true, the identifier will not be moved into a scope object.
+   * @param type If true, the identifier will not be moved into a scope object.
    */
-  public add(identifier: string, unmoved: boolean): void {
-    this._identifiers.set(identifier, unmoved);
+  public add(identifier: string, type: VariableType): void {
+    this._identifiers.set(identifier, type);
+  }
+
+  /**
+   * Get the type of the given identifier.
+   * @param identifier
+   */
+  public getType(identifier: string): VariableType {
+    if (this._identifiers.has(identifier)) {
+      return this._identifiers.get(identifier);
+    } else if (this.parent) {
+      return this.parent.getType(identifier);
+    } else {
+      return VariableType.UNKNOWN;
+    }
   }
 
   /**
@@ -119,7 +144,7 @@ class Scope {
         return identifier;
       }
       const unmoved = this._identifiers.get(identifier.name);
-      if (unmoved) {
+      if (unmoved === VariableType.UNMOVED) {
         return identifier;
       } else {
         return {
@@ -147,8 +172,8 @@ class Scope {
 
   public getMovedIdentifiers(): string[] {
     const rv = new Array<string>();
-    this._identifiers.forEach((unmoved, identifier) => {
-      if (!unmoved) {
+    this._identifiers.forEach((type, identifier) => {
+      if (type === VariableType.MOVED) {
         rv.push(identifier);
       }
     });
@@ -157,8 +182,18 @@ class Scope {
 
   public getUnmovedIdentifiers(): string[] {
     const rv = new Array<string>();
-    this._identifiers.forEach((unmoved, identifier) => {
-      if (unmoved) {
+    this._identifiers.forEach((type, identifier) => {
+      if (type === VariableType.UNMOVED) {
+        rv.push(identifier);
+      }
+    });
+    return rv;
+  }
+
+  public getArguments(): string[] {
+    const rv = new Array<string>();
+    this._identifiers.forEach((type, identifier) => {
+      if (type === VariableType.ARGUMENT) {
         rv.push(identifier);
       }
     });
@@ -175,7 +210,7 @@ class Scope {
     }
     this._scopeIdentifier = varName;
     // Add self as unmoved identifier.
-    this._identifiers.set(this._scopeIdentifier, true);
+    this._identifiers.set(this._scopeIdentifier, VariableType.UNMOVED);
     allIdentifiers.add(this._scopeIdentifier);
   }
 
@@ -243,7 +278,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
     scopeMap.set(fcn, scope);
     fcn.params.forEach((p) => {
       if (p.type === "Identifier") {
-        scope.add(p.name, false);
+        scope.add(p.name, VariableType.ARGUMENT);
       }
     });
   }
@@ -278,7 +313,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
           decls.forEach((d) => {
             const id = d.id;
             if (id.type === "Identifier") {
-              scope.add(id.name, false);
+              scope.add(id.name, VariableType.MOVED);
             }
           });
           break;
@@ -287,13 +322,23 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
           const name = node.id;
           // Function name
           if (name.type === "Identifier") {
-            scope.add(name.name, true);
+            scope.add(name.name, VariableType.UNMOVED);
           }
           enterFunction(node);
           break;
         }
         case 'FunctionExpression': {
+          const name = node.id;
+          if (name && name.type === "Identifier") {
+            scope.add(name.name, VariableType.UNMOVED);
+          }
           enterFunction(node);
+          break;
+        }
+        case 'CatchClause': {
+          if (node.param.type === "Identifier") {
+            scope.add(node.param.name, VariableType.UNMOVED);
+          }
           break;
         }
       }
@@ -361,15 +406,68 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
       switch (node.type) {
         case 'Identifier': {
           if (!parent || (parent.type !== "FunctionDeclaration" && parent.type !== "FunctionExpression")) {
-            if (parent.type === "MemberExpression") {
-              // Ignore nested identifiers in member expressions.
-              if (node !== parent.object) {
-                return node;
+            switch (parent.type) {
+              case "MemberExpression": {
+                // Ignore nested identifiers in member expressions that aren't computed.
+                if (node === parent.property && !parent.computed) {
+                  return node;
+                }
+                break;
               }
+              case "LabeledStatement":
+              case "ContinueStatement":
+              case "BreakStatement":
+                if (node === parent.label) {
+                  return node;
+                }
+                break;
+              case "CatchClause":
+                return node;
+              case "Property":
+                if (parent.key === node) {
+                  return node;
+                }
+                break;
+              case "CallExpression":
+                if (node === parent.callee) {
+                  // Preserve value of 'this' by doing scope.f || scope.f.
+                  const le: LogicalExpression = {
+                    type: "LogicalExpression",
+                    operator: "||",
+                    left: scope.getReplacement(node),
+                    right: scope.getReplacement(node),
+                    loc: node.loc
+                  };
+                  return le;
+                }
+                break;
             }
             return scope.getReplacement(node);
           }
           return node;
+        }
+        case 'AssignmentExpression': {
+          // Check if LHS is an argument. It has been rewritten to a member expression
+          // if it has.
+          const lhs = node.left;
+          if (lhs.type === "MemberExpression" && lhs.property.type === "Identifier") {
+            const name = lhs.property.name;
+            if (scope.getType(name) === VariableType.ARGUMENT) {
+              // Rewrite RHS to assign to actual argument variable, too.
+              // Works even if RHS is +=, etc.
+              return <AssignmentExpression> {
+                type: "AssignmentExpression",
+                operator: "=",
+                left: {
+                  type: "Identifier",
+                  name: name
+                },
+                right: node,
+                loc: node.loc
+              };
+            }
+          }
+          break;
         }
         case 'VariableDeclaration': {
           let statement = true;
@@ -463,7 +561,12 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
               node.body = currentBlockInsertions.concat(node.body);
             }
             if ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression") && scope.closedOver) {
-              node.body = getScopeDefinition(parent, scope).concat(node.body);
+              const scopeDefinition = getScopeDefinition(parent, scope);
+              if (node.body.length > 0 && node.body[0].type === "ExpressionStatement" && (<any> node.body[0])['directive'] === 'use strict') {
+                node.body = node.body.slice(0, 1).concat(scopeDefinition).concat(node.body.slice(1));
+              } else {
+                node.body = scopeDefinition.concat(node.body);
+              }
             }
           }
           return node;

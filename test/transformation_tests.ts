@@ -157,5 +157,92 @@ describe('Transformations', function() {
       `);
       assertEqual(module.obj.decl(0, [0,1,2]), 3);
     });
+
+    it(`works with catch clauses`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        var err, e;
+        exports.obj = {
+          decl: function() {
+            try { throw new Error("Hello"); } catch (e) { err = e; }
+          }
+        };
+      `);
+      module.obj.decl();
+      assertEqual(module.obj.decl.__scope__['err'].message, "Hello");
+    });
+
+    it(`works with object literals`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        var e = 5;
+        exports.obj = {
+          decl: function() {
+            return { e: e };
+          }
+        };
+      `);
+      assertEqual(module.obj.decl().e, 5);
+    });
+
+    it(`works with computed properties`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        var e = 0;
+        exports.obj = {
+          decl: function() {
+            return arguments[e];
+          }
+        };
+      `);
+      assertEqual(module.obj.decl(100), 100);
+    });
+
+    it(`works with named function expressions`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        var e = 0;
+        exports.obj = {
+          decl: function() {
+            return function e(i) {
+              return i === 0 ? 5 : e(i - 1);
+            };
+          }
+        };
+      `);
+      assertEqual(module.obj.decl()(3), 5);
+    });
+
+    it(`does not change value of this`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        var e = function() { return this; };
+        exports.obj = {
+          decl: function() {
+            return e();
+          }
+        };
+      `);
+      assertEqual(module.obj.decl(), global);
+    });
+
+    it(`keeps strict mode declaration`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        var e = function() { "use strict"; return this; };
+        exports.obj = {
+          decl: function() {
+            return e();
+          }
+        };
+      `);
+      assertEqual(module.obj.decl(), undefined);
+    });
+
+    it(`updates arguments`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        exports.obj = {
+          decl: function(e) {
+            e = 4;
+            return arguments[0];
+          }
+        };
+      `);
+      assertEqual(module.obj.decl(100), 4);
+    });
   });
 });

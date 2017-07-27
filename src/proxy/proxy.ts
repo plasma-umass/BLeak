@@ -76,7 +76,7 @@ export default class Proxy implements IProxy {
           if (mimeType) {
             mimeType = mimeType.toLowerCase();
             // text/javascript or application/javascript
-            if (mimeType.indexOf('text') !== -1 || mimeType.indexOf('application') !== -1) {
+            if (mimeType.indexOf('text') !== -1 || mimeType.indexOf('application/javascript') !== -1) {
               data = Buffer.from(this._requestCb({
                 mimetype: mimeType,
                 url: req.url,

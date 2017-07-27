@@ -141,7 +141,7 @@ interface EventTarget {
             // Capture a stack trace.
             addStackTrace(map, property);
           }
-          return Reflect.set(target, property, value, receiver);
+          return Reflect.set(target, property, value, target);
         },
         get: function(target, property, receiver): any {
           if (property === secretStackMapProperty) {
@@ -149,7 +149,7 @@ interface EventTarget {
           } else if (property === secretIsProxyProperty) {
             return true;
           } else {
-            return Reflect.get(target, property, receiver);
+            return Reflect.get(target, property, target);
           }
         },
         deleteProperty: function(target, property): boolean {
@@ -185,19 +185,21 @@ interface EventTarget {
     try {
       const replaceFcn = new Function("root", "getProxy", "map", "updateMapForChangedProps", `try {
         var obj = ${accessStr};
-        var proxy = getProxy(obj, map);
-        var parent = ${parentAccessStr};
-        Object.defineProperty(parent, "${propName}", {
-          get: function() {
-            return proxy;
-          },
-          set: function(val) {
-            proxy = getProxy(val, map);
-            updateMapForChangedProps(map, obj, val);
-            obj = val;
-            return true;
-          }
-        });
+        if (!(obj instanceof Node)) {
+          var proxy = getProxy(obj, map);
+          var parent = ${parentAccessStr};
+          Object.defineProperty(parent, "${propName}", {
+            get: function() {
+              return proxy;
+            },
+            set: function(val) {
+              proxy = getProxy(val, map);
+              updateMapForChangedProps(map, obj, val);
+              obj = val;
+              return true;
+            }
+          });
+        }
       } catch (e) {
 
       }`);
@@ -452,5 +454,21 @@ interface EventTarget {
     })(Array.prototype.splice);
 
     // TODO: Sort, reverse, ...
+
+    // Deterministic Math.random(), so jQuery variable is deterministic.
+    // From https://gist.github.com/mathiasbynens/5670917
+    Math.random = (function() {
+      let seed = 0x2F6E2B1;
+      return function() {
+        // Robert Jenkins’ 32 bit integer hash function
+        seed = ((seed + 0x7ED55D16) + (seed << 12))  & 0xFFFFFFFF;
+        seed = ((seed ^ 0xC761C23C) ^ (seed >>> 19)) & 0xFFFFFFFF;
+        seed = ((seed + 0x165667B1) + (seed << 5))   & 0xFFFFFFFF;
+        seed = ((seed + 0xD3A2646C) ^ (seed << 9))   & 0xFFFFFFFF;
+        seed = ((seed + 0xFD7046C5) + (seed << 3))   & 0xFFFFFFFF;
+        seed = ((seed ^ 0xB55A4F09) ^ (seed >>> 16)) & 0xFFFFFFFF;
+        return (seed & 0xFFFFFFF) / 0x10000000;
+      };
+    }());
   }
 })();
