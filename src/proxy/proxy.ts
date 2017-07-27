@@ -89,6 +89,9 @@ export default class Proxy implements IProxy {
             res.removeHeader('content-length');
             res.setHeader('content-length', `${data.length}`);
           }
+          res.setHeader('expires', 'Tue, 03 Jul 2001 06:00:00 GMT');
+          res.setHeader('last-modified', `${(new Date()).toUTCString()}`);
+          res.setHeader('cache-control', 'max-age=0, no-cache, must-revalidate, proxy-revalidate');
           if (writeHeadArgs !== null) {
             writeHead.apply(res, writeHeadArgs);
           }

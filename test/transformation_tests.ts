@@ -126,5 +126,36 @@ describe('Transformations', function() {
       assertEqual(module.obj.decl.__scope__['a'], 'hello');
       assertEqual(module.obj.decl2.__scope__['a'], 'hello');
     });
+
+    it(`works with initializer lists in for loops`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        exports.obj = {
+          decl: function(a, b) {
+            for (var i = 0, j = 0; i < b.length; i++) {
+              j++;
+              a += j;
+            }
+            return a;
+          }
+        };
+      `);
+      assertEqual(module.obj.decl(0, [0,1,2]), 6);
+    });
+
+    it(`works with initializers in for of loops`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        exports.obj = {
+          decl: function(a, b) {
+            for (var prop of b) {
+              if (b.hasOwnProperty(prop)) {
+                a += parseInt(prop, 10);
+              }
+            }
+            return a;
+          }
+        };
+      `);
+      assertEqual(module.obj.decl(0, [0,1,2]), 3);
+    });
   });
 });

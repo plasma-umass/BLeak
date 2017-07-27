@@ -2,7 +2,7 @@ import {parse as parseJavaScript} from 'esprima';
 import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
-import {BlockStatement, Program, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
+import {BlockStatement, Program, SequenceExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
@@ -36,9 +36,24 @@ export function injectIntoHead(source: string, injection: string): string {
 
 const SCOPE_ASSIGNMENT_EXPRESSION_STR = `<%= functionVarName %>.__scope__ = <%= scopeVarName %>;`;
 const EXPRESSION_TRANSFORM_TEMPLATE = compile(`(function(){var <%= functionVarName %>=<%= originalFunction %>;${SCOPE_ASSIGNMENT_EXPRESSION_STR}return <%= functionVarName %>;}())`);
-function getExpressionTransform(functionVarName: Identifier, originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
+function getExpressionTransform(functionVarName: Identifier | MemberExpression, originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
+  let fvn: Identifier;
+  if (functionVarName.type === "Identifier") {
+    fvn = functionVarName;
+  } else {
+    // MemberExpression -- it was rewritten to be a scope variable.
+    const p = functionVarName.property;
+    if (p.type === "Identifier") {
+      fvn = p;
+    } else {
+      fvn = {
+        type: "Identifier",
+        name: "__anonymous_function__"
+      };
+    }
+  }
   const prog = EXPRESSION_TRANSFORM_TEMPLATE({
-    functionVarName,
+    functionVarName: fvn,
     originalFunction,
     scopeVarName
   });
@@ -80,7 +95,7 @@ class Scope {
   protected _identifiers = new Map<string, boolean>();
   public readonly parent: Scope;
   protected _scopeIdentifier: string = null;
-  private _closedOver: boolean = false;
+  private _closedOver: boolean = true;
   constructor(parent: Scope) {
     this.parent = parent;
   }
@@ -209,7 +224,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
   let ast = parseJavaScript(source, { loc: true });
   {
     const firstStatement = ast.body[0];
-    if (firstStatement.type === "ExpressionStatement") {
+    if (firstStatement && firstStatement.type === "ExpressionStatement") {
       // Esprima feature.
       if ((<any> firstStatement).directive === "no transform") {
         return source;
@@ -330,6 +345,19 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
       return undefined;
     },
     leave: function(node, parent) {
+      function convertDecl(decl: VariableDeclarator): AssignmentExpression {
+        if (!decl.init) {
+          return <any> decl.id;
+        }
+        return {
+          type: "AssignmentExpression",
+          operator: "=",
+          left: decl.id,
+          right: decl.init,
+          loc: decl.loc
+        };
+      }
+
       switch (node.type) {
         case 'Identifier': {
           if (!parent || (parent.type !== "FunctionDeclaration" && parent.type !== "FunctionExpression")) {
@@ -344,32 +372,61 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
           return node;
         }
         case 'VariableDeclaration': {
-          if (!scope.closedOver) {
-            return node;
+          let statement = true;
+          if (parent) {
+            switch (parent.type) {
+              case 'ForInStatement':
+              case 'ForOfStatement':
+                // for (var i [in/of] b) {}
+                statement = parent.left !== node;
+                break;
+              case 'ForStatement':
+                // for (var i = 3, j = 0; )
+                statement = parent.init !== node;
+                break;
+            }
           }
-          //console.log("Leaving VD");
-          // Remove if no initialization.
-          // If initialized, though, change into an assignment.
-          return <ExpressionStatement> {
-            type: "ExpressionStatement",
-            expression: {
-              type: "SequenceExpression",
-              expressions: node.declarations.map((decl) => {
-                if (!decl.init) {
-                  return null;
-                }
-                return <AssignmentExpression> {
-                  type: "AssignmentExpression",
-                  operator: "=",
-                  left: decl.id,
-                  right: decl.init,
-                  loc: decl.loc
+
+          if (node.declarations.length === 1) {
+            const decl = node.declarations[0];
+            if (!decl.init) {
+              if (statement) {
+                return <ExpressionStatement> {
+                  type: "ExpressionStatement",
+                  expression: decl.id,
+                  loc: node.loc
                 };
-              }).filter((assgn) => assgn !== null),
+              } else {
+                return decl.id;
+              }
+            } else {
+              const converted = convertDecl(decl);
+              if (statement) {
+                return <ExpressionStatement> {
+                  type: "ExpressionStatement",
+                  expression: converted,
+                  loc: node.loc
+                };
+              } else {
+                return converted;
+              }
+            }
+          } else {
+            const se: SequenceExpression = {
+              type: "SequenceExpression",
+              expressions: node.declarations.map(convertDecl),
               loc: node.loc
-            },
-            loc: node.loc
-          };
+            };
+            if (statement) {
+              return <ExpressionStatement> {
+                type: "ExpressionStatement",
+                expression: se,
+                loc: node.loc
+              };
+            } else {
+              return se;
+            }
+          }
         }
         case 'FunctionDeclaration': {
           scope = scope.parent;
@@ -382,7 +439,6 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
         }
         case 'FunctionExpression': {
           scope = scope.parent;
-          //console.log("Leaving FE");
           return getExpressionTransform(node.id || (<any> parent).id || {
             type: "Identifier",
             name: "__anonymous_function__"
@@ -429,7 +485,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
   // console.log("Finished second phase.");
   const converted = <{code: string, map: any}> <any> generateJavaScript(newAst, {
     format: {
-      compact: true
+      compact: false
     },
     sourceMap: filename,
     sourceMapWithCode: true,
