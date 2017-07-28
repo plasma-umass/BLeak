@@ -18,8 +18,9 @@ interface Window {
   $$instrumentPaths(p: SerializeableGCPath[][]): void;
   $$getStackTraces(): string;
   $$addStackTrace(map: Map<string | symbol | number, Set<string>>, property: string | number | symbol): void;
-  $$getProxy(obj: any, map: Map<string | number | symbol, Set<string>>): any;
   $$CREATE_SCOPE_OBJECT$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope;
+  $$$SEQ$$$(a: any, b: any): boolean;
+  $$$EQ$$$(a: any, b: any): boolean;
 }
 
 /**

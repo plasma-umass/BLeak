@@ -5,8 +5,9 @@ import {GrowthObject} from './growth_graph';
 import {parse as parseURL} from 'url';
 import {StackFrame} from 'error-stack-parser';
 import StackFrameConverter from './stack_frame_converter';
+import {readFileSync} from 'fs';
 
-const AGENT_INJECT = `<script type="text/javascript" src="/deuterium_agent.js"></script>`;
+const AGENT_INJECT = `<script type="text/javascript">${readFileSync(require.resolve('./deuterium_agent'), 'utf8')}</script>`;
 
 /**
  * Find leaks in an application.
@@ -163,7 +164,8 @@ window.DeuteriumConfig = {};
             // Instrument objects to push information to global array.
             return instrumentGrowingObjects(growthObjects);
           })
-          // Measure growth during one more loop.
+          // Measure growth during two loops.
+          .then(() => runLoop(false, 'loop', true))
           .then(() => runLoop(false, 'loop', true))
           .then(() => {
             // Fetch array as string.

@@ -2,7 +2,7 @@ import {parse as parseJavaScript} from 'esprima';
 import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
-import {BlockStatement, Program, SequenceExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
+import {BlockStatement, Program, SequenceExpression, BinaryExpression, UnaryExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
@@ -34,7 +34,7 @@ export function injectIntoHead(source: string, injection: string): string {
   }
 }
 
-const SCOPE_ASSIGNMENT_EXPRESSION_STR = `Object.defineProperty(<%= functionVarName %>, '__scope__', { get: function() { return <%= scopeVarName %>; } });`;
+const SCOPE_ASSIGNMENT_EXPRESSION_STR = `Object.defineProperty(<%= functionVarName %>, '__scope__', { get: function() { return <%= scopeVarName %>; }, configurable: true });`;
 const EXPRESSION_TRANSFORM_TEMPLATE = compile(`(function(){var <%= functionVarName %>=<%= originalFunction %>;${SCOPE_ASSIGNMENT_EXPRESSION_STR}return <%= functionVarName %>;}())`);
 function getExpressionTransform(functionVarName: Identifier | MemberExpression, originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
   let fvn: Identifier;
@@ -173,7 +173,7 @@ class Scope {
   public getMovedIdentifiers(): string[] {
     const rv = new Array<string>();
     this._identifiers.forEach((type, identifier) => {
-      if (type === VariableType.MOVED) {
+      if (type === VariableType.MOVED || type === VariableType.ARGUMENT) {
         rv.push(identifier);
       }
     });
@@ -203,7 +203,8 @@ class Scope {
   public finalize(allIdentifiers: Set<string>): void {
     const base = "scope";
     let varName = base;
-    let count = 0;
+    // Randomize
+    let count = Math.floor(99999 * Math.random());
     while (allIdentifiers.has(varName)) {
       varName = `${base}${count}`;
       count++;
@@ -403,6 +404,35 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
         };
       }
 
+      function transform(node: BinaryExpression, op: '===' | '==' | '!==' | '!='): UnaryExpression | CallExpression {
+        const strict = op.length === 3;
+        const not = op[0] === '!';
+        const ce: CallExpression = {
+          type: "CallExpression",
+          callee: {
+            type: "Identifier",
+            name: `$$$${strict ? 'S' : ''}EQ$$$`
+          },
+          arguments: [
+            node.left,
+            node.right
+          ],
+          loc: node.loc
+        };
+        if (not) {
+          const ue: UnaryExpression = {
+            type: "UnaryExpression",
+            operator: "!",
+            argument: ce,
+            loc: node.loc,
+            prefix: true
+          };
+          return ue;
+        } else {
+          return ce;
+        }
+      }
+
       switch (node.type) {
         case 'Identifier': {
           if (!parent || (parent.type !== "FunctionDeclaration" && parent.type !== "FunctionExpression")) {
@@ -570,6 +600,20 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
             }
           }
           return node;
+        case "BinaryExpression":
+          // Rewrite equality checks to call into runtime library.
+          // Facilitates proxy referential transparency.
+          // TODO: instanceof?
+          switch (node.operator) {
+            case '===':
+            case '==':
+            case '!==':
+            case '!=':
+              return transform(node, node.operator);
+            default:
+              break;
+          }
+          break;
       }
       return undefined;
     }
@@ -579,7 +623,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
   if (scope instanceof GlobalScope) {
     //body.unshift.apply(body, scope.getPrelude());
   } else {
-    throw new Error(`Forgot to pop  a scope?`);
+    throw new Error(`Forgot to pop a scope?`);
   }
   if (blockInsertions.length > 0) {
     body.unshift.apply(body, blockInsertions);

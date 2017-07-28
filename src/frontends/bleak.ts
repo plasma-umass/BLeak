@@ -55,6 +55,7 @@ function printLeak(l: Leak, metric: string, rank: number): void {
 
 let proxyGlobal: Proxy = null;
 let driverGlobal: ChromeDriver = null;
+let interval: any = null;
 const configFileSource = readFileSync(configFileName).toString();
 Proxy.listen(PROXY_PORT)
   .then((proxy) => {
@@ -63,6 +64,13 @@ Proxy.listen(PROXY_PORT)
   })
   .then((driver) => {
     driverGlobal = driver;
+    interval = setInterval(function() {
+      driverGlobal.getLogs().then((logs) => {
+        for (const log of logs) {
+          LOG(`[${new Date(log.timestamp * 1000)}] ${log.level} - ${log.message}`);
+        }
+      });
+    }, 100);
     //let i = 0;
     //let base = outFileName.slice(0, -1 * extname(outFileName).length);
     return FindLeaks(configFileSource, proxyGlobal, driver/*, (ss) => {
@@ -72,7 +80,10 @@ Proxy.listen(PROXY_PORT)
       i++;
     }*/);
   })
-  //.then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => leaks))
+  //.then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => {
+  //  clearInterval(interval);
+  //  return leaks;
+  //}))
   .then((leaks) => {
   if (leaks.length === 0) {
     LOG(`No leaks found.`);

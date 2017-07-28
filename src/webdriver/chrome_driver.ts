@@ -1,4 +1,4 @@
-import {remote as remoteBrowser, Client, Options as ClientOptions} from 'webdriverio';
+import {remote as remoteBrowser, Client, Options as ClientOptions, LogEntry} from 'webdriverio';
 import {ChildProcess, spawn} from 'child_process';
 import {parse as parseURL} from 'url';
 import {tmpdir} from 'os';
@@ -36,12 +36,17 @@ function downloadFile(url: string, destDir: string): Promise<string> {
 }
 
 function extractFile(zipPath: string): Promise<string> {
-  let entries: string[] = [];
+  let entries: any[] = [];
   return extractZipPromise(zipPath, {dir: dirname(zipPath), onEntry: (entry) => entries.push(entry)}).then(() => {
     if (entries.length !== 1) {
       throw new Error(`Expected ${zipPath} to have one file inside of it. Instead, it has ${entries.length}??`);
     }
-    return entries[0];
+    const filename = entries[0].fileName;
+    if (Buffer.isBuffer(filename)) {
+      return filename.toString("utf8");
+    } else {
+      return filename;
+    }
   });
 }
 
@@ -238,6 +243,14 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
     return <any> this._client.execute(`:takeHeapSnapshot`).then((result) => {
       return result.value;
     });
+  }
+
+  public debug(): Promise<any> {
+    return <any> this._client.debug();
+  }
+
+  public getLogs(): Promise<LogEntry[]> {
+    return this._client.log(<any> "browser");
   }
 
   public close(): PromiseLike<any> {

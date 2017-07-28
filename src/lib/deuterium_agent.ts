@@ -48,6 +48,48 @@ interface EventTarget {
   }
 
   /**
+   * Reimplementation of == such that Proxy(A) == A.
+   * @param a
+   * @param b
+   */
+  function $$$EQ$$$(a: any, b: any): boolean {
+    if ($$$SEQ$$$(a, b)) {
+      return true;
+    } else {
+      return a == b;
+    }
+  }
+
+  /**
+   * Reimplementation of === such that Proxy(A) === A.
+   * @param a
+   * @param b
+   */
+  function $$$SEQ$$$(a: any, b: any): boolean {
+    if (a === b) {
+      return true;
+    } else if (isProxyable(a) && isProxyable(b)) {
+      return (a.hasOwnProperty('$$$PROXY$$$') && a.$$$PROXY$$$ === b) ||
+        (b.hasOwnProperty("$$$PROXY$$$") && b.$$$PROXY$$$ === a);
+    }
+    return false;
+  }
+
+  /**
+   * Returns whether or not value 'a' could harbor a proxy.
+   * @param a
+   */
+  function isProxyable(a: any): boolean {
+    switch (typeof(a)) {
+      case "object":
+      case "function":
+        return a !== null && !(a instanceof Node);
+      default:
+        return false;
+    }
+  }
+
+  /**
    * Get all of the possible root objects for the given path.
    * @param p
    */
@@ -126,8 +168,11 @@ interface EventTarget {
       map.set(to, map.get(from));
     }
   }
-  function getProxy(obj: any, map: Map<string | number | symbol, Set<string>>): any {
-    if (!obj.$$$PROXY$$$) {
+  function getProxy(accessStr: string, obj: any, map: Map<string | number | symbol, Set<string>>): any {
+    if (!isProxyable(obj)) {
+      console.log(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
+      return obj;
+    } else if (!obj.hasOwnProperty('$$$PROXY$$$')) {
       obj.$$$PROXY$$$ = new Proxy(obj, {
         defineProperty: function(target, property, descriptor): boolean {
           if (!disableProxies) {
@@ -165,6 +210,9 @@ interface EventTarget {
   }
 
   function updateMapForChangedProps(map: Map<string | number | symbol, Set<string>>, oldObj: Object, newObj: Object): void {
+    if (!isProxyable(oldObj) || !isProxyable(newObj)) {
+      return;
+    }
     const oldProps = Object.keys(oldObj);
     const newProps = Object.keys(newObj);
     const oldPropSet = new Set(oldProps);
@@ -179,33 +227,40 @@ interface EventTarget {
         addStackTrace(map, prop);
       }
     });
+
+    if (newObj.hasOwnProperty("$$$PROXY$$$") && newObj.$$$PROXY$$$ !== oldObj.$$$PROXY$$$) {
+      // Merge maps
+      console.warn(`!!!! Need to support merging maps! !!!!`);
+    }
+  }
+
+  function installProxy(accessStr: string, parentAccessStr: string, parent: any, obj: any, map: Map<string | number | symbol, Set<string>>, propName: string | number): void {
+    let hiddenValue = getProxy(accessStr, obj, map);
+    if ((typeof(parent) === "object" || typeof(parent) === "function") && parent !== null) {
+      Object.defineProperty(parent, propName, {
+        get: function() {
+          return hiddenValue;
+        },
+        set: function(val) {
+          hiddenValue = getProxy(accessStr, val, map);
+          updateMapForChangedProps(map, obj, val);
+          obj = val;
+          return true;
+        }
+      });
+    } else {
+      console.log(`[PARENT FAILURE]: Unable to install getter on parent at ${parentAccessStr}.`);
+    }
   }
 
   function replaceObjectsWithProxies(roots: any[], propName: string | number, accessStr: string, parentAccessStr: string, map: Map<string | number | symbol, Set<string>>): void {
     try {
-      const replaceFcn = new Function("root", "getProxy", "map", "updateMapForChangedProps", `try {
-        var obj = ${accessStr};
-        if (!(obj instanceof Node)) {
-          var proxy = getProxy(obj, map);
-          var parent = ${parentAccessStr};
-          Object.defineProperty(parent, "${propName}", {
-            get: function() {
-              return proxy;
-            },
-            set: function(val) {
-              proxy = getProxy(val, map);
-              updateMapForChangedProps(map, obj, val);
-              obj = val;
-              return true;
-            }
-          });
-        }
-      } catch (e) {
-
-      }`);
-      roots.forEach((r) => replaceFcn(r, getProxy, map, updateMapForChangedProps));
+      const getObjFcn: (root: any) => [any, any] = <any> new Function("root", `return [${parentAccessStr}, ${accessStr}];`);
+      roots.map(getObjFcn).forEach((objs) => {
+        installProxy(accessStr, parentAccessStr, objs[0], objs[1], map, propName);
+      });
     } catch (e) {
-      throw e;
+      console.log(`[PROXY REPLACE ERROR] Failed to install proxy at ${accessStr}: ${e}`);
     }
   }
 
@@ -262,8 +317,9 @@ interface EventTarget {
   root.$$instrumentPaths = instrumentPaths;
   root.$$getStackTraces = getStackTraces;
   root.$$addStackTrace = addStackTrace;
-  root.$$getProxy = getProxy;
   root.$$CREATE_SCOPE_OBJECT$$ = $$CREATE_SCOPE_OBJECT$$;
+  root.$$$EQ$$$ = $$$EQ$$$;
+  root.$$$SEQ$$$ = $$$SEQ$$$;
 
   if (typeof(window) !== "undefined") {
     // Disable these in NodeJS.
