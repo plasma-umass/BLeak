@@ -16,7 +16,7 @@ export default class Proxy implements IProxy {
   private _requestCb = (f: SourceFile) => f;
   public readonly port: number;
 
-  private constructor(port: number = 4443) {
+  protected constructor(port: number = 4443) {
     this.port = port;
     this._server = createHTTPServer((req, res) => {
       // get from path
@@ -73,15 +73,20 @@ export default class Proxy implements IProxy {
           }
           let data: Buffer = Buffer.concat(allData);
           let mimeType = res.getHeader('content-type');
+          let statusCode = res.statusCode;
           if (mimeType) {
             mimeType = mimeType.toLowerCase();
             // text/javascript or application/javascript
             if (mimeType.indexOf('text') !== -1 || mimeType.indexOf('application/javascript') !== -1) {
-              data = Buffer.from(this._requestCb({
+              const newFile = this._requestCb({
+                status: res.statusCode,
                 mimetype: mimeType,
                 url: req.url,
                 contents: data.toString()
-              }).contents, "utf8");
+              });
+              data = Buffer.from(newFile.contents, "utf8");
+              res.setHeader('content-type', newFile.mimetype);
+              statusCode = newFile.status;
             }
           }
 
@@ -93,7 +98,9 @@ export default class Proxy implements IProxy {
           res.setHeader('last-modified', `${(new Date()).toUTCString()}`);
           res.setHeader('cache-control', 'max-age=0, no-cache, must-revalidate, proxy-revalidate');
           if (writeHeadArgs !== null) {
-            writeHead.apply(res, writeHeadArgs);
+            writeHead.apply(res, [statusCode].concat(writeHeadArgs.slice(1)));
+          } else {
+            res.statusCode = statusCode;
           }
 
           if (data.length > 0) {

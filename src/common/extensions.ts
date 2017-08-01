@@ -21,6 +21,7 @@ interface Window {
   $$CREATE_SCOPE_OBJECT$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope;
   $$$SEQ$$$(a: any, b: any): boolean;
   $$$EQ$$$(a: any, b: any): boolean;
+  $$$SHOULDFIX$$$(n: number): boolean;
 }
 
 /**

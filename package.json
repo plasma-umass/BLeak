@@ -1,5 +1,5 @@
 {
-  "name": "deuterium-oxide",
+  "name": "bleak-detector",
   "version": "1.0.0",
   "description": "Automatically finds memory leaks in single page web applications.",
   "main": "dist/index.js",

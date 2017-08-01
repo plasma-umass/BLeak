@@ -12,7 +12,7 @@ import {get} from 'request';
 import {createConnection, Socket} from 'net';
 import {IProxy, IBrowserDriver, HeapSnapshot} from '../common/interfaces';
 
-const driverDir = join(`${tmpdir()}`, 'deuterium-oxide');
+const driverDir = join(`${tmpdir()}`, 'bleak');
 const mkdirPromise = promisify(null, mkdir);
 const extractZipPromise = promisify(null, extractZip);
 const locateJavaHomePromise = promisify<IJavaHomeInfo[], ILocateJavaHomeOptions>(null, LocateJavaHome);

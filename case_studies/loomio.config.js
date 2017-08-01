@@ -1,4 +1,5 @@
 exports.url = "http://localhost:3000/dashboard";
+exports.fixedLeaks = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 exports.login = [
   {
     // (Optional) Name for debugging purposes.
@@ -19,7 +20,7 @@ exports.login = [
       emailField.value = 'default@loomio.org';
       // Notify Angular code of change.
       emailField.dispatchEvent(new Event("change"));
-      const submitBtn = document.getElementsByTagName('button')[2];
+      const submitBtn = document.getElementsByTagName('button')[3];
       submitBtn.click();
     }
   },
@@ -27,15 +28,15 @@ exports.login = [
     name: "login-password",
     check: function() {
       const pswdField = document.getElementsByTagName('input')[1];
-      const modalHeader = document.getElementsByTagName('h2')[3];
-      const submitBtn = document.getElementsByTagName('button')[3];
+      const modalHeader = document.getElementsByTagName('h2')[0];
+      const submitBtn = document.getElementsByTagName('button')[4];
       return submitBtn && pswdField && pswdField.name === "password" && modalHeader && modalHeader.innerText === "Welcome back, default@loomio.org!" && submitBtn.innerText === "SIGN IN";
     },
     next: function() {
       const pswdField = document.getElementsByTagName('input')[1];
       pswdField.value = 'f5bc36a8';
       pswdField.dispatchEvent(new Event("change"));
-      const submitBtn = document.getElementsByTagName('button')[3];
+      const submitBtn = document.getElementsByTagName('button')[4];
       submitBtn.click();
     }
   }
@@ -58,7 +59,7 @@ exports.setup = [
 ];
 // Runs your program in a loop. Each step has a "check" function, and a "next" function
 // to transition to the next step in the loop.
-// Deuterium oxide assumes your program is in the first step when it navigates to the URL,
+// BLeak assumes your program is in the first step when it navigates to the URL,
 // and that the last step transitions to the first step.
 exports.loop = [
   {

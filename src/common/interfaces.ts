@@ -5,6 +5,7 @@ import {GrowthObject} from '../lib/growth_graph';
  * Contains information on a source file.
  */
 export interface SourceFile {
+  status: number;
   url: string;
   mimetype: string;
   contents: string;
@@ -26,7 +27,7 @@ export interface IProxy {
 }
 
 /**
- * Drives the browser on behalf of Deuterium Oxide.
+ * Drives the browser on behalf of BLeak.
  */
 export interface IBrowserDriver {
   /**
@@ -44,11 +45,15 @@ export interface IBrowserDriver {
 }
 
 /**
- * A Deuterium Oxide configuration file.
+ * A BLeak configuration file.
  */
 export interface ConfigurationFile {
+  // Name of website / config.
+  name?: string;
   // Number of iterations to do
   iterations?: number;
+  // Leaks to consider "fixed" during run.
+  fixedLeaks?: number[];
   // URL to web page to check for memory leaks.
   url: string;
   // (Optional) Globs for script files that should be *black boxed* during leak detection.
@@ -57,8 +62,6 @@ export interface ConfigurationFile {
   setup?: Step[];
   // Runs your program in a loop. Each step has a "check" function, and a "next" function
   // to transition to the next step in the loop.
-  // Deuterium oxide assumes your program is in the first step when it navigates to the URL,
-  // and that the last step transitions to the first step.
   loop: Step[];
   // (Optional) How long to wait for a step transition to finish before declaring an error.
   timeout?: number;

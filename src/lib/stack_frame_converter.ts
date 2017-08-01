@@ -3,18 +3,19 @@ import {StackFrame, parse as ErrorStackParser} from 'error-stack-parser';
 import {get as httpGet} from 'http';
 import {IProxy} from '../common/interfaces';
 import {parse as parseURL} from 'url';
+import {DEFAULT_AGENT_URL} from './transformations';
 
 const magicString = '//# sourceMappingURL=data:application/json;base64,';
 
 /**
  * Converts stack frames to get the position in the original source document.
- * Strips any frames from `deuterium_agent.js`.
+ * Strips any frames from the given agent string.
  */
 export default class StackFrameConverter {
   private _maps = new Map<string, SourceMapConsumer>();
 
-  public static ConvertGrowthStacks(proxy: IProxy, stacks: {[p: string]: string[]}): Promise<{[p: string]: StackFrame[][]}> {
-    return new StackFrameConverter().convertGrowthStacks(proxy, stacks);
+  public static ConvertGrowthStacks(proxy: IProxy, stacks: {[p: string]: string[]}, agentUrl: string = DEFAULT_AGENT_URL): Promise<{[p: string]: StackFrame[][]}> {
+    return new StackFrameConverter().convertGrowthStacks(proxy, stacks, agentUrl);
   }
 
   private _fetchMap(proxy: IProxy, url: string): Promise<undefined> {
@@ -68,7 +69,7 @@ export default class StackFrameConverter {
     });
   }
 
-  public convertGrowthStacks(proxy: IProxy, stacks: {[p: string]: string[]}): Promise<{[p: string]: StackFrame[][]}> {
+  public convertGrowthStacks(proxy: IProxy, stacks: {[p: string]: string[]}, agentUrl: string): Promise<{[p: string]: StackFrame[][]}> {
     // First pass: Get all unique URLs and their source maps.
     const urls = new Set<string>();
     const convertedStacks: {[p: string]: StackFrame[][]} = {};
@@ -76,8 +77,8 @@ export default class StackFrameConverter {
       const pathStacks = stacks[path];
       convertedStacks[path] = pathStacks.map((stack) => {
         const frames = ErrorStackParser(<any> {stack: stack})
-          .filter((f) => f.fileName ? f.fileName.indexOf('deuterium_agent.js') === -1 : true)
-          .filter((f) => f.functionName ? f.functionName.indexOf("eval") === -1 || f.functionName.indexOf('deuterium_agent.js') === -1 : true);
+          .filter((f) => f.fileName ? f.fileName.indexOf(agentUrl) === -1 : true)
+          .filter((f) => f.functionName ? f.functionName.indexOf("eval") === -1 || f.functionName.indexOf(agentUrl) === -1 : true);
         frames.forEach((frame) => {
           urls.add(frame.fileName);
         });

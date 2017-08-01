@@ -75,6 +75,21 @@ interface EventTarget {
     return false;
   }
 
+  const fixSet = new Set<number>();
+  function $$$SHOULDFIX$$$(n: number): boolean;
+  function $$$SHOULDFIX$$$(n: number, value: boolean): void;
+  function $$$SHOULDFIX$$$(n: number, value?: boolean): boolean | void {
+    if (value !== undefined) {
+      if (value) {
+        fixSet.add(n);
+      } else {
+        fixSet.delete(n);
+      }
+    } else {
+      return fixSet.has(n);
+    }
+  }
+
   /**
    * Returns whether or not value 'a' could harbor a proxy.
    * @param a
@@ -320,6 +335,7 @@ interface EventTarget {
   root.$$CREATE_SCOPE_OBJECT$$ = $$CREATE_SCOPE_OBJECT$$;
   root.$$$EQ$$$ = $$$EQ$$$;
   root.$$$SEQ$$$ = $$$SEQ$$$;
+  root.$$$SHOULDFIX$$$ = $$$SHOULDFIX$$$;
 
   if (typeof(window) !== "undefined") {
     // Disable these in NodeJS.

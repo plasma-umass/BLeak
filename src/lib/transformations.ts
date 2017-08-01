@@ -3,6 +3,9 @@ import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'escodegen';
 import {compile} from 'estemplate';
 import {BlockStatement, Program, SequenceExpression, BinaryExpression, UnaryExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
+import {SourceFile} from '../common/interfaces';
+import {parse as parseURL} from 'url';
+import {readFileSync} from 'fs';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
@@ -641,4 +644,44 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
   // Embed sourcemap into code.
   const convertedCode = `${converted.code}//# sourceMappingURL=data:application/json;base64,${new Buffer(converted.map.toString(), "utf8").toString("base64")}`;
   return convertedCode;
+}
+
+export const DEFAULT_AGENT_LOCATION = require.resolve('./bleak_agent');
+export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
+export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixes: number[] = [], agentURL = DEFAULT_AGENT_URL, agentLocation = DEFAULT_AGENT_LOCATION): (f: SourceFile) => SourceFile {
+  const agentText = readFileSync(agentLocation, 'utf8');
+  return (f: SourceFile): SourceFile => {
+    let mime = f.mimetype.toLowerCase();
+    if (mime.indexOf(";") !== -1) {
+      mime = mime.slice(0, mime.indexOf(";"));
+    }
+    console.log(`${f.url}: ${mime}`);
+    const url = parseURL(f.url);
+    if (url.path.toLowerCase() === agentURL) {
+      f.status = 200;
+      f.contents = agentText;
+      // Note: mimetype may not be javascript.
+      f.mimetype = "text/javascript";
+      return f;
+    }
+    switch (mime) {
+      case 'text/html':
+        f.contents = injectIntoHead(f.contents, `<script type="text/javascript" src="${agentURL}"></script>
+<script type="text/javascript">
+  ${JSON.stringify(fixes)}.forEach(function(num) {
+    $$$SHOULDFIX$$$(num, true);
+  });
+  ${config}
+</script>`);
+        break;
+      case 'text/javascript':
+      case 'application/javascript':
+        if (rewrite) {
+          console.log(`Rewriting ${f.url}...`);
+          f.contents = exposeClosureState(url.path, f.contents, false);
+        }
+        break;
+    }
+    return f;
+  };
 }

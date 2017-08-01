@@ -2,7 +2,7 @@ import {equal as assertEqual} from 'assert';
 import {injectIntoHead, exposeClosureState} from '../src/lib/transformations';
 import {readFileSync} from 'fs';
 
-const AGENT_SOURCE = readFileSync(require.resolve('../src/lib/deuterium_agent'), "utf8");
+const AGENT_SOURCE = readFileSync(require.resolve('../src/lib/bleak_agent'), "utf8");
 
 describe('Transformations', function() {
   describe('injectIntoHead', function() {

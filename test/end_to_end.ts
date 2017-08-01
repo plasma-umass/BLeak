@@ -1,6 +1,6 @@
 import {Server as HTTPServer} from 'http';
 import ChromeDriver from '../src/webdriver/chrome_driver';
-import FindLeaks from '../src/lib/deuterium_oxide';
+import BLeak from '../src/lib/bleak';
 import createHTTPServer from './util/http_server';
 import Proxy from '../src/proxy/proxy';
 import {readFileSync, writeFileSync} from 'fs';
@@ -217,9 +217,9 @@ const FILES: {[name: string]: TestFile} = {
       b.removeEventListener('click', l);
     });`, 'utf8')
   },
-  '/deuterium_agent.js': {
+  '/bleak_agent.js': {
     mimeType: 'text/javascript',
-    data: readFileSync(require.resolve('../src/lib/deuterium_agent'))
+    data: readFileSync(require.resolve('../src/lib/bleak_agent'))
   }
 };
 
@@ -245,7 +245,7 @@ describe('End-to-end Tests', function() {
   function createStandardLeakTest(description: string, rootFilename: string, expected_line: number): void {
     it(description, function(done) {
       let i = 0;
-      FindLeaks(`
+      BLeak.FindLeaks(`
         exports.url = 'http://localhost:${HTTP_PORT}/${rootFilename}.html';
         exports.loop = [
           {
@@ -293,7 +293,7 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Ignores responsible event listener removal', 'event_listener_removal', 5);
 
   after(function(done) {
-    //setTimeout(function() {
+    setTimeout(function() {
     // Shutdown both HTTP server and proxy.
     httpServer.close((e: any) => {
       if (e) {
@@ -306,6 +306,6 @@ describe('End-to-end Tests', function() {
         }).catch(done);
       }
     });
-    //}, 99999999);
+    }, 99999999);
   });
 });

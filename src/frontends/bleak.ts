@@ -1,6 +1,6 @@
 import {readFileSync, openSync, writeSync, closeSync} from 'fs';
 //import {extname} from 'path';
-import FindLeaks from '../lib/deuterium_oxide';
+import BLeak from '../lib/bleak';
 import Proxy from '../proxy/proxy';
 import ChromeDriver from '../webdriver/chrome_driver';
 import {Leak} from '../common/interfaces';
@@ -73,7 +73,7 @@ Proxy.listen(PROXY_PORT)
     }, 100);
     //let i = 0;
     //let base = outFileName.slice(0, -1 * extname(outFileName).length);
-    return FindLeaks(configFileSource, proxyGlobal, driver/*, (ss) => {
+    return BLeak.FindLeaks(configFileSource, proxyGlobal, driver/*, (ss) => {
       const p = `${base}${i}.heapsnapshot`;
       console.log(`Writing ${p}...`);
       writeFileSync(p, Buffer.from(JSON.stringify(ss), 'utf8'));

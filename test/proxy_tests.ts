@@ -42,6 +42,7 @@ const FILES: {[name: string]: TestFile} = {
 };
 
 describe('Proxy', function() {
+  this.timeout(30000);
   let proxy: Proxy;
   let httpServer: HTTPServer;
   before(function(done) {
