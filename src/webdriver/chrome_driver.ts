@@ -215,6 +215,12 @@ export default class ChromeBrowserDriver implements IBrowserDriver {
           httpProxy: `${this._proxy.getHost()}:${this._proxy.getHTTPPort()}`,
           // TODO: SSL proxy.
           // sslProxy: `${proxy.getHost()}:${proxy.getHTTPSPort()}`
+        },
+        loggingPrefs: {
+          browser: <any> 'ALL'
+        },
+        chromeOptions: {
+          args: ['js-flags=--expose-gc']
         }
       }
     };

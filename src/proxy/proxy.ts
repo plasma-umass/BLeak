@@ -79,7 +79,7 @@ export default class Proxy implements IProxy {
             // text/javascript or application/javascript
             if (mimeType.indexOf('text') !== -1 || mimeType.indexOf('application/javascript') !== -1) {
               const newFile = this._requestCb({
-                status: res.statusCode,
+                status: writeHeadArgs !== null ? writeHeadArgs[0] : res.statusCode,
                 mimetype: mimeType,
                 url: req.url,
                 contents: data.toString()

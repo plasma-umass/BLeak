@@ -180,6 +180,29 @@ export const enum SnapshotNodeType {
   Unresolved = 15     // (Internal) Not resolved yet.
 }
 
+/**
+ * A summary of a heap snapshot's size
+ */
+export interface SnapshotSizeSummary {
+  numNodes: number;
+  numEdges: number;
+  totalSize: number;
+  hiddenSize: number;
+  arraySize: number;
+  stringSize: number;
+  objectSize: number;
+  codeSize: number;
+  closureSize: number;
+  regexpSize: number;
+  heapNumberSize: number;
+  nativeSize: number;
+  syntheticSize: number;
+  consStringSize: number;
+  slicedStringSize: number;
+  symbolSize: number;
+  unknownSize: number;
+}
+
 export function SnapshotNodeTypeToString(sn: SnapshotNodeType): string {
   switch (sn) {
     case SnapshotNodeType.Array:

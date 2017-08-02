@@ -7,8 +7,10 @@ const CHROME_DRIVER_PORT = 4444;
 
 const configFileName = process.argv[2];
 const outFileName = process.argv[3];
-if (!configFileName || !outFileName) {
-  console.log(`Usage: ${process.argv[0]} ${process.argv[1]} config.js outfile.log`);
+const iterations = parseInt(process.argv[4], 10);
+const iterations_per_snapshot = parseInt(process.argv[5], 10);
+if (!configFileName || !outFileName || isNaN(iterations) || isNaN(iterations_per_snapshot)) {
+  console.log(`Usage: ${process.argv[0]} ${process.argv[1]} config.js outfile.log iterations iterations_per_snapshot`);
   process.exit(0);
 }
 
@@ -28,6 +30,6 @@ Proxy.listen(PROXY_PORT)
   })
   .then((driver) => {
     driverGlobal = driver;
-    return BLeak.EvaluateLeakFixes(configFileSource, proxyGlobal, driverGlobal, LOG);
+    return BLeak.EvaluateLeakFixes(configFileSource, proxyGlobal, driverGlobal, iterations, iterations_per_snapshot, LOG);
   });
 

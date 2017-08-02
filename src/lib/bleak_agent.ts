@@ -13,6 +13,40 @@ interface EventTarget {
  */
 (function() {
   const r = /'/g;
+
+  /**
+   * Collects stacks for a particular object. Backed by one or more maps.
+   */
+  class StackCollector {
+    private _maps: Map<string | number | symbol, Set<string>>[] = [];
+    public addMap(m: Map<string | number | symbol, Set<string>>): void {
+      if (this._maps.indexOf(m) === -1) {
+        this._maps.push(m);
+      }
+    }
+    public removeMap(m: Map<string | number | symbol, Set<string>>): void {
+      const i = this._maps.indexOf(m);
+      if (i !== -1) {
+        this._maps.splice(i, 1);
+      }
+    }
+    public addStackTrace(k: string | number | symbol, v: string): void {
+      for (const m of this._maps) {
+        let stacks = m.get(k);
+        if (stacks === undefined) {
+          stacks = new Set<string>();
+          m.set(k, stacks);
+        }
+        stacks.add(v);
+      }
+    }
+    public removeStackTraces(k: string | number | symbol): void {
+      for (const m of this._maps) {
+        m.delete(k);
+      }
+    }
+  }
+
   /**
    * Escapes single quotes in the given string.
    * @param s
@@ -29,7 +63,7 @@ interface EventTarget {
    * @param args The name of the function's arguments.
    * @param argValues The values of the function's arguments.
    */
-  function $$CREATE_SCOPE_OBJECT$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope {
+  function $$$CREATE_SCOPE_OBJECT$$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope {
     movedVariables.concat(args).forEach((varName) => {
       unmovedVariables[varName] = {
         value: undefined,
@@ -76,7 +110,16 @@ interface EventTarget {
   }
 
   const fixSet = new Set<number>();
+  /**
+   * Checks that bug n should be fixed.
+   * @param n Unique bug ID.
+   */
   function $$$SHOULDFIX$$$(n: number): boolean;
+  /**
+   * Sets whether or not bug n should be fixed.
+   * @param n Unique bug ID.
+   * @param value If true, bug n should be fixed.
+   */
   function $$$SHOULDFIX$$$(n: number, value: boolean): void;
   function $$$SHOULDFIX$$$(n: number, value?: boolean): boolean | void {
     if (value !== undefined) {
@@ -98,9 +141,66 @@ interface EventTarget {
     switch (typeof(a)) {
       case "object":
       case "function":
-        return a !== null && !(a instanceof Node);
+        return a !== null; // && !(a instanceof Node);
       default:
         return false;
+    }
+  }
+
+  /**
+   * Represents an object's proxy status.
+   */
+  const enum ProxyStatus {
+    // The object has a proxy, and is a proxy itself!
+    IS_PROXY,
+    // The object has a proxy, but is the original object
+    HAS_PROXY,
+    // The value is not a proxy, and does not have a proxy.
+    // It may not even be an object.
+    NO_PROXY
+  }
+
+  /**
+   * Get the proxy status of the given value.
+   * @param a
+   */
+  function getProxyStatus(a: any): ProxyStatus {
+    if (isProxyable(a) && a.hasOwnProperty("$$$PROXY$$$")) {
+      if (a.$$$PROXY$$$ === a) {
+        return ProxyStatus.IS_PROXY;
+      } else {
+        return ProxyStatus.HAS_PROXY;
+      }
+    }
+    return ProxyStatus.NO_PROXY;
+  }
+
+  /**
+   * If `a` is a proxy, returns the original object.
+   * Otherwise, returns `a` itself.
+   * @param a
+   */
+  function unwrapIfProxy(a: any): any {
+    switch (getProxyStatus(a)) {
+      case ProxyStatus.IS_PROXY:
+        return a.$$$ORIGINAL$$$;
+      case ProxyStatus.HAS_PROXY:
+      case ProxyStatus.NO_PROXY:
+        return a;
+    }
+  }
+
+  /**
+   * If `a` has a proxy, returns the proxy. Otherwise, returns `a` itself.
+   * @param a
+   */
+  function wrapIfOriginal(a: any): any {
+    switch (getProxyStatus(a)) {
+      case ProxyStatus.HAS_PROXY:
+        return a.$$$PROXY$$$;
+      case ProxyStatus.IS_PROXY:
+      case ProxyStatus.NO_PROXY:
+        return a;
     }
   }
 
@@ -161,6 +261,11 @@ interface EventTarget {
 
 
   const stackTraces = new Map<SerializeableGCPath, Map<string | number | symbol, Set<string>>>();
+  /**
+   * Adds a stack trace to the given map for the given property.
+   * @param map
+   * @param property
+   */
   function addStackTrace(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol): void {
     try {
       throw new Error();
@@ -173,21 +278,52 @@ interface EventTarget {
       set.add(e.stack);
     }
   }
+  /**
+   * Removes stack traces for the given map for the given property.
+   * @param map
+   * @param property
+   */
   function removeStacks(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol): void {
     if (map.has(property)) {
       map.delete(property);
     }
   }
+  /**
+   * Copy all of the stacks from `from` to `to` within the map.
+   * @param map
+   * @param from
+   * @param to
+   */
   function copyStacks(map: Map<string | number | symbol, Set<string>>, from: string | number | symbol, to: string | number | symbol): void {
     if (map.has(from)) {
       map.set(to, map.get(from));
     }
   }
+  /**
+   * Returns a proxy object for the given object, if applicable. Creates a new object if the object
+   * is not already proxied.
+   * @param accessStr
+   * @param obj
+   * @param map
+   */
   function getProxy(accessStr: string, obj: any, map: Map<string | number | symbol, Set<string>>): any {
     if (!isProxyable(obj)) {
       console.log(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
       return obj;
     } else if (!obj.hasOwnProperty('$$$PROXY$$$')) {
+      Object.defineProperty(obj, '$$$ORIGINAL$$$', {
+        value: obj,
+        writable: false,
+        enumerable: false,
+        configurable: true
+      });
+      Object.defineProperty(obj, "$$$STACKTRACES$$$", {
+        value: new StackCollector(),
+        writable: false,
+        enumerable: false,
+        configurable: false
+      });
+      // obj.$$$STACKTRACES$$$.addMap(map);
       obj.$$$PROXY$$$ = new Proxy(obj, {
         defineProperty: function(target, property, descriptor): boolean {
           if (!disableProxies) {
@@ -206,8 +342,6 @@ interface EventTarget {
         get: function(target, property, receiver): any {
           if (property === secretStackMapProperty) {
             return map;
-          } else if (property === secretIsProxyProperty) {
-            return true;
           } else {
             return Reflect.get(target, property, target);
           }
@@ -224,31 +358,47 @@ interface EventTarget {
     return obj.$$$PROXY$$$;
   }
 
+  /**
+   * Given object newObj replacing object oldObj, updates the map to exclude stack traces for
+   * properties not in newObj and to include stack traces from the current moment for properties on
+   * newObj that are not in the map.
+   * @param map
+   * @param oldObj
+   * @param newObj
+   */
   function updateMapForChangedProps(map: Map<string | number | symbol, Set<string>>, oldObj: Object, newObj: Object): void {
     if (!isProxyable(oldObj) || !isProxyable(newObj)) {
       return;
     }
-    const oldProps = Object.keys(oldObj);
     const newProps = Object.keys(newObj);
-    const oldPropSet = new Set(oldProps);
     const newPropSet = new Set(newProps);
-    oldProps.forEach((prop) => {
-      if (!newPropSet.has(prop)) {
+    map.forEach((_, prop) => {
+      if (!newPropSet.has(`${prop}`)) {
         removeStacks(map, prop);
       }
     });
     newProps.forEach((prop) => {
-      if (!oldPropSet.has(prop)) {
+      if (!map.has(prop)) {
         addStackTrace(map, prop);
       }
     });
 
-    if (newObj.hasOwnProperty("$$$PROXY$$$") && newObj.$$$PROXY$$$ !== oldObj.$$$PROXY$$$) {
+    if (newObj.hasOwnProperty("$$$PROXY$$$") && (<any> newObj)[secretStackMapProperty] !== map) {
       // Merge maps
       console.warn(`!!!! Need to support merging maps! !!!!`);
     }
   }
 
+  /**
+   * Installs a proxy object at the given location, and a getter/setter on the parent location to
+   * capture writes to the heap location.
+   * @param accessStr
+   * @param parentAccessStr
+   * @param parent
+   * @param obj
+   * @param map
+   * @param propName
+   */
   function installProxy(accessStr: string, parentAccessStr: string, parent: any, obj: any, map: Map<string | number | symbol, Set<string>>, propName: string | number): void {
     let hiddenValue = getProxy(accessStr, obj, map);
     if ((typeof(parent) === "object" || typeof(parent) === "function") && parent !== null) {
@@ -270,8 +420,8 @@ interface EventTarget {
 
   function replaceObjectsWithProxies(roots: any[], propName: string | number, accessStr: string, parentAccessStr: string, map: Map<string | number | symbol, Set<string>>): void {
     try {
-      const getObjFcn: (root: any) => [any, any] = <any> new Function("root", `return [${parentAccessStr}, ${accessStr}];`);
-      roots.map(getObjFcn).forEach((objs) => {
+      const getObjFcn: (root: any) => [any, any] | null = <any> new Function("root", `try { return [${parentAccessStr}, ${accessStr}]; } catch (e) { return null; }`);
+      roots.map(getObjFcn).filter((o) => o !== null).forEach((objs) => {
         installProxy(accessStr, parentAccessStr, objs[0], objs[1], map, propName);
       });
     } catch (e) {
@@ -280,7 +430,6 @@ interface EventTarget {
   }
 
   const secretStackMapProperty = "$$$stackmap$$$";
-  const secretIsProxyProperty = "$$$isproxy$$$";
   // Disables proxy interception.
   let disableProxies = false;
   function instrumentPath(paths: SerializeableGCPath[]): void {
@@ -302,13 +451,13 @@ interface EventTarget {
     }
   }
 
-  function instrumentPaths(p: SerializeableGCPath[][]): void {
+  function $$$INSTRUMENT_PATHS$$$(p: SerializeableGCPath[][]): void {
     for (const path of p) {
       instrumentPath(path);
     }
   }
 
-  function getStackTraces(): string {
+  function $$$GET_STACK_TRACE$$$(): string {
     const rv: {[p: string]: string[]} = {};
     stackTraces.forEach((value, key) => {
       const stackSet = new Set<string>();
@@ -329,10 +478,9 @@ interface EventTarget {
 
   // Global variables.
   const root = <Window> (typeof(window) !== "undefined" ? window : global);
-  root.$$instrumentPaths = instrumentPaths;
-  root.$$getStackTraces = getStackTraces;
-  root.$$addStackTrace = addStackTrace;
-  root.$$CREATE_SCOPE_OBJECT$$ = $$CREATE_SCOPE_OBJECT$$;
+  root.$$$INSTRUMENT_PATHS$$$ = $$$INSTRUMENT_PATHS$$$;
+  root.$$$GET_STACK_TRACE$$$ = $$$GET_STACK_TRACE$$$;
+  root.$$$CREATE_SCOPE_OBJECT$$$ = $$$CREATE_SCOPE_OBJECT$$$;
   root.$$$EQ$$$ = $$$EQ$$$;
   root.$$$SEQ$$$ = $$$SEQ$$$;
   root.$$$SHOULDFIX$$$ = $$$SHOULDFIX$$$;
@@ -343,7 +491,7 @@ interface EventTarget {
     const addEventListener = EventTarget.prototype.addEventListener;
     const removeEventListener = EventTarget.prototype.removeEventListener;
     EventTarget.prototype.addEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
-      addEventListener.apply(this, arguments);
+      addEventListener.apply(unwrapIfProxy(this), arguments);
       if (!this.$$listeners) {
         this.$$listeners = {};
       }
@@ -363,7 +511,7 @@ interface EventTarget {
     };
 
     EventTarget.prototype.removeEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
-      removeEventListener.apply(this, arguments);
+      removeEventListener.apply(unwrapIfProxy(this), arguments);
       if (this.$$listeners) {
         const listeners = this.$$listeners[type];
         if (listeners) {
@@ -386,7 +534,7 @@ interface EventTarget {
       return function(this: Array<any>, ...items: any[]): number {
         try {
           disableProxies = true;
-          if ((<any> this)[secretIsProxyProperty]) {
+          if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
             const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
             for (let i = 0; i < items.length; i++) {
               addStackTrace(map, `${this.length + i}`);
@@ -403,7 +551,7 @@ interface EventTarget {
       return function(this: Array<any>, ...items: any[]): number {
         try {
           disableProxies = true;
-          if ((<any> this)[secretIsProxyProperty]) {
+          if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
             const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
             const newItemLen = items.length;
             for (let i = items.length - 1; i >= 0; i--) {
@@ -425,7 +573,7 @@ interface EventTarget {
       return function(this: Array<any>): any {
         try {
           disableProxies = true;
-          if ((<any> this)[secretIsProxyProperty]) {
+          if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
             const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
             removeStacks(map, `${this.length - 1}`);
           }
@@ -440,7 +588,7 @@ interface EventTarget {
       return function(this: Array<any>): any {
         try {
           disableProxies = true;
-          if ((<any> this)[secretIsProxyProperty]) {
+          if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
             const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
             removeStacks(map, "0");
             for (let i = 1; i < this.length; i++) {
@@ -459,7 +607,7 @@ interface EventTarget {
       return function(this: Array<any>, start: number, deleteCount: number, ...items: any[]): any {
         try {
           disableProxies = true;
-          if ((<any> this)[secretIsProxyProperty]) {
+          if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
             const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
             let actualStart = start | 0;
             if (actualStart === undefined) {
@@ -542,5 +690,141 @@ interface EventTarget {
         return (seed & 0xFFFFFFF) / 0x10000000;
       };
     }());
+
+    // interface Count {get: number; set: number; invoked: number }
+
+    /**
+     * [DEBUG] Installs a counter on a particular object property.
+     * @param obj
+     * @param property
+     * @param key
+     * @param countMap
+     */
+    /*function countPropertyAccesses(obj: any, property: string, key: string, countMap: Map<string, Count>): void {
+      let count: Count = { get: 0, set: 0, invoked: 0};
+      const original = Object.getOwnPropertyDescriptor(obj, property);
+      try {
+        Object.defineProperty(obj, property, {
+          get: function() {
+            count.get++;
+            const value = original.get ? original.get.apply(this) : original.value;
+            if (typeof(value) === "function") {
+              return function(this: any) {
+                count.invoked++;
+                return value.apply(this, arguments);
+              };
+            } else {
+              return value;
+            }
+          },
+          set: function(v) {
+            count.set++;
+            if (original.set) {
+              return original.set.call(this, v);
+            } else if (original.writable) {
+              original.value = v;
+            }
+            // Otherwise: NOP.
+          },
+          configurable: true
+        });
+        countMap.set(key, count);
+      } catch (e) {
+        console.log(`Unable to instrument ${key}`);
+      }
+    }*/
+
+    /**
+     * Interposes on a particular API to return proxy objects for objects with proxies and unwrap arguments that are proxies.
+     */
+    function proxyInterposition(obj: any, property: string, key: string): void {
+      const original = Object.getOwnPropertyDescriptor(obj, property);
+      try {
+        Object.defineProperty(obj, property, {
+          get: function() {
+            const value = original.get ? original.get.apply(unwrapIfProxy(this)) : original.value;
+            if (typeof(value) === "function") {
+              return function(this: any, ...args: any[]) {
+                return wrapIfOriginal(unwrapIfProxy(value).apply(unwrapIfProxy(this), args.map(unwrapIfProxy)));
+              };
+            } else {
+              return wrapIfOriginal(value);
+            }
+          },
+          set: function(v) {
+            const originalV = unwrapIfProxy(v);
+            if (original.set) {
+              original.set.call(unwrapIfProxy(this), originalV);
+            } else if (original.writable) {
+              original.value = originalV;
+            }
+            // Otherwise: NOP.
+          },
+          // Make interposition nestable
+          configurable: true
+        });
+      } catch (e) {
+        console.log(`Unable to instrument ${key}`);
+      }
+    }
+
+    //const countMap = new Map<string, Count>();
+    [[Node.prototype, "Node"], [Element.prototype, "Element"], [HTMLElement.prototype, "HTMLElement"],
+     [Document.prototype, "Document"], [HTMLCanvasElement.prototype, "HTMLCanvasElement"]]
+      .forEach((v) => Object.keys(v[0]).forEach((k) => proxyInterposition(v[0], k, `${v[1]}.${k}`)));
+
+
+
+
+    /*(<any> root)['$$PRINTCOUNTS$$'] = function(): void {
+      console.log(`API,GetCount,InvokedCount,SetCount`);
+      countMap.forEach((v, k) => {
+        if (v.get + v.set + v.invoked > 0) {
+          console.log(`${k},${v.get},${v.invoked},${v.set}`);
+        }
+      });
+    };*/
+
+    // Goal:
+    // - Attach unique IDs to all HTML tags in the DOM corresponding to their location post-body-load.
+    // - On update: Update IDs.
+    // - Insertion to scope modifies all IDs in scope.
+
+    // Possibilities:
+    // - Node is only in DOM.
+    //   - Instrument DOM location.
+    // - Node is only in heap.
+    //   - Instrument node object.
+    // - Node is in both.
+    //   - Instrument both.
+
+    // Regardless:
+    // - Need to *unwrap* arguments
+    // - Need to *wrap* return values
+
+    // Node:
+    // nodeValue: Not important?
+    // textContent: Pass it a string. Replaces content.
+    // appendChild: Passed a Node. Modifies DOM.
+    // insertBefore: Takes Nodes. Modifies DOM.
+    // isEqualNode: Takes a Node.
+    // isSameNode: Takes a Node.
+    // normalize: Removes things from DOM.
+    // removeChild: Removes a child.
+    // replaceChild: Replaces a child.
+
+    // Element:
+    // innerHTML
+    // outerHTML
+    // insertAdjacentElement
+    // insertAdjacentHTML
+    // insertAdjacentText
+    // remove
+    // **SPECIAL**: dataset - modifies properties on DOM object through object!!!!
+    // -> throw exception if used.
+
+    // SVGElement:
+    // dataset: Throw exception if used
+
   }
 })();

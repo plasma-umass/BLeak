@@ -418,8 +418,6 @@ export function MergeGraphs(prevGraph: Node, currentGraph: Node): void {
 
     if (!current.visited) {
       current.visited = true;
-      // `current` has an analogue in the previous snapshot, so it is no longer 'new'.
-      current.isNew = false;
 
       //console.log(`${prev} -> ${current}`);
 
@@ -441,6 +439,9 @@ export function MergeGraphs(prevGraph: Node, currentGraph: Node): void {
 
       if (current.children) {
         for (const edge of current.children) {
+          // Only the first graph's nodes can be marked as new.
+          // TODO: Make this cleaner.
+          edge.to.isNew = false;
           const prevEdge = prevEdges.get(edge.indexOrName);
           if (prevEdge && shouldTraverse(prevEdge)) {
             frontier.push(prevEdge.to, edge.to);
@@ -699,6 +700,11 @@ export class GrowthPath {
       // DOM object. Skip:
       // - DOM tree collection
       // - index
+      if (path.length < 2) {
+        console.log("WTF:");
+        console.log(path[0].to.name);
+        console.log(path[0].indexOrName);
+      }
       rv.root = {
         type: RootType.DOM,
         elementType: path[1].to.name

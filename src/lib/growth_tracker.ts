@@ -1,6 +1,103 @@
 import {GrowthGraphBuilder, MergeGraphs, Node, GrowthObject, FindGrowingObjects, RankGrowingObjects} from './growth_graph';
-import {SnapshotEdgeType, HeapSnapshot} from '../common/interfaces';
+import {SnapshotEdgeType, SnapshotNodeType, HeapSnapshot, SnapshotSizeSummary} from '../common/interfaces';
 import {time} from '../common/util';
+
+/**
+ * Computes the size of the given snapshot without creating a Node object.
+ * @param snapshot
+ */
+export function computeGraphSize(snapshot: HeapSnapshot): SnapshotSizeSummary {
+  const rv: SnapshotSizeSummary = {
+    numNodes: 0,
+    numEdges: 0,
+    totalSize: 0,
+    hiddenSize: 0,
+    arraySize: 0,
+    stringSize: 0,
+    objectSize: 0,
+    codeSize: 0,
+    closureSize: 0,
+    regexpSize: 0,
+    heapNumberSize: 0,
+    nativeSize: 0,
+    syntheticSize: 0,
+    consStringSize: 0,
+    slicedStringSize: 0,
+    symbolSize: 0,
+    unknownSize: 0
+  };
+  const meta = snapshot.snapshot.meta;
+  const nodes = snapshot.nodes;
+  const nodeFields = meta.node_fields;
+  const nodeLength = nodeFields.length;
+  const numNodes = nodes.length / nodeLength;
+  const nodeSelfSizeOffset = nodeFields.indexOf("self_size");
+  const nodeTypeOffset = nodeFields.indexOf("type");
+  const edges = snapshot.edges;
+  const edgeFields = meta.edge_fields;
+  const edgeLength = edgeFields.length;
+  const numEdges = edges.length / edgeLength;
+
+  rv.numNodes = numNodes;
+  rv.numEdges = numEdges;
+
+  for (let i = 0; i < numNodes; i++) {
+    const base = i * nodeFields.length;
+    // Node ID is like a pointer, I'm guessing.
+    // Ignored for now.
+    // const nodeId = nodes[base + nodeIdOffset];
+    const nodeSelfSize = nodes[base + nodeSelfSizeOffset];
+    const nodeType: SnapshotNodeType = nodes[base + nodeTypeOffset];
+    rv.totalSize += nodeSelfSize;
+    switch (nodeType) {
+      case SnapshotNodeType.Array:
+        rv.arraySize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.Closure:
+        rv.closureSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.Code:
+        rv.codeSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.ConsString:
+        rv.consStringSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.HeapNumber:
+        rv.heapNumberSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.Hidden:
+        rv.hiddenSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.Native:
+        rv.nativeSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.Object:
+        rv.objectSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.RegExp:
+        rv.regexpSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.SlicedString:
+        rv.slicedStringSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.String:
+        rv.stringSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.Symbol:
+        rv.symbolSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.Synthetic:
+        rv.syntheticSize += nodeSelfSize;
+        break;
+      case SnapshotNodeType.Unresolved:
+      default:
+        rv.unknownSize += nodeSelfSize;
+        break;
+    }
+  }
+
+  return rv;
+}
 
 /**
  * Constructs a graph from the given snapshot.

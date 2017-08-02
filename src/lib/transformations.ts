@@ -82,11 +82,11 @@ function getScopeDefinition(fcn: FunctionDeclaration | FunctionExpression, scope
   const unmovedIdentifiers = scope.getUnmovedIdentifiers();
   const parentScopeName = scope.parent.scopeIdentifier;
   const params = fcn.params.map((p) => p.type === "Identifier" ? p.name : null).filter((p) => p !== null);
-  const js = `var ${scope.scopeIdentifier} = $$CREATE_SCOPE_OBJECT$$(${parentScopeName},` +
+  const js = `var ${scope.scopeIdentifier} = $$$CREATE_SCOPE_OBJECT$$$(${parentScopeName},` +
                `${JSON.stringify(movedIdentifiers)},` +
                `{ ${unmovedIdentifiers.map((i) => `${i}: { get: function() { return ${i}; }, set: function(val) { ${i} = val; } }`).join(",")} },` +
                `${JSON.stringify(params)},[${params.join(",")}]);`;
-  // $$CREATE_SCOPE_OBJECT$$(parentScopeObject: Scope,
+  // $$$CREATE_SCOPE_OBJECT$$$(parentScopeObject: Scope,
   //    movedVariables: string[],
   //    unmovedVariables: PropertyDescriptorMap,
   //    args: string[],
@@ -655,7 +655,7 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
     if (mime.indexOf(";") !== -1) {
       mime = mime.slice(0, mime.indexOf(";"));
     }
-    console.log(`${f.url}: ${mime}`);
+    console.log(`[${f.status}] ${f.url}: ${mime}`);
     const url = parseURL(f.url);
     if (url.path.toLowerCase() === agentURL) {
       f.status = 200;
@@ -666,17 +666,19 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
     }
     switch (mime) {
       case 'text/html':
-        f.contents = injectIntoHead(f.contents, `<script type="text/javascript" src="${agentURL}"></script>
-<script type="text/javascript">
-  ${JSON.stringify(fixes)}.forEach(function(num) {
-    $$$SHOULDFIX$$$(num, true);
-  });
-  ${config}
-</script>`);
+        if (f.status === 200) {
+          f.contents = injectIntoHead(f.contents, `<script type="text/javascript" src="${agentURL}"></script>
+  <script type="text/javascript">
+    ${JSON.stringify(fixes)}.forEach(function(num) {
+      $$$SHOULDFIX$$$(num, true);
+    });
+    ${config}
+  </script>`);
+        }
         break;
       case 'text/javascript':
       case 'application/javascript':
-        if (rewrite) {
+        if (f.status === 200 && rewrite) {
           console.log(`Rewriting ${f.url}...`);
           f.contents = exposeClosureState(url.path, f.contents, false);
         }
