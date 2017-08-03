@@ -1,0 +1,6 @@
+Loomio: Growth Paths x 0.28 ops/sec ±4.80% (5 runs sampled)
+Loomio: Heap Size x 117 ops/sec ±1.27% (74 runs sampled)
+Piwik: Growth Paths x 0.21 ops/sec ±0.43% (5 runs sampled)
+Piwik: Heap Size x 137 ops/sec ±2.49% (77 runs sampled)
+Loomio: Expose Closure State x 0.05 ops/sec ±12.79% (5 runs sampled)
+Piwik: Expose Closure State x 0.05 ops/sec ±0.44% (5 runs sampled)
