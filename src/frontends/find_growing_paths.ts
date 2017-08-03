@@ -12,7 +12,7 @@ if (files.length === 0) {
 }
 for (const file of files) {
   console.log(`Processing ${file}...`);
-  time('Add Snapshot', () => t.addSnapshot(JSON.parse(readFileSync(file, 'utf8'))));
+  t.addSnapshot(JSON.parse(readFileSync(file, 'utf8')));
 }
 
 const growth = time('Get Growing Objects', () => t.getGrowingObjects());

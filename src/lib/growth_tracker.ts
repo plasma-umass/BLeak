@@ -1,6 +1,5 @@
 import {GrowthGraphBuilder, MergeGraphs, Node, GrowthObject, FindGrowingObjects, RankGrowingObjects} from './growth_graph';
 import {SnapshotEdgeType, SnapshotNodeType, HeapSnapshot, SnapshotSizeSummary} from '../common/interfaces';
-import {time} from '../common/util';
 
 /**
  * Computes the size of the given snapshot without creating a Node object.
@@ -113,7 +112,7 @@ export function constructGraph(snapshot: HeapSnapshot, stringPool: Map<string, n
     return rv;
   }
   // Not needed; let it get garbage collected.
-  snapshot.strings = null;
+  // snapshot.strings = null;
   let visitor = new GrowthGraphBuilder(stringPool, (id: number) => {
     return stringPoolContents[getString(id)];
   });
@@ -136,7 +135,7 @@ export function constructGraph(snapshot: HeapSnapshot, stringPool: Map<string, n
   const edgeTypeOffset = edgeFields.indexOf("type");
   const edgeNameOrIndexOffset = edgeFields.indexOf("name_or_index");
   const edgeToNodeOffset = edgeFields.indexOf("to_node");
-  console.log(`[Nodes: ${numNodes}, Edges: ${numEdges}]`);
+  // console.log(`[Nodes: ${numNodes}, Edges: ${numEdges}]`);
   //console.log(`Type: ${edgeTypeOffset} NameOrIndex: ${edgeNameOrIndexOffset} ToNode: ${edgeToNodeOffset}`);
 
   // Parse the snapshot into a graph.
@@ -214,21 +213,17 @@ export default class HeapGrowthTracker {
   private _graph: Node = null;
 
   public addSnapshot(snapshot: HeapSnapshot): void {
-    time(`Adding snapshot to growth graph`, () => {
-      const graph = constructGraph(snapshot, this._stringPool, this._strings);
-      if (this._graph === null) {
-        this._graph = graph;
-      } else {
-        MergeGraphs(this._graph, graph);
-        this._graph = graph;
-      }
-    });
+    const graph = constructGraph(snapshot, this._stringPool, this._strings);
+    if (this._graph === null) {
+      this._graph = graph;
+    } else {
+      MergeGraphs(this._graph, graph);
+      this._graph = graph;
+    }
   }
 
   public getGrowingObjects(): GrowthObject[] {
-    return time(`Determine growing objects`, () => {
-      return FindGrowingObjects(this._graph);
-    });
+    return FindGrowingObjects(this._graph);
   }
 
   public rankGrowingObjects(objs: GrowthObject[]): Map<GrowthObject, [string, number][]> {
