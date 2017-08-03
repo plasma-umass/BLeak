@@ -293,12 +293,12 @@ interface EventTarget {
    * @param obj
    * @param map
    */
-  function getProxy(accessStr: string, obj: any): any {
+  function getProxy(accessStr: string, obj: any, initialInstallation = false): any {
     if (!isProxyable(obj)) {
       console.log(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
       return obj;
     } else if (!obj.hasOwnProperty('$$$PROXY$$$')) {
-      const map = _initializeMap(obj);
+      const map = initialInstallation ? new Map<string | number | symbol, Set<string>>() : _initializeMap(obj);
       Object.defineProperty(obj, '$$$ORIGINAL$$$', {
         value: obj,
         writable: false,
@@ -351,7 +351,7 @@ interface EventTarget {
    * @param propName
    */
   function installProxy(accessStr: string, parentAccessStr: string, parent: any, obj: any, propName: string | number): void {
-    let hiddenValue = getProxy(accessStr, obj);
+    let hiddenValue = getProxy(accessStr, obj, true);
     if ((typeof(parent) === "object" || typeof(parent) === "function") && parent !== null) {
       Object.defineProperty(parent, propName, {
         get: function() {
