@@ -1,8 +1,10 @@
 import {parse as parseJavaScript} from 'esprima';
 import {replace as rewriteJavaScript} from 'estraverse';
-import {generate as generateJavaScript} from 'escodegen';
+// import {generate as generateJavaScript} from 'escodegen';
+import {generate as generateJavaScript} from 'astring';
+import {SourceMapGenerator} from 'source-map';
 import {compile} from 'estemplate';
-import {BlockStatement, Program, SequenceExpression, BinaryExpression, UnaryExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
+import {BlockStatement, Program, SequenceExpression, VariableDeclaration, Property, Literal, BinaryExpression, UnaryExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 import {SourceFile} from '../common/interfaces';
 import {parse as parseURL} from 'url';
 import {readFileSync} from 'fs';
@@ -74,7 +76,127 @@ function getScopeAssignment(functionVarName: Identifier, scopeVarName: Identifie
   return <ExpressionStatement> prog.body[0];
 }
 
-function getScopeDefinition(fcn: FunctionDeclaration | FunctionExpression, scope: Scope): Statement[] {
+function getStringLiteralArray(names: string[]): Literal[] {
+  return names.map((n): Literal => {
+    return { type: "Literal", value: n, raw: `"${n}"` }
+  });
+}
+
+function getIdentifierArray(names: string[]): Identifier[] {
+  return names.map((n): Identifier => {
+    return { type: "Identifier", name: n }
+  });
+}
+
+function getScopeProperties(names: string[]): Property[] {
+  return names.map((n): Property => {
+    return {
+      type: "Property",
+      key: { type: "Identifier", name: n },
+      computed: false,
+      value: {
+        type: "ObjectExpression",
+        properties: [{
+          type: "Property",
+          key: { type: "Identifier", name: "get" },
+          computed: false,
+          value: {
+            type: "FunctionExpression",
+            id: null,
+            params: [],
+            body: {
+                type: "BlockStatement",
+                body: [{
+                  type: "ReturnStatement",
+                  argument: {
+                      type: "Identifier",
+                      name: n
+                  }
+                }]
+            },
+            generator: false,
+            expression: false,
+            async: false
+          },
+          kind: "init",
+          method: false,
+          shorthand: false
+        }, {
+          type: "Property",
+          key: { type: "Identifier", name: "set" },
+          computed: false,
+          value: {
+            type: "FunctionExpression",
+            id: null,
+            params: [{ type: "Identifier", name: "v" }],
+            body: {
+              type: "BlockStatement",
+              body: [{
+                type: "ExpressionStatement",
+                expression: {
+                  type: "AssignmentExpression",
+                  operator: "=",
+                  left: {
+                      type: "Identifier",
+                      name: n
+                  },
+                  right: {
+                      type: "Identifier",
+                      name: "v"
+                  }
+                }
+              }]
+            },
+            generator: false,
+            expression: false,
+            async: false
+          },
+          kind: "init",
+          method: false,
+          shorthand: false
+        }]
+      },
+      kind: "init",
+      method: false,
+      shorthand: false
+    };
+  });
+}
+
+function getScopeCreationStatement(scopeName: string, parentScopeName: string, movedIdentifiers: string[], unmovedIdentifiers: string[], params: string[]): VariableDeclaration {
+  return {
+    type: "VariableDeclaration",
+    declarations: [{
+      type: "VariableDeclarator",
+      id: { type: "Identifier", name: scopeName },
+      init: {
+        type: "CallExpression",
+        callee: { type: "Identifier", name: "$$$CREATE_SCOPE_OBJECT$$$" },
+        arguments: [
+          {
+            type: "Identifier",
+            name: parentScopeName
+          }, {
+            type: "ArrayExpression",
+            elements: getStringLiteralArray(movedIdentifiers)
+          }, {
+            type: "ObjectExpression",
+            properties: getScopeProperties(unmovedIdentifiers)
+          }, {
+            type: "ArrayExpression",
+            elements: getStringLiteralArray(params)
+          }, {
+            type: "ArrayExpression",
+            elements: getIdentifierArray(params)
+          }
+        ]
+      }
+    }],
+    kind: "var"
+  };
+}
+
+function getScopeDefinition(fcn: FunctionDeclaration | FunctionExpression, scope: Scope): VariableDeclaration {
   if (!scope.closedOver) {
     throw new Error(`Cannot produce scope definition for non closed over scope.`);
   }
@@ -82,16 +204,7 @@ function getScopeDefinition(fcn: FunctionDeclaration | FunctionExpression, scope
   const unmovedIdentifiers = scope.getUnmovedIdentifiers();
   const parentScopeName = scope.parent.scopeIdentifier;
   const params = fcn.params.map((p) => p.type === "Identifier" ? p.name : null).filter((p) => p !== null);
-  const js = `var ${scope.scopeIdentifier} = $$$CREATE_SCOPE_OBJECT$$$(${parentScopeName},` +
-               `${JSON.stringify(movedIdentifiers)},` +
-               `{ ${unmovedIdentifiers.map((i) => `${i}: { get: function() { return ${i}; }, set: function(val) { ${i} = val; } }`).join(",")} },` +
-               `${JSON.stringify(params)},[${params.join(",")}]);`;
-  // $$$CREATE_SCOPE_OBJECT$$$(parentScopeObject: Scope,
-  //    movedVariables: string[],
-  //    unmovedVariables: PropertyDescriptorMap,
-  //    args: string[],
-  //    argValues: any[])
-  return <Statement[]> parseJavaScript(js).body;
+  return getScopeCreationStatement(scope.scopeIdentifier, parentScopeName, movedIdentifiers, unmovedIdentifiers, params);
 }
 
 const enum VariableType {
@@ -596,9 +709,9 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
             if ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression") && scope.closedOver) {
               const scopeDefinition = getScopeDefinition(parent, scope);
               if (node.body.length > 0 && node.body[0].type === "ExpressionStatement" && (<any> node.body[0])['directive'] === 'use strict') {
-                node.body = node.body.slice(0, 1).concat(scopeDefinition).concat(node.body.slice(1));
+                node.body = node.body.slice(0, 1).concat([scopeDefinition]).concat(node.body.slice(1));
               } else {
-                node.body = scopeDefinition.concat(node.body);
+                node.body = [<Statement> scopeDefinition].concat(node.body);
               }
             }
           }
@@ -633,16 +746,15 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
   }
 
   // console.log("Finished second phase.");
-  const converted = <{code: string, map: any}> <any> generateJavaScript(newAst, {
-    format: {
-      compact: false
-    },
-    sourceMap: filename,
-    sourceMapWithCode: true,
-    sourceContent: source
+  const map = new SourceMapGenerator({
+    file: filename
+  });
+  map.setSourceContent(filename, source);
+  const converted = generateJavaScript(newAst, {
+    sourceMap: map
   });
   // Embed sourcemap into code.
-  const convertedCode = `${converted.code}//# sourceMappingURL=data:application/json;base64,${new Buffer(converted.map.toString(), "utf8").toString("base64")}`;
+  const convertedCode = `${converted}//# sourceMappingURL=data:application/json;base64,${new Buffer(map.toString(), "utf8").toString("base64")}`;
   return convertedCode;
 }
 

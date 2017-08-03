@@ -6,6 +6,7 @@ import {HeapSnapshot, SnapshotSizeSummary} from '../src/common/interfaces';
 import {default as HeapGrowthTracker, computeGraphSize} from '../src/lib/growth_tracker';
 import {exposeClosureState} from '../src/lib/transformations';
 
+const skipSnapshots = process.argv.indexOf("--skip-snapshots") !== -1;
 let loomioSnapshots: HeapSnapshot[] = [];
 let piwikSnapshots: HeapSnapshot[] = [];
 let loomioJs: string = null;
@@ -16,6 +17,9 @@ const jsDir = './benchmarks/javascript';
 const reportFilename = `./benchmarks/benchmark_report_${new Date().toISOString()}.log`;
 const benchmarkReport = createWriteStream(reportFilename)
 console.log(`Writing report to ${reportFilename}`);
+if (skipSnapshots) {
+  console.log("Skipping snapshots.");
+}
 
 function getSnapshots(prefix: string): HeapSnapshot[] {
   return readdirSync(snapshotDir)
@@ -44,36 +48,38 @@ function getHeapSize(snapshot: HeapSnapshot): SnapshotSizeSummary {
   return computeGraphSize(snapshot);
 }
 
-suite
-  .add("Loomio: Growth Paths", function() {
-    getGrowthPaths(loomioSnapshots);
-  }, {
-    onStart: () => {
-      loomioSnapshots = getSnapshots("loomio");
-    }
-  })
-  .add("Loomio: Heap Size", function() {
-    loomioSnapshots.forEach(getHeapSize);
-  }, {
-    onComplete: () => {
-      loomioSnapshots = [];
-    }
-  })
-  .add("Piwik: Growth Paths", function() {
-    getGrowthPaths(piwikSnapshots);
-  }, {
-    onStart: () => {
-      piwikSnapshots = getSnapshots("piwik");
-    }
-  })
-  .add("Piwik: Heap Size", function() {
-    piwikSnapshots.forEach(getHeapSize);
-  }, {
-    onComplete: () => {
-      piwikSnapshots = [];
-    }
-  })
-  .add("Loomio: Expose Closure State", function() {
+if (!skipSnapshots) {
+  suite
+    .add("Loomio: Growth Paths", function() {
+      getGrowthPaths(loomioSnapshots);
+    }, {
+      onStart: () => {
+        loomioSnapshots = getSnapshots("loomio");
+      }
+    })
+    .add("Loomio: Heap Size", function() {
+      loomioSnapshots.forEach(getHeapSize);
+    }, {
+      onComplete: () => {
+        loomioSnapshots = [];
+      }
+    })
+    .add("Piwik: Growth Paths", function() {
+      getGrowthPaths(piwikSnapshots);
+    }, {
+      onStart: () => {
+        piwikSnapshots = getSnapshots("piwik");
+      }
+    })
+    .add("Piwik: Heap Size", function() {
+      piwikSnapshots.forEach(getHeapSize);
+    }, {
+      onComplete: () => {
+        piwikSnapshots = [];
+      }
+    });
+}
+suite.add("Loomio: Expose Closure State", function() {
     exposeClosureState('loomio_vendor.js', loomioJs, false);
   }, {
     onStart: () => {
@@ -97,10 +103,14 @@ suite
   .on('cycle', function(event: any) {
     const str = String(event.target);
     console.log(str);
-    benchmarkReport.write(str);
+    benchmarkReport.write(str + "\n");
   })
   .on('complete', function() {
     benchmarkReport.end();
-  });
+  })
+  .on('error', function(e: any) {
+    console.log("Received error!");
+    console.log(e);
+  })
 
 suite.run();

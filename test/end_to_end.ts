@@ -3,7 +3,8 @@ import ChromeDriver from '../src/webdriver/chrome_driver';
 import BLeak from '../src/lib/bleak';
 import createHTTPServer from './util/http_server';
 import Proxy from '../src/proxy/proxy';
-import {readFileSync, writeFileSync} from 'fs';
+import {readFileSync} from 'fs';
+// import {readFileSync, writeFileSync} from 'fs';
 import {equal as assertEqual} from 'assert';
 // import {Leak} from '../src/common/interfaces';
 
@@ -260,7 +261,7 @@ describe('End-to-end Tests', function() {
         ];
         exports.timeout = 30000;
       `, proxy, driver, (ss) => {
-        writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
+        // writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
         i++;
       }).then((leaks) => {
         assertEqual(leaks.length > 0, true);
@@ -293,7 +294,7 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Ignores responsible event listener removal', 'event_listener_removal', 5);
 
   after(function(done) {
-    setTimeout(function() {
+    //setTimeout(function() {
     // Shutdown both HTTP server and proxy.
     httpServer.close((e: any) => {
       if (e) {
@@ -306,6 +307,6 @@ describe('End-to-end Tests', function() {
         }).catch(done);
       }
     });
-    }, 99999999);
+    //}, 99999999);
   });
 });
