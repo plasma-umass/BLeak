@@ -15,35 +15,13 @@ interface EventTarget {
   const r = /'/g;
 
   /**
-   * Collects stacks for a particular object. Backed by one or more maps.
+   * Get a stack trace.
    */
-  class StackCollector {
-    private _maps: Map<string | number | symbol, Set<string>>[] = [];
-    public addMap(m: Map<string | number | symbol, Set<string>>): void {
-      if (this._maps.indexOf(m) === -1) {
-        this._maps.push(m);
-      }
-    }
-    public removeMap(m: Map<string | number | symbol, Set<string>>): void {
-      const i = this._maps.indexOf(m);
-      if (i !== -1) {
-        this._maps.splice(i, 1);
-      }
-    }
-    public addStackTrace(k: string | number | symbol, v: string): void {
-      for (const m of this._maps) {
-        let stacks = m.get(k);
-        if (stacks === undefined) {
-          stacks = new Set<string>();
-          m.set(k, stacks);
-        }
-        stacks.add(v);
-      }
-    }
-    public removeStackTraces(k: string | number | symbol): void {
-      for (const m of this._maps) {
-        m.delete(k);
-      }
+  function _getStackTrace(): string {
+    try {
+      throw new Error();
+    } catch (e) {
+      return e.stack;
     }
   }
 
@@ -52,7 +30,7 @@ interface EventTarget {
    * @param s
    */
   function safeString(s: string): string {
-    return s.replace(r, "\'");
+    return s.replace(r, "\\'");
   }
 
   /**
@@ -259,31 +237,25 @@ interface EventTarget {
     return accessStr;
   }
 
-
-  const stackTraces = new Map<SerializeableGCPath, Map<string | number | symbol, Set<string>>>();
   /**
    * Adds a stack trace to the given map for the given property.
    * @param map
    * @param property
    */
-  function addStackTrace(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol): void {
-    try {
-      throw new Error();
-    } catch (e) {
-      let set = map.get(property);
-      if (!set) {
-        set = new Set<string>();
-        map.set(property, set);
-      }
-      set.add(e.stack);
+  function _addStackTrace(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol, stack = _getStackTrace()): void {
+    let set = map.get(property);
+    if (!set) {
+      set = new Set<string>();
+      map.set(property, set);
     }
+    set.add(stack);
   }
   /**
    * Removes stack traces for the given map for the given property.
    * @param map
    * @param property
    */
-  function removeStacks(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol): void {
+  function _removeStacks(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol): void {
     if (map.has(property)) {
       map.delete(property);
     }
@@ -294,11 +266,26 @@ interface EventTarget {
    * @param from
    * @param to
    */
-  function copyStacks(map: Map<string | number | symbol, Set<string>>, from: string | number | symbol, to: string | number | symbol): void {
+  function _copyStacks(map: Map<string | number | symbol, Set<string>>, from: string | number | symbol, to: string | number | symbol): void {
     if (map.has(from)) {
       map.set(to, map.get(from));
     }
   }
+
+  /**
+   * Initialize a map to contain stack traces for all of the properties of the given object.
+   * @param map
+   * @param obj
+   */
+  function _initializeMap(obj: any): Map<string | number | symbol, Set<string>> {
+    const map = new Map<string | number | symbol, Set<string>>();
+    const trace = _getStackTrace();
+    Object.keys(obj).forEach((k) => {
+      _addStackTrace(map, k, trace);
+    });
+    return map;
+  }
+
   /**
    * Returns a proxy object for the given object, if applicable. Creates a new object if the object
    * is not already proxied.
@@ -306,11 +293,12 @@ interface EventTarget {
    * @param obj
    * @param map
    */
-  function getProxy(accessStr: string, obj: any, map: Map<string | number | symbol, Set<string>>): any {
+  function getProxy(accessStr: string, obj: any): any {
     if (!isProxyable(obj)) {
       console.log(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
       return obj;
     } else if (!obj.hasOwnProperty('$$$PROXY$$$')) {
+      const map = _initializeMap(obj);
       Object.defineProperty(obj, '$$$ORIGINAL$$$', {
         value: obj,
         writable: false,
@@ -318,38 +306,33 @@ interface EventTarget {
         configurable: true
       });
       Object.defineProperty(obj, "$$$STACKTRACES$$$", {
-        value: new StackCollector(),
+        value: map,
         writable: false,
         enumerable: false,
         configurable: false
       });
-      // obj.$$$STACKTRACES$$$.addMap(map);
       obj.$$$PROXY$$$ = new Proxy(obj, {
         defineProperty: function(target, property, descriptor): boolean {
           if (!disableProxies) {
             // Capture a stack trace.
-            addStackTrace(map, property);
+            _addStackTrace(target.$$$STACKTRACES$$$, property);
           }
           return Reflect.defineProperty(target, property, descriptor);
         },
         set: function(target, property, value, receiver): boolean {
           if (!disableProxies) {
             // Capture a stack trace.
-            addStackTrace(map, property);
+            _addStackTrace(target.$$$STACKTRACES$$$, property);
           }
           return Reflect.set(target, property, value, target);
         },
         get: function(target, property, receiver): any {
-          if (property === secretStackMapProperty) {
-            return map;
-          } else {
-            return Reflect.get(target, property, target);
-          }
+          return Reflect.get(target, property, target);
         },
         deleteProperty: function(target, property): boolean {
           if (!disableProxies) {
             // Remove stack traces that set this property.
-            removeStacks(map, property);
+            _removeStacks(target.$$$STACKTRACES$$$, property);
           }
           return Reflect.deleteProperty(target, property);
         }
@@ -359,57 +342,23 @@ interface EventTarget {
   }
 
   /**
-   * Given object newObj replacing object oldObj, updates the map to exclude stack traces for
-   * properties not in newObj and to include stack traces from the current moment for properties on
-   * newObj that are not in the map.
-   * @param map
-   * @param oldObj
-   * @param newObj
-   */
-  function updateMapForChangedProps(map: Map<string | number | symbol, Set<string>>, oldObj: Object, newObj: Object): void {
-    if (!isProxyable(oldObj) || !isProxyable(newObj)) {
-      return;
-    }
-    const newProps = Object.keys(newObj);
-    const newPropSet = new Set(newProps);
-    map.forEach((_, prop) => {
-      if (!newPropSet.has(`${prop}`)) {
-        removeStacks(map, prop);
-      }
-    });
-    newProps.forEach((prop) => {
-      if (!map.has(prop)) {
-        addStackTrace(map, prop);
-      }
-    });
-
-    if (newObj.hasOwnProperty("$$$PROXY$$$") && (<any> newObj)[secretStackMapProperty] !== map) {
-      // Merge maps
-      console.warn(`!!!! Need to support merging maps! !!!!`);
-    }
-  }
-
-  /**
    * Installs a proxy object at the given location, and a getter/setter on the parent location to
    * capture writes to the heap location.
    * @param accessStr
    * @param parentAccessStr
    * @param parent
    * @param obj
-   * @param map
    * @param propName
    */
-  function installProxy(accessStr: string, parentAccessStr: string, parent: any, obj: any, map: Map<string | number | symbol, Set<string>>, propName: string | number): void {
-    let hiddenValue = getProxy(accessStr, obj, map);
+  function installProxy(accessStr: string, parentAccessStr: string, parent: any, obj: any, propName: string | number): void {
+    let hiddenValue = getProxy(accessStr, obj);
     if ((typeof(parent) === "object" || typeof(parent) === "function") && parent !== null) {
       Object.defineProperty(parent, propName, {
         get: function() {
           return hiddenValue;
         },
         set: function(val) {
-          hiddenValue = getProxy(accessStr, val, map);
-          updateMapForChangedProps(map, obj, val);
-          obj = val;
+          hiddenValue = getProxy(accessStr, val);
           return true;
         }
       });
@@ -418,48 +367,70 @@ interface EventTarget {
     }
   }
 
-  function replaceObjectsWithProxies(roots: any[], propName: string | number, accessStr: string, parentAccessStr: string, map: Map<string | number | symbol, Set<string>>): void {
+  function replaceObjectsWithProxies(roots: any[], propName: string | number, accessStr: string, parentAccessStr: string): void {
     try {
       const getObjFcn: (root: any) => [any, any] | null = <any> new Function("root", `try { return [${parentAccessStr}, ${accessStr}]; } catch (e) { return null; }`);
       roots.map(getObjFcn).filter((o) => o !== null).forEach((objs) => {
-        installProxy(accessStr, parentAccessStr, objs[0], objs[1], map, propName);
+        installProxy(accessStr, parentAccessStr, objs[0], objs[1], propName);
       });
     } catch (e) {
       console.log(`[PROXY REPLACE ERROR] Failed to install proxy at ${accessStr}: ${e}`);
     }
   }
 
-  const secretStackMapProperty = "$$$stackmap$$$";
   // Disables proxy interception.
   let disableProxies = false;
   function instrumentPath(paths: SerializeableGCPath[]): void {
-    // Check if first path is in map. If not, all paths should not be in map.
-    let map = stackTraces.get(paths[0]);
-    if (!map) {
-      map = new Map<string | number | symbol, Set<string>>();
-      // Use shortest (0th) path as canonical path.
-      stackTraces.set(paths[0], map);
-    }
     // Fetch the objects.
     for (const p of paths) {
       const accessString = getAccessString(p, false);
       const parentAccessString = getAccessString(p, true);
       const roots = getPossibleRoots(p);
       if (p.path.length > 0) {
-        replaceObjectsWithProxies(roots, p.path[p.path.length - 1].indexOrName, accessString, parentAccessString, map);
+        replaceObjectsWithProxies(roots, p.path[p.path.length - 1].indexOrName, accessString, parentAccessString);
       }
     }
   }
 
+  let instrumentedPaths: SerializeableGCPath[][] = [];
   function $$$INSTRUMENT_PATHS$$$(p: SerializeableGCPath[][]): void {
     for (const path of p) {
       instrumentPath(path);
     }
+    instrumentedPaths = instrumentedPaths.concat(p);
   }
 
   function $$$GET_STACK_TRACE$$$(): string {
+    const allMaps = new Map<SerializeableGCPath, Map<string | number | symbol, Set<string>>>();
+    instrumentedPaths.forEach((path) => {
+      const maps = new Map<string | number | symbol, Set<string>>();
+      allMaps.set(path[0], maps);
+      path.forEach((p) => {
+        const accessStr = getAccessString(p, false);
+        const roots = getPossibleRoots(p);
+        const getObjFcn = <any> new Function("root", `try { return ${accessStr}; } catch (e) { return null; }`);
+        roots.map(getObjFcn).forEach((o) => {
+          if (isProxyable(o)) {
+            const map: Map<string | number | symbol, Set<string>> = (<any> o)['$$$STACKTRACES$$$'];
+            if (map) {
+              map.forEach((stacks, key) => {
+                const oldMap = maps.get(key);
+                if (oldMap !== undefined) {
+                  stacks.forEach((s) => {
+                    oldMap.add(s);
+                  });
+                } else {
+                  maps.set(key, stacks);
+                }
+              });
+            }
+          }
+        });
+      });
+    });
+
     const rv: {[p: string]: string[]} = {};
-    stackTraces.forEach((value, key) => {
+    allMaps.forEach((value, key) => {
       const stackSet = new Set<string>();
       value.forEach((stacks, prop) => {
         stacks.forEach((v) => {
@@ -535,9 +506,10 @@ interface EventTarget {
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
+            const trace = _getStackTrace();
             for (let i = 0; i < items.length; i++) {
-              addStackTrace(map, `${this.length + i}`);
+              _addStackTrace(map, `${this.length + i}`, trace);
             }
           }
           return push.apply(this, items);
@@ -552,14 +524,15 @@ interface EventTarget {
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
             const newItemLen = items.length;
+            const trace = _getStackTrace();
             for (let i = items.length - 1; i >= 0; i--) {
-              copyStacks(map, `${i}`, `${i + newItemLen}`);
+              _copyStacks(map, `${i}`, `${i + newItemLen}`);
             }
             for (let i = 0; i < items.length; i++) {
-              removeStacks(map, `${i}`);
-              addStackTrace(map, `${i}`);
+              _removeStacks(map, `${i}`);
+              _addStackTrace(map, `${i}`, trace);
             }
           }
           return unshift.apply(this, items);
@@ -574,8 +547,8 @@ interface EventTarget {
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
-            removeStacks(map, `${this.length - 1}`);
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
+            _removeStacks(map, `${this.length - 1}`);
           }
           return pop.apply(this);
         } finally {
@@ -589,12 +562,12 @@ interface EventTarget {
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
-            removeStacks(map, "0");
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
+            _removeStacks(map, "0");
             for (let i = 1; i < this.length; i++) {
-              copyStacks(map, `${i}`, `${i - 1}`);
+              _copyStacks(map, `${i}`, `${i - 1}`);
             }
-            removeStacks(map, `${this.length - 1}`);
+            _removeStacks(map, `${this.length - 1}`);
           }
           return shift.apply(this);
         } finally {
@@ -608,7 +581,7 @@ interface EventTarget {
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)[secretStackMapProperty];
+            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
             let actualStart = start | 0;
             if (actualStart === undefined) {
               return [];
@@ -637,7 +610,7 @@ interface EventTarget {
 
             for (let i = 0; i < actualDeleteCount; i++) {
               const index = actualStart + i;
-              removeStacks(map, `${index}`);
+              _removeStacks(map, `${index}`);
             }
 
             // Move existing traces into new locations.
@@ -646,24 +619,25 @@ interface EventTarget {
               // Shift *upward*
               const delta = newItemCount - actualDeleteCount;
               for (let i = this.length - 1; i >= actualStart + actualDeleteCount; i--) {
-                copyStacks(map, `${i}`, `${i + delta}`);
+                _copyStacks(map, `${i}`, `${i + delta}`);
               }
             } else if (newItemCount < actualDeleteCount) {
               // Shift *downward*
               const delta = newItemCount - actualDeleteCount;
               for (let i = actualStart + actualDeleteCount; i < this.length; i++) {
-                copyStacks(map, `${i}`, `${i + delta}`);
+                _copyStacks(map, `${i}`, `${i + delta}`);
               }
               // Delete extra traces for removed indexes.
               for (let i = this.length + delta; i < this.length; i++) {
-                removeStacks(map, `${i}`);
+                _removeStacks(map, `${i}`);
               }
             }
 
+            const trace = _getStackTrace();
             // Add new traces for new items.
             for (let i = 0; i < newItemCount; i++) {
-              removeStacks(map, `${actualStart + i}`);
-              addStackTrace(map, `${actualStart + i}`);
+              _removeStacks(map, `${actualStart + i}`);
+              _addStackTrace(map, `${actualStart + i}`, trace);
             }
           }
           return splice.apply(this, arguments);
