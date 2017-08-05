@@ -1,4 +1,5 @@
 import GrowthTracker from '../lib/growth_tracker';
+import {GrowthObject} from '../lib/growth_graph';
 import {readFileSync} from 'fs';
 import * as readline from 'readline';
 import {SnapshotNodeTypeToString, SnapshotEdgeTypeToString, SnapshotNodeType} from '../common/interfaces';
@@ -22,7 +23,14 @@ console.log(``);
 console.log(`Report`);
 console.log(`======`);
 console.log(``);
+const ranksArray = new Array<[GrowthObject, [string, number][]]>();
 ranks.forEach((ranks, obj) => {
+  ranksArray.push([obj, ranks]);
+});
+ranksArray.sort((a, b) => a[1][1][1] - b[1][1][1]);
+ranksArray.forEach((a) => {
+  const ranks = a[1];
+  const obj = a[0];
   console.log(`* ${ranks.map((v) => `${v[0]}: ${v[1]}`).join(", ")}`);
   obj.paths.slice(0, 5).forEach((p, i) => {
     console.log(`   * ${path2string(p.toJSON(), true)}`);

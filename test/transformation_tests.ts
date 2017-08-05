@@ -244,5 +244,41 @@ describe('Transformations', function() {
       `);
       assertEqual(module.obj.decl(100), 4);
     });
+
+    it(`works on functions illegally defined in blocks`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        exports.obj = {
+          decl: function() {
+            if (1) {
+              function Z() {
+                var a = 4;
+                return function() { return a; };
+              }
+              return Z;
+            }
+          }
+        };
+      `);
+      assertEqual(module.obj.decl()()(), 4);
+    });
+
+    it(`works on functions illegally defined in switch cases`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        exports.obj = {
+          decl: function(s) {
+            switch (s) {
+              case 1:
+                function Z() {
+                  var a = 4;
+                  return function() { return a; };
+                }
+                return Z;
+            }
+          }
+        };
+      `);
+      assertEqual(module.obj.decl(1)()(), 4);
+    });
   });
+  // NEED A SWITCH CASE VERSION where it's not within a block!!!
 });

@@ -107,6 +107,7 @@ export interface HeapSnapshotContents {
   node_count: number;
   edge_count: number;
   trace_function_count: number;
+  root_index?: number;
 }
 
 export interface HeapSnapshotMeta {

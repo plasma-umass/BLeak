@@ -4,7 +4,7 @@ import {replace as rewriteJavaScript} from 'estraverse';
 import {generate as generateJavaScript} from 'astring';
 import {SourceMapGenerator} from 'source-map';
 import {compile} from 'estemplate';
-import {BlockStatement, Program, SequenceExpression, VariableDeclaration, Property, Literal, BinaryExpression, UnaryExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
+import {BlockStatement, Node, Program, SequenceExpression, VariableDeclaration, Property, Literal, BinaryExpression, UnaryExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 import {SourceFile} from '../common/interfaces';
 import {parse as parseURL} from 'url';
 import {readFileSync} from 'fs';
@@ -36,6 +36,14 @@ export function injectIntoHead(source: string, injection: string): string {
   } else {
     // This might be an HTML fragment, such as an AngularJS template, that lacks a root <html> node.
     return source;
+  }
+}
+
+function prependToBlock(node: BlockStatement, s: Statement[]): void {
+  if (node.body.length > 0 && node.body[0].type === "ExpressionStatement" && (<any> node.body[0])['directive'] === 'use strict') {
+    node.body = node.body.slice(0, 1).concat(s).concat(node.body.slice(1));
+  } else {
+    node.body = s.concat(node.body);
   }
 }
 
@@ -484,12 +492,274 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
 
   //console.log("Scopes finalized.");
 
-  // Modifications to make to the current block.
+  // Modifications to make to the top-level function block.
   let blockInsertions = new Array<Statement>();
   // Stack of blocks.
   let blocks = new Array<[BlockStatement, Statement[]]>();
 
   // Pass 2: Insert scope variables.
+  function convertDecl(decl: VariableDeclarator): AssignmentExpression {
+    if (!decl.init) {
+      return <any> decl.id;
+    }
+    return {
+      type: "AssignmentExpression",
+      operator: "=",
+      left: decl.id,
+      right: decl.init,
+      loc: decl.loc
+    };
+  }
+
+  function transform(node: BinaryExpression, op: '===' | '==' | '!==' | '!='): UnaryExpression | CallExpression {
+    const strict = op.length === 3;
+    const not = op[0] === '!';
+    const ce: CallExpression = {
+      type: "CallExpression",
+      callee: {
+        type: "Identifier",
+        name: `$$$${strict ? 'S' : ''}EQ$$$`
+      },
+      arguments: [
+        node.left,
+        node.right
+      ],
+      loc: node.loc
+    };
+    if (not) {
+      const ue: UnaryExpression = {
+        type: "UnaryExpression",
+        operator: "!",
+        argument: ce,
+        loc: node.loc,
+        prefix: true
+      };
+      return ue;
+    } else {
+      return ce;
+    }
+  }
+
+  function leaveTransform(node: Node, parent: Node): Node {
+    switch (node.type) {
+      case 'Identifier': {
+        if (!parent || (parent.type !== "FunctionDeclaration" && parent.type !== "FunctionExpression")) {
+          switch (parent.type) {
+            case "MemberExpression": {
+              // Ignore nested identifiers in member expressions that aren't computed.
+              if (node === parent.property && !parent.computed) {
+                return node;
+              }
+              break;
+            }
+            case "LabeledStatement":
+            case "ContinueStatement":
+            case "BreakStatement":
+              if (node === parent.label) {
+                return node;
+              }
+              break;
+            case "CatchClause":
+              return node;
+            case "Property":
+              if (parent.key === node) {
+                return node;
+              }
+              break;
+            case "CallExpression":
+              if (node === parent.callee) {
+                // Preserve value of 'this' by doing scope.f || scope.f.
+                const le: LogicalExpression = {
+                  type: "LogicalExpression",
+                  operator: "||",
+                  left: scope.getReplacement(node),
+                  right: scope.getReplacement(node),
+                  loc: node.loc
+                };
+                return le;
+              }
+              break;
+          }
+          return scope.getReplacement(node);
+        }
+        return node;
+      }
+      case 'AssignmentExpression': {
+        // Check if LHS is an argument. It has been rewritten to a member expression
+        // if it has.
+        const lhs = node.left;
+        if (lhs.type === "MemberExpression" && lhs.property.type === "Identifier") {
+          const name = lhs.property.name;
+          if (scope.getType(name) === VariableType.ARGUMENT) {
+            // Rewrite RHS to assign to actual argument variable, too.
+            // Works even if RHS is +=, etc.
+            return <AssignmentExpression> {
+              type: "AssignmentExpression",
+              operator: "=",
+              left: {
+                type: "Identifier",
+                name: name
+              },
+              right: node,
+              loc: node.loc
+            };
+          }
+        }
+        break;
+      }
+      case 'VariableDeclaration': {
+        let statement = true;
+        if (parent) {
+          switch (parent.type) {
+            case 'ForInStatement':
+            case 'ForOfStatement':
+              // for (var i [in/of] b) {}
+              statement = parent.left !== node;
+              break;
+            case 'ForStatement':
+              // for (var i = 3, j = 0; )
+              statement = parent.init !== node;
+              break;
+          }
+        }
+
+        if (node.declarations.length === 1) {
+          const decl = node.declarations[0];
+          if (!decl.init) {
+            if (statement) {
+              return <ExpressionStatement> {
+                type: "ExpressionStatement",
+                expression: decl.id,
+                loc: node.loc
+              };
+            } else {
+              return decl.id;
+            }
+          } else {
+            const converted = convertDecl(decl);
+            if (statement) {
+              return <ExpressionStatement> {
+                type: "ExpressionStatement",
+                expression: converted,
+                loc: node.loc
+              };
+            } else {
+              return converted;
+            }
+          }
+        } else {
+          const se: SequenceExpression = {
+            type: "SequenceExpression",
+            expressions: node.declarations.map(convertDecl),
+            loc: node.loc
+          };
+          if (statement) {
+            return <ExpressionStatement> {
+              type: "ExpressionStatement",
+              expression: se,
+              loc: node.loc
+            };
+          } else {
+            return se;
+          }
+        }
+      }
+      case 'FunctionDeclaration': {
+        scope = scope.parent;
+        //console.log("Leaving FD");
+        const assignment = getScopeAssignment(node.id, {
+          type: "Identifier",
+          name: scope.scopeIdentifier
+        });
+        if (parent.type === "BlockStatement") {
+          blockInsertions = blockInsertions.concat(assignment);
+        } else {
+          // Undefined behavior!!!
+          // Turn into a function expression assignment to a var. Chrome seems to treat it as such.
+          const transform: VariableDeclaration = {
+            type: "VariableDeclaration",
+            declarations: [
+              {
+                type: "VariableDeclarator",
+                id: {
+                  type: "Identifier",
+                  name: node.id.name,
+                  loc: node.id.loc
+                },
+                init: {
+                  type: "FunctionExpression",
+                  id: {
+                    type: "Identifier",
+                    name: node.id.name,
+                    loc: node.id.loc
+                  },
+                  params: node.params,
+                  body: node.body,
+                  generator: node.generator,
+                  expression: (<any>node).expression,
+                  async: node.async,
+                  loc: node.loc
+                },
+                loc: node.loc
+              }
+            ],
+            kind: "var",
+            loc: node.loc
+          };
+          // Recur: Process function expression and transform.
+          return leaveTransform(transform, parent);
+        }
+        return node;
+      }
+      case 'FunctionExpression': {
+        scope = scope.parent;
+        return getExpressionTransform(node.id || (<any> parent).id || {
+          type: "Identifier",
+          name: "__anonymous_function__"
+        }, node, {
+          type: "Identifier",
+          name: scope.scopeIdentifier
+        });
+      }
+      // const scopeDef = getScopeDefinition(scope);
+      case 'ArrowFunctionExpression':
+        throw new Error(`Arrow functions not yet supported.`);
+      case 'BlockStatement':
+      //console.log("Leaving BS");
+        const currentBlockInsertions = blockInsertions;
+        const n = blocks.pop();
+        blockInsertions = n[1];
+        if (n[0] !== node) {
+          throw new Error(`Balancing block statement pop does not match expected value.`);
+        }
+        if (!(scope instanceof GlobalScope)) {
+          if (currentBlockInsertions.length > 0) {
+            prependToBlock(node, currentBlockInsertions);
+          }
+          if ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression") && scope.closedOver) {
+            const scopeDefinition = getScopeDefinition(parent, scope);
+            prependToBlock(node, [scopeDefinition]);
+          }
+        }
+        return node;
+      case "BinaryExpression":
+        // Rewrite equality checks to call into runtime library.
+        // Facilitates proxy referential transparency.
+        // TODO: instanceof?
+        switch (node.operator) {
+          case '===':
+          case '==':
+          case '!==':
+          case '!=':
+            return transform(node, node.operator);
+          default:
+            break;
+        }
+        break;
+    }
+    return undefined;
+  }
+
   const newAst = rewriteJavaScript(ast, {
     enter: function(node, parent) {
       switch(node.type) {
@@ -506,233 +776,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
       }
       return undefined;
     },
-    leave: function(node, parent) {
-      function convertDecl(decl: VariableDeclarator): AssignmentExpression {
-        if (!decl.init) {
-          return <any> decl.id;
-        }
-        return {
-          type: "AssignmentExpression",
-          operator: "=",
-          left: decl.id,
-          right: decl.init,
-          loc: decl.loc
-        };
-      }
-
-      function transform(node: BinaryExpression, op: '===' | '==' | '!==' | '!='): UnaryExpression | CallExpression {
-        const strict = op.length === 3;
-        const not = op[0] === '!';
-        const ce: CallExpression = {
-          type: "CallExpression",
-          callee: {
-            type: "Identifier",
-            name: `$$$${strict ? 'S' : ''}EQ$$$`
-          },
-          arguments: [
-            node.left,
-            node.right
-          ],
-          loc: node.loc
-        };
-        if (not) {
-          const ue: UnaryExpression = {
-            type: "UnaryExpression",
-            operator: "!",
-            argument: ce,
-            loc: node.loc,
-            prefix: true
-          };
-          return ue;
-        } else {
-          return ce;
-        }
-      }
-
-      switch (node.type) {
-        case 'Identifier': {
-          if (!parent || (parent.type !== "FunctionDeclaration" && parent.type !== "FunctionExpression")) {
-            switch (parent.type) {
-              case "MemberExpression": {
-                // Ignore nested identifiers in member expressions that aren't computed.
-                if (node === parent.property && !parent.computed) {
-                  return node;
-                }
-                break;
-              }
-              case "LabeledStatement":
-              case "ContinueStatement":
-              case "BreakStatement":
-                if (node === parent.label) {
-                  return node;
-                }
-                break;
-              case "CatchClause":
-                return node;
-              case "Property":
-                if (parent.key === node) {
-                  return node;
-                }
-                break;
-              case "CallExpression":
-                if (node === parent.callee) {
-                  // Preserve value of 'this' by doing scope.f || scope.f.
-                  const le: LogicalExpression = {
-                    type: "LogicalExpression",
-                    operator: "||",
-                    left: scope.getReplacement(node),
-                    right: scope.getReplacement(node),
-                    loc: node.loc
-                  };
-                  return le;
-                }
-                break;
-            }
-            return scope.getReplacement(node);
-          }
-          return node;
-        }
-        case 'AssignmentExpression': {
-          // Check if LHS is an argument. It has been rewritten to a member expression
-          // if it has.
-          const lhs = node.left;
-          if (lhs.type === "MemberExpression" && lhs.property.type === "Identifier") {
-            const name = lhs.property.name;
-            if (scope.getType(name) === VariableType.ARGUMENT) {
-              // Rewrite RHS to assign to actual argument variable, too.
-              // Works even if RHS is +=, etc.
-              return <AssignmentExpression> {
-                type: "AssignmentExpression",
-                operator: "=",
-                left: {
-                  type: "Identifier",
-                  name: name
-                },
-                right: node,
-                loc: node.loc
-              };
-            }
-          }
-          break;
-        }
-        case 'VariableDeclaration': {
-          let statement = true;
-          if (parent) {
-            switch (parent.type) {
-              case 'ForInStatement':
-              case 'ForOfStatement':
-                // for (var i [in/of] b) {}
-                statement = parent.left !== node;
-                break;
-              case 'ForStatement':
-                // for (var i = 3, j = 0; )
-                statement = parent.init !== node;
-                break;
-            }
-          }
-
-          if (node.declarations.length === 1) {
-            const decl = node.declarations[0];
-            if (!decl.init) {
-              if (statement) {
-                return <ExpressionStatement> {
-                  type: "ExpressionStatement",
-                  expression: decl.id,
-                  loc: node.loc
-                };
-              } else {
-                return decl.id;
-              }
-            } else {
-              const converted = convertDecl(decl);
-              if (statement) {
-                return <ExpressionStatement> {
-                  type: "ExpressionStatement",
-                  expression: converted,
-                  loc: node.loc
-                };
-              } else {
-                return converted;
-              }
-            }
-          } else {
-            const se: SequenceExpression = {
-              type: "SequenceExpression",
-              expressions: node.declarations.map(convertDecl),
-              loc: node.loc
-            };
-            if (statement) {
-              return <ExpressionStatement> {
-                type: "ExpressionStatement",
-                expression: se,
-                loc: node.loc
-              };
-            } else {
-              return se;
-            }
-          }
-        }
-        case 'FunctionDeclaration': {
-          scope = scope.parent;
-          //console.log("Leaving FD");
-          blockInsertions = blockInsertions.concat(getScopeAssignment(node.id, {
-            type: "Identifier",
-            name: scope.scopeIdentifier
-          }));
-          return node;
-        }
-        case 'FunctionExpression': {
-          scope = scope.parent;
-          return getExpressionTransform(node.id || (<any> parent).id || {
-            type: "Identifier",
-            name: "__anonymous_function__"
-          }, node, {
-            type: "Identifier",
-            name: scope.scopeIdentifier
-          });
-        }
-        // const scopeDef = getScopeDefinition(scope);
-        case 'ArrowFunctionExpression':
-          throw new Error(`Arrow functions not yet supported.`);
-        case 'BlockStatement':
-        //console.log("Leaving BS");
-          const currentBlockInsertions = blockInsertions;
-          const n = blocks.pop();
-          blockInsertions = n[1];
-          if (n[0] !== node) {
-            throw new Error(`Balancing block statement pop does not match expected value.`);
-          }
-          if (!(scope instanceof GlobalScope)) {
-            if (currentBlockInsertions.length > 0) {
-              node.body = currentBlockInsertions.concat(node.body);
-            }
-            if ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression") && scope.closedOver) {
-              const scopeDefinition = getScopeDefinition(parent, scope);
-              if (node.body.length > 0 && node.body[0].type === "ExpressionStatement" && (<any> node.body[0])['directive'] === 'use strict') {
-                node.body = node.body.slice(0, 1).concat([scopeDefinition]).concat(node.body.slice(1));
-              } else {
-                node.body = [<Statement> scopeDefinition].concat(node.body);
-              }
-            }
-          }
-          return node;
-        case "BinaryExpression":
-          // Rewrite equality checks to call into runtime library.
-          // Facilitates proxy referential transparency.
-          // TODO: instanceof?
-          switch (node.operator) {
-            case '===':
-            case '==':
-            case '!==':
-            case '!=':
-              return transform(node, node.operator);
-            default:
-              break;
-          }
-          break;
-      }
-      return undefined;
-    }
+    leave: leaveTransform
   });
 
   const body = (<Program> newAst).body;

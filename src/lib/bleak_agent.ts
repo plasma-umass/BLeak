@@ -742,6 +742,37 @@ interface EventTarget {
       }
     }
 
+    /**
+     * Interposition "on[eventname]" properties and store value as an expando
+     * property on DOM element so it shows up in the heap snapshot.
+     * @param obj
+     * @param propName
+     */
+    function interpositionEventListenerProperty(obj: object, propName: string): void {
+      const desc = Object.getOwnPropertyDescriptor(obj, propName);
+      if (desc) {
+        delete desc['value'];
+        delete desc['writable'];
+        const set = desc.set;
+        desc.set = function(this: any, val: any) {
+          set.call(this, val);
+          this[`$$${propName}`] = val;
+        };
+        Object.defineProperty(obj, propName, desc);
+      }
+    }
+
+    [Document.prototype, Element.prototype, MediaQueryList.prototype, FileReader.prototype,
+      HTMLBodyElement.prototype, HTMLElement.prototype, HTMLFrameSetElement.prototype,
+      ApplicationCache.prototype, //EventSource.prototype, SVGAnimationElement.prototype,
+      SVGElement.prototype, XMLHttpRequest.prototype, //XMLHttpRequestEventTarget.prototype,
+      WebSocket.prototype, IDBDatabase.prototype, IDBOpenDBRequest.prototype,
+      IDBRequest.prototype, IDBTransaction.prototype, window].forEach((obj) => {
+        Object.keys(obj).filter((p) => p.startsWith("on")).forEach((p) => {
+          interpositionEventListenerProperty(obj, p);
+        });
+      });
+
     //const countMap = new Map<string, Count>();
     [[Node.prototype, "Node"], [Element.prototype, "Element"], [HTMLElement.prototype, "HTMLElement"],
      [Document.prototype, "Document"], [HTMLCanvasElement.prototype, "HTMLCanvasElement"]]
@@ -799,6 +830,31 @@ interface EventTarget {
 
     // SVGElement:
     // dataset: Throw exception if used
+
+    // On properties:
+    // - Document.prototype
+    // - Element.prototype
+    // - MediaQueryList.prototype
+    // - FileReader.prototype
+    // - HTMLBodyElement
+    // - HTMLElement
+    // - HTMLFrameSetElement
+    // - AudioTrackList? TextTrack? TextTrackCue? TextTrackList? VideoTrackList?
+    // - ApplicationCache
+    // - EventSource
+    // - SVGAnimationElement
+    // - SVGElement
+    // - Performance?
+    // - Worker?
+    // - XMLHttpRequest
+    // - XMLHttpRequestEventTarget
+    // - WebSocket
+    // - IDBDatabase
+    // - IDBOpenDBRequest
+    // - IDBRequest
+    // - IDBTransaction
+    // - window.[property] (Special)
+
 
   }
 })();

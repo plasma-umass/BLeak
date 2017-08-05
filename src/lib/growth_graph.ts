@@ -285,7 +285,7 @@ export class Node {
                 }
                 break;
               }
-              case "properties": {
+              /*case "properties": {
                 // Contains expando properties on DOM nodes,
                 // properties storing numbers on objects,
                 // etc.
@@ -294,7 +294,7 @@ export class Node {
                   count += props.children.length;
                 }
                 break;
-              }
+              }*/
             }
             break;
           case SnapshotEdgeType.Hidden:
