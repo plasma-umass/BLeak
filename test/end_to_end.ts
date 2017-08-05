@@ -3,8 +3,8 @@ import ChromeDriver from '../src/webdriver/chrome_driver';
 import BLeak from '../src/lib/bleak';
 import createHTTPServer from './util/http_server';
 import Proxy from '../src/proxy/proxy';
-import {readFileSync} from 'fs';
-// import {readFileSync, writeFileSync} from 'fs';
+//import {readFileSync} from 'fs';
+import {readFileSync, writeFileSync} from 'fs';
 import {equal as assertEqual} from 'assert';
 // import {Leak} from '../src/common/interfaces';
 
@@ -59,6 +59,23 @@ const FILES: {[name: string]: TestFile} = {
           obj[Math.random()] = Math.random();
         }
       });
+    })();
+    `, 'utf8')
+  },
+  '/closure_test_on_property.html': getHTMLConfig('closure_test_on_property'),
+  '/closure_test_on_property.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`(function() {
+      var obj = {};
+      var i = 0;
+      var power = 2;
+      document.getElementById('btn').onclick = function() {
+        var top = Math.pow(2, power);
+        power++;
+        for (var j = 0; j < top; j++) {
+          obj[Math.random()] = Math.random();
+        }
+      };
     })();
     `, 'utf8')
   },
@@ -261,7 +278,7 @@ describe('End-to-end Tests', function() {
         ];
         exports.timeout = 30000;
       `, proxy, driver, (ss) => {
-        // writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
+        //writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
         i++;
       }).then((leaks) => {
         assertEqual(leaks.length > 0, true);
@@ -283,6 +300,7 @@ describe('End-to-end Tests', function() {
 
   createStandardLeakTest('Catches leaks', 'test', 8);
   createStandardLeakTest('Catches leaks in closures', 'closure_test', 9);
+  createStandardLeakTest('Catches leaks in closures when event listener is assigned on a property', 'closure_test_on_property', 9);
   createStandardLeakTest('Catches leaks in closures, even with irrelevant DOM objects', 'closure_test_irrelevant_dom', 9);
   createStandardLeakTest('Catches leaks in closures, even with disconnected DOM fragments', 'closure_test_disconnected_dom', 10);
   // Not supported.
