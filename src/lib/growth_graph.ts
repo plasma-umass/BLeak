@@ -704,11 +704,16 @@ export class GrowthPath {
         console.log("WTF:");
         console.log(path[0].to.name);
         console.log(path[0].indexOrName);
+        rv.root = {
+          type: RootType.DOM,
+          elementType: "HTMLBodyElement"
+        };
+      } else {
+        rv.root = {
+          type: RootType.DOM,
+          elementType: path[1].to.name
+        };
       }
-      rv.root = {
-        type: RootType.DOM,
-        elementType: path[1].to.name
-      };
       path = path.slice(2);
     }
 

@@ -226,9 +226,9 @@ assert-plus@^0.2.0:
   version "0.2.0"
   resolved "https://registry.yarnpkg.com/assert-plus/-/assert-plus-0.2.0.tgz#d74e1b87e7affc0db8aadb7021f3fe48101ab234"
 
-"astring@https://github.com/jvilk/astring.git":
-  version "1.0.3"
-  resolved "https://github.com/jvilk/astring.git#880cfad8b813fbdff1e58f4268708d7c98fcd6e4"
+astring@^1.0.5:
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/astring/-/astring-1.0.5.tgz#41280b5b38e12556ffa6c7216aa0c7d078583090"
 
 async@^1.4.0, async@^1.4.2:
   version "1.5.2"
@@ -684,22 +684,11 @@ escape-string-regexp@1.0.5, escape-string-regexp@^1.0.2, escape-string-regexp@^1
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/escape-string-regexp/-/escape-string-regexp-1.0.5.tgz#1b61c0562190a8dff6ae3bb2cf0200ca130b86d4"
 
-esprima@^2.7.2:
-  version "2.7.3"
-  resolved "https://registry.yarnpkg.com/esprima/-/esprima-2.7.3.tgz#96e3b70d5779f6ad49cd032673d1c312767ba581"
-
 esprima@^3.1.3:
   version "3.1.3"
   resolved "https://registry.yarnpkg.com/esprima/-/esprima-3.1.3.tgz#fdca51cee6133895e3c88d535ce49dbff62a4633"
 
-estemplate@^0.5.1:
-  version "0.5.1"
-  resolved "https://registry.yarnpkg.com/estemplate/-/estemplate-0.5.1.tgz#1714a9d46190738ac958bcafd49e029cda56a39e"
-  dependencies:
-    esprima "^2.7.2"
-    estraverse "^4.1.1"
-
-estraverse@^4.1.1, estraverse@^4.2.0:
+estraverse@^4.2.0:
   version "4.2.0"
   resolved "https://registry.yarnpkg.com/estraverse/-/estraverse-4.2.0.tgz#0dee3fed31fcd469618ce7342099fc1afa0bdb13"
 

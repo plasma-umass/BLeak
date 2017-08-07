@@ -3,7 +3,6 @@ import {replace as rewriteJavaScript} from 'estraverse';
 // import {generate as generateJavaScript} from 'escodegen';
 import {generate as generateJavaScript} from 'astring';
 import {SourceMapGenerator} from 'source-map';
-import {compile} from 'estemplate';
 import {BlockStatement, Node, Program, SequenceExpression, VariableDeclaration, Property, Literal, BinaryExpression, UnaryExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 import {SourceFile} from '../common/interfaces';
 import {parse as parseURL} from 'url';
@@ -11,6 +10,18 @@ import {readFileSync} from 'fs';
 
 const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
 const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
+
+let seed = 0x2F6E2B1;
+function deterministicRandom(): number {
+  // Robert Jenkins’ 32 bit integer hash function
+  seed = ((seed + 0x7ED55D16) + (seed << 12))  & 0xFFFFFFFF;
+  seed = ((seed ^ 0xC761C23C) ^ (seed >>> 19)) & 0xFFFFFFFF;
+  seed = ((seed + 0x165667B1) + (seed << 5))   & 0xFFFFFFFF;
+  seed = ((seed + 0xD3A2646C) ^ (seed << 9))   & 0xFFFFFFFF;
+  seed = ((seed + 0xFD7046C5) + (seed << 3))   & 0xFFFFFFFF;
+  seed = ((seed ^ 0xB55A4F09) ^ (seed >>> 16)) & 0xFFFFFFFF;
+  return (seed & 0xFFFFFFF) / 0x10000000;
+}
 
 /**
  * Inject the injection string into the <head> portion of the HTML source.
@@ -47,8 +58,6 @@ function prependToBlock(node: BlockStatement, s: Statement[]): void {
   }
 }
 
-const SCOPE_ASSIGNMENT_EXPRESSION_STR = `Object.defineProperty(<%= functionVarName %>, '__scope__', { get: function() { return <%= scopeVarName %>; }, configurable: true });`;
-const EXPRESSION_TRANSFORM_TEMPLATE = compile(`(function(){var <%= functionVarName %>=<%= originalFunction %>;${SCOPE_ASSIGNMENT_EXPRESSION_STR}return <%= functionVarName %>;}())`);
 function getExpressionTransform(functionVarName: Identifier | MemberExpression, originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
   let fvn: Identifier;
   if (functionVarName.type === "Identifier") {
@@ -65,23 +74,114 @@ function getExpressionTransform(functionVarName: Identifier | MemberExpression, 
       };
     }
   }
-  const prog = EXPRESSION_TRANSFORM_TEMPLATE({
-    functionVarName: fvn,
-    originalFunction,
-    scopeVarName
-  });
-  const rv = <CallExpression> (<ExpressionStatement> prog.body[0]).expression;
-  rv.loc = originalFunction.loc;
-  return rv;
+  return {
+    type: "CallExpression",
+    callee: {
+      type: "FunctionExpression",
+      id: null,
+      params: [],
+      body: {
+        type: "BlockStatement",
+        body: [{
+          type: "VariableDeclaration",
+          declarations: [{
+            type: "VariableDeclarator",
+            id: {
+              type: "Identifier",
+              name: fvn.name
+            },
+            init: originalFunction
+          }],
+          kind: "var"
+        }, getScopeAssignment(fvn, scopeVarName), {
+          type: "ReturnStatement",
+          argument: {
+            type: "Identifier",
+            name: fvn.name
+          }
+        }]
+      },
+      generator: false,
+      expression: false,
+      async: false
+    },
+    arguments: []
+  };
 }
 
-const SCOPE_ASSIGNMENT_TEMPLATE = compile(SCOPE_ASSIGNMENT_EXPRESSION_STR);
 function getScopeAssignment(functionVarName: Identifier, scopeVarName: Identifier): ExpressionStatement {
-  const prog = SCOPE_ASSIGNMENT_TEMPLATE({
-    functionVarName,
-    scopeVarName
-  });
-  return <ExpressionStatement> prog.body[0];
+  return {
+    type: "ExpressionStatement",
+    expression: {
+      type: "CallExpression",
+      callee: {
+        type: "MemberExpression",
+        computed: false,
+        object: {
+          type: "Identifier",
+          name: "Object"
+        },
+        property: {
+          type: "Identifier",
+          name: "defineProperty"
+        }
+      },
+      arguments: [
+        {
+          type: "Identifier",
+          name: functionVarName.name
+        }, {
+          type: "Literal",
+          value: "__scope__",
+          raw: "'__scope__'"
+        }, {
+          type: "ObjectExpression",
+          properties: [{
+            type: "Property",
+            key: {
+              type: "Identifier",
+              name: "get"
+            },
+            computed: false,
+            value: {
+              type: "FunctionExpression",
+              id: null,
+              params: [],
+              body: {
+                  type: "BlockStatement",
+                  body: [{
+                    type: "ReturnStatement",
+                    argument: scopeVarName
+                }]
+              },
+              generator: false,
+              expression: false,
+              async: false
+            },
+            kind: "init",
+            method: false,
+            shorthand: false
+            }, {
+                type: "Property",
+                key: {
+                    type: "Identifier",
+                    name: "configurable"
+                },
+                computed: false,
+                value: {
+                    type: "Literal",
+                    value: true,
+                    raw: "true"
+                },
+                kind: "init",
+                method: false,
+                shorthand: false
+            }
+          ]
+        }
+      ]
+    }
+  };
 }
 
 function getStringLiteralArray(names: string[]): Literal[] {
@@ -241,7 +341,11 @@ class Scope {
    * @param type If true, the identifier will not be moved into a scope object.
    */
   public add(identifier: string, type: VariableType): void {
-    this._identifiers.set(identifier, type);
+    // Avoid re-adding the same identifier.
+    // Causes a problem with named function expressions.
+    if (!this._identifiers.has(identifier)) {
+      this._identifiers.set(identifier, type);
+    }
   }
 
   /**
@@ -327,8 +431,8 @@ class Scope {
   public finalize(allIdentifiers: Set<string>): void {
     const base = "scope";
     let varName = base;
-    // Randomize
-    let count = Math.floor(99999 * Math.random());
+    // Randomize, but keep deterministic.
+    let count = Math.floor(99999 * deterministicRandom());
     while (allIdentifiers.has(varName)) {
       varName = `${base}${count}`;
       count++;
@@ -423,52 +527,91 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
     return rv;
   }
 
-  // Pass 1: Build up scope information.
-  rewriteJavaScript(ast, {
-    enter: function(node, parent) {
-      // Workaround for Esprima bug
-      // https://github.com/jquery/esprima/issues/1844
-      if (node.loc && node.loc.start.column < 0) {
-        node.loc.start.column = 0;
-      }
+  function enterPass1Function(node: Node, parent: Node): Node | undefined {
+    // Workaround for Esprima bug
+    // https://github.com/jquery/esprima/issues/1844
+    if (node.loc && node.loc.start.column < 0) {
+      node.loc.start.column = 0;
+    }
 
-      switch(node.type) {
-        case 'VariableDeclaration': {
-          const decls = node.declarations;
-          decls.forEach((d) => {
-            const id = d.id;
-            if (id.type === "Identifier") {
-              scope.add(id.name, VariableType.MOVED);
-            }
-          });
-          break;
-        }
-        case 'FunctionDeclaration': {
-          const name = node.id;
+    switch(node.type) {
+      case 'VariableDeclaration': {
+        const decls = node.declarations;
+        decls.forEach((d) => {
+          const id = d.id;
+          if (id.type === "Identifier") {
+            scope.add(id.name, VariableType.MOVED);
+          }
+        });
+        break;
+      }
+      case 'FunctionDeclaration': {
+        const name = node.id;
+        if (parent.type !== "BlockStatement" && parent.type !== "Program") {
+          // Undefined behavior!!!
+          // Turn into a function expression assignment to a var. Chrome seems to treat it as such.
+          // Will be re-visited later as a FunctionExpression.
+          const rewrite: VariableDeclaration = {
+            type: "VariableDeclaration",
+            declarations: [
+              {
+                type: "VariableDeclarator",
+                id: {
+                  type: "Identifier",
+                  name: node.id.name,
+                  loc: node.id.loc
+                },
+                init: {
+                  type: "FunctionExpression",
+                  // Remove name of function to avoid clashes with
+                  // new variable name.
+                  id: null,
+                  params: node.params,
+                  body: node.body,
+                  generator: node.generator,
+                  expression: (<any>node).expression,
+                  async: node.async,
+                  loc: node.loc
+                },
+                loc: node.loc
+              }
+            ],
+            kind: "var",
+            loc: node.loc
+          };
+          // Visit the new variable declaration.
+          enterPass1Function(rewrite, parent);
+          return rewrite;
+        } else {
           // Function name
           if (name.type === "Identifier") {
             scope.add(name.name, VariableType.UNMOVED);
           }
           enterFunction(node);
-          break;
         }
-        case 'FunctionExpression': {
-          const name = node.id;
-          if (name && name.type === "Identifier") {
-            scope.add(name.name, VariableType.UNMOVED);
-          }
-          enterFunction(node);
-          break;
-        }
-        case 'CatchClause': {
-          if (node.param.type === "Identifier") {
-            scope.add(node.param.name, VariableType.UNMOVED);
-          }
-          break;
-        }
+        break;
       }
-      return undefined;
-    },
+      case 'FunctionExpression': {
+        const name = node.id;
+        if (name && name.type === "Identifier") {
+          scope.add(name.name, VariableType.UNMOVED);
+        }
+        enterFunction(node);
+        break;
+      }
+      case 'CatchClause': {
+        if (node.param.type === "Identifier") {
+          scope.add(node.param.name, VariableType.UNMOVED);
+        }
+        break;
+      }
+    }
+    return undefined;
+  }
+
+  // Pass 1: Build up scope information.
+  rewriteJavaScript(ast, {
+    enter: enterPass1Function,
     leave: function(node, parent) {
       switch (node.type) {
         case 'FunctionDeclaration':
@@ -671,44 +814,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
           type: "Identifier",
           name: scope.scopeIdentifier
         });
-        if (parent.type === "BlockStatement") {
-          blockInsertions = blockInsertions.concat(assignment);
-        } else {
-          // Undefined behavior!!!
-          // Turn into a function expression assignment to a var. Chrome seems to treat it as such.
-          const transform: VariableDeclaration = {
-            type: "VariableDeclaration",
-            declarations: [
-              {
-                type: "VariableDeclarator",
-                id: {
-                  type: "Identifier",
-                  name: node.id.name,
-                  loc: node.id.loc
-                },
-                init: {
-                  type: "FunctionExpression",
-                  id: {
-                    type: "Identifier",
-                    name: node.id.name,
-                    loc: node.id.loc
-                  },
-                  params: node.params,
-                  body: node.body,
-                  generator: node.generator,
-                  expression: (<any>node).expression,
-                  async: node.async,
-                  loc: node.loc
-                },
-                loc: node.loc
-              }
-            ],
-            kind: "var",
-            loc: node.loc
-          };
-          // Recur: Process function expression and transform.
-          return leaveTransform(transform, parent);
-        }
+        blockInsertions = blockInsertions.concat(assignment);
         return node;
       }
       case 'FunctionExpression': {

@@ -235,6 +235,14 @@ const FILES: {[name: string]: TestFile} = {
       b.removeEventListener('click', l);
     });`, 'utf8')
   },
+  '/dom_growth_test.html': getHTMLConfig('dom_growth_test'),
+  '/dom_growth_test.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`var body = document.getElementsByTagName('body')[0];
+    document.getElementById('btn').addEventListener('click', function() {
+      body.appendChild(document.createElement('div'));
+    });`, 'utf8')
+  },
   '/bleak_agent.js': {
     mimeType: 'text/javascript',
     data: readFileSync(require.resolve('../src/lib/bleak_agent'))
@@ -278,7 +286,7 @@ describe('End-to-end Tests', function() {
         ];
         exports.timeout = 30000;
       `, proxy, driver, (ss) => {
-        //writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
+        writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
         i++;
       }).then((leaks) => {
         assertEqual(leaks.length > 0, true);
@@ -310,6 +318,7 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Ignores code that does not grow objects', 'irrelevant_paths_test', 8);
   createStandardLeakTest('Catches event listener leaks', 'event_listener_leak', 5);
   createStandardLeakTest('Ignores responsible event listener removal', 'event_listener_removal', 5);
+  createStandardLeakTest('Catches leaks that grow DOM unboundedly', 'dom_growth_test', 3);
 
   after(function(done) {
     //setTimeout(function() {
