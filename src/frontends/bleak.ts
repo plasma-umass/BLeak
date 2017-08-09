@@ -5,6 +5,7 @@ import Proxy from '../proxy/proxy';
 import ChromeDriver from '../webdriver/chrome_driver';
 import {Leak} from '../common/interfaces';
 import {path2string} from '../common/util';
+import {ToSerializeableGCPath} from '../lib/growth_graph';
 const PROXY_PORT = 5554;
 const CHROME_DRIVER_PORT = 4444;
 
@@ -27,10 +28,9 @@ function LOG(str: string): void {
  * @param metric
  * @param rank
  */
-function printLeak(l: Leak, metric: string, rank: number): void {
-  const obj = l.obj;
-  const paths = obj.paths.map((p) => p.toJSON()).map((p) => path2string(p, true));
-  LOG(`## Object ${rank} [Score: ${l.rankMetrics[metric]}]`);
+function printLeak(l: Leak, retainedSize: boolean, rank: number): void {
+  const paths = l.paths.map((p) => ToSerializeableGCPath(p)).map((p) => path2string(p, true));
+  LOG(`## Object ${rank} [Score: ${retainedSize ? l.retainedSize : l.adjustedRetainedSize}]`);
   LOG(``);
   LOG(`### GC Paths`);
   LOG(``);
@@ -88,15 +88,18 @@ Proxy.listen(PROXY_PORT)
   if (leaks.length === 0) {
     LOG(`No leaks found.`);
   } else {
-    const metrics = Object.keys(leaks[0].rankMetrics);
-    metrics.forEach((m) => {
-      LOG(`# Ranking Metric ${m}`);
-      LOG(``);
-      leaks.sort((a, b) => b.rankMetrics[m] - a.rankMetrics[m]).forEach((l, i) => {
-        printLeak(l, m, i);
-      });
-      LOG(``);
+    LOG(`# Ranking Metric Adjusted Retained Size`);
+    LOG(``);
+    leaks.sort((a, b) => b.adjustedRetainedSize - a.adjustedRetainedSize).forEach((l, i) => {
+      printLeak(l, false, i);
     });
+    LOG(``);
+    LOG(`# Ranking Metric Retained Size`);
+    LOG(``);
+    leaks.sort((a, b) => b.retainedSize - a.retainedSize).forEach((l, i) => {
+      printLeak(l, true, i);
+    });
+    LOG(``);
   }
   closeSync(outFile);
   console.log(`Leaks written to ${outFileName}`);

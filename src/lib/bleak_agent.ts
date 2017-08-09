@@ -380,7 +380,8 @@ interface EventTarget {
 
   // Disables proxy interception.
   let disableProxies = false;
-  function instrumentPath(paths: SerializeableGCPath[]): void {
+  function instrumentLocation(loc: SerializeableGrowthObject): void {
+    const paths = loc.paths;
     // Fetch the objects.
     for (const p of paths) {
       const accessString = getAccessString(p, false);
@@ -392,20 +393,20 @@ interface EventTarget {
     }
   }
 
-  let instrumentedPaths: SerializeableGCPath[][] = [];
-  function $$$INSTRUMENT_PATHS$$$(p: SerializeableGCPath[][]): void {
-    for (const path of p) {
-      instrumentPath(path);
+  let instrumentedLocations: SerializeableGrowthObject[] = [];
+  function $$$INSTRUMENT_PATHS$$$(locs: SerializeableGrowthObject[]): void {
+    for (const loc of locs) {
+      instrumentLocation(loc);
     }
-    instrumentedPaths = instrumentedPaths.concat(p);
+    instrumentedLocations = instrumentedLocations.concat(locs);
   }
 
   function $$$GET_STACK_TRACE$$$(): string {
-    const allMaps = new Map<SerializeableGCPath, Map<string | number | symbol, Set<string>>>();
-    instrumentedPaths.forEach((path) => {
-      const maps = new Map<string | number | symbol, Set<string>>();
-      allMaps.set(path[0], maps);
-      path.forEach((p) => {
+    const allMaps = new Map<number, Set<string>>();
+    instrumentedLocations.forEach((loc) => {
+      const stacks = new Set<string>();
+      allMaps.set(loc.id, stacks);
+      loc.paths.forEach((p) => {
         const accessStr = getAccessString(p, false);
         const roots = getPossibleRoots(p);
         const getObjFcn = <any> new Function("root", `try { return ${accessStr}; } catch (e) { return null; }`);
@@ -413,15 +414,10 @@ interface EventTarget {
           if (isProxyable(o)) {
             const map: Map<string | number | symbol, Set<string>> = (<any> o)['$$$STACKTRACES$$$'];
             if (map) {
-              map.forEach((stacks, key) => {
-                const oldMap = maps.get(key);
-                if (oldMap !== undefined) {
-                  stacks.forEach((s) => {
-                    oldMap.add(s);
-                  });
-                } else {
-                  maps.set(key, stacks);
-                }
+              map.forEach((propStacks, key) => {
+                propStacks.forEach((s) => {
+                  stacks.add(s);
+                })
               });
             }
           }
@@ -429,21 +425,16 @@ interface EventTarget {
       });
     });
 
-    const rv: {[p: string]: string[]} = {};
-    allMaps.forEach((value, key) => {
-      const stackSet = new Set<string>();
-      value.forEach((stacks, prop) => {
-        stacks.forEach((v) => {
-          stackSet.add(v);
-        });
-      });
-      const stackArray = new Array(stackSet.size);
+    const rv: {[i: number]: string[]} = {};
+    allMaps.forEach((stacks, key) => {
+      const arr = new Array<string>(stacks.size);
+      rv[key] = arr;
       let i = 0;
-      stackSet.forEach((s) => {
-        stackArray[i++] = s;
+      stacks.forEach((v) => {
+        arr[i++] = v;
       });
-      rv[JSON.stringify(key)] = stackArray;
     });
+
     return JSON.stringify(rv);
   }
 

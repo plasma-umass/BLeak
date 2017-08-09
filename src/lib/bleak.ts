@@ -1,7 +1,6 @@
 import {proxyRewriteFunction} from './transformations';
 import {IProxy, IBrowserDriver, Leak, ConfigurationFile, HeapSnapshot} from '../common/interfaces';
-import {default as HeapGrowthTracker, computeGraphSize} from './growth_tracker';
-import {GrowthObject} from './growth_graph';
+import {HeapGrowthTracker, GrowthObject, ToSerializeableGCPath, ToSerializeableGrowthObject, HeapGraph} from './growth_graph';
 import {StackFrame} from 'error-stack-parser';
 import StackFrameConverter from './stack_frame_converter';
 
@@ -130,8 +129,8 @@ export class BLeakDetector {
   public findLeaks(): PromiseLike<Leak[]> {
     return this._execute(this._config.iterations, true, true, (sn) => this._growthTracker.addSnapshot(sn))
       .then(() => {
-        const growthObjects = this._growthObjects = this._growthTracker.getGrowingObjects();
-        console.log(`Growing paths:\n${this._growthObjects.map((gp) => JSON.stringify(gp)).join("\n")}`);
+        const growthObjects = this._growthObjects = this._growthTracker.getGrowingPaths();
+        console.log(`Growing paths:\n${growthObjects.map((go) => go.paths[0]).map((p) => JSON.stringify(ToSerializeableGCPath(p))).join("\n")}`);
         // We now have all needed closure modifications ready.
         // Run once.
         if (growthObjects.length > 0) {
@@ -152,18 +151,13 @@ export class BLeakDetector {
               return this._getGrowthStacks().then((growthStacks) => {
                 // console.log(`Got growth stacks:\n${JSON.stringify(growthStacks)}`);
                 const rv: Leak[] = [];
-                const lookup = new Map<string, GrowthObject>();
-                const ranked = this._growthTracker.rankGrowingObjects(growthObjects);
-                growthObjects.forEach((g) => lookup.set(g.key, g));
+                const lookup = new Map<number, GrowthObject>();
+                this._growthObjects.forEach((gl) => lookup.set(gl.node.nodeIndex, gl));
                 for (const p in growthStacks) {
-                  const obj = lookup.get(p);
-                  const rm: {[m: string]: number} = {};
-                  ranked.get(obj).forEach((v) => rm[v[0]] = v[1]);
-                  rv.push({
-                    obj: obj,
-                    stacks: growthStacks[p],
-                    rankMetrics: rm
-                  });
+                  const obj = lookup.get(parseInt(p, 10));
+                  rv.push(Object.assign({
+                    stacks: growthStacks[p]
+                  }, obj));
                 }
                 return rv;
               });
@@ -180,7 +174,8 @@ export class BLeakDetector {
     let iterationCount = 0;
     let leaksFixed = -1;
     function snapshotReport(sn: HeapSnapshot): void {
-      const size = computeGraphSize(sn);
+      const g = HeapGraph.Construct(sn);
+      const size = g.calculateSize();
       const data = Object.assign({ leaksFixed, iterationCount }, size);
       const keys = Object.keys(data).sort();
       if (!headerPrinted) {
@@ -257,13 +252,13 @@ export class BLeakDetector {
    * @param ps
    */
   private _instrumentGrowingObjects(): PromiseLike<any> {
-    return this._driver.runCode(`window.$$$INSTRUMENT_PATHS$$$(${JSON.stringify(this._growthObjects)})`);
+    return this._driver.runCode(`window.$$$INSTRUMENT_PATHS$$$(${JSON.stringify(this._growthObjects.map(ToSerializeableGrowthObject))})`);
   }
 
   /**
    * Returns all of the stack traces associated with growing objects.
    */
-  private _getGrowthStacks(): PromiseLike<{[p: string]: StackFrame[][]}> {
+  private _getGrowthStacks(): PromiseLike<{[p: number]: StackFrame[][]}> {
     return <any> this._driver.runCode(`window.$$$GET_STACK_TRACE$$$()`).then((data) => JSON.parse(data)).then((data) => StackFrameConverter.ConvertGrowthStacks(this._proxy, data));
   }
 }

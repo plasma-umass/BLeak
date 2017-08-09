@@ -3,7 +3,7 @@ import {gunzipSync} from 'zlib';
 import {readFileSync, readdirSync, createWriteStream} from 'fs';
 import {join} from 'path';
 import {HeapSnapshot, SnapshotSizeSummary} from '../src/common/interfaces';
-import {default as HeapGrowthTracker, computeGraphSize} from '../src/lib/growth_tracker';
+import {HeapGrowthTracker, HeapGraph} from '../src/lib/growth_graph';
 import {exposeClosureState} from '../src/lib/transformations';
 
 const skipSnapshots = process.argv.indexOf("--skip-snapshots") !== -1;
@@ -41,11 +41,11 @@ function getGrowthPaths(snapshots: HeapSnapshot[]): any {
   for (const snapshot of snapshots) {
     builder.addSnapshot(snapshot);
   }
-  return builder.getGrowingObjects();
+  return builder.getGrowingPaths();
 }
 
 function getHeapSize(snapshot: HeapSnapshot): SnapshotSizeSummary {
-  return computeGraphSize(snapshot);
+  return HeapGraph.Construct(snapshot).calculateSize();
 }
 
 if (!skipSnapshots) {

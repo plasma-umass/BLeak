@@ -1,11 +1,10 @@
-import GrowthTracker from '../lib/growth_tracker';
-import {GrowthObject} from '../lib/growth_graph';
+import {HeapGrowthTracker, ToSerializeableGCPath} from '../lib/growth_graph';
 import {readFileSync} from 'fs';
 import * as readline from 'readline';
 import {SnapshotNodeTypeToString, SnapshotEdgeTypeToString, SnapshotNodeType} from '../common/interfaces';
 import {path2string, time} from '../common/util';
 
-const t = new GrowthTracker();
+const t = new HeapGrowthTracker();
 const files = process.argv.slice(2);
 if (files.length === 0) {
   console.log(`Usage: ${process.argv[0]} ${process.argv[1]} snap1.heapsnapshot snap2.heapsnapshot [more *.heapsnapshots in order...]\n\nPrints out growing paths in the heap over several snapshots.`);
@@ -16,24 +15,16 @@ for (const file of files) {
   t.addSnapshot(JSON.parse(readFileSync(file, 'utf8')));
 }
 
-const growth = time('Get Growing Objects', () => t.getGrowingObjects());
-const ranks = time('Rank Growing Objects', () => t.rankGrowingObjects(growth));
+const growth = time('Get Growing Objects', () => t.getGrowingPaths());
 console.log(`Found ${growth.length} growing paths.`);
 console.log(``);
 console.log(`Report`);
 console.log(`======`);
 console.log(``);
-const ranksArray = new Array<[GrowthObject, [string, number][]]>();
-ranks.forEach((ranks, obj) => {
-  ranksArray.push([obj, ranks]);
-});
-ranksArray.sort((a, b) => a[1][1][1] - b[1][1][1]);
-ranksArray.forEach((a) => {
-  const ranks = a[1];
-  const obj = a[0];
-  console.log(`* ${ranks.map((v) => `${v[0]}: ${v[1]}`).join(", ")}`);
+growth.sort((a, b) => b.adjustedRetainedSize - a.adjustedRetainedSize).forEach((obj) => {
+  console.log(`* Adjusted Retained Size: ${obj.adjustedRetainedSize}, Retained Size: ${obj.retainedSize}`);
   obj.paths.slice(0, 5).forEach((p, i) => {
-    console.log(`   * ${path2string(p.toJSON(), true)}`);
+    console.log(`   * ${path2string(ToSerializeableGCPath(p), true)}`);
   });
   if (obj.paths.length > 5) {
     console.log(`   * (${obj.paths.length - 5} more...)`);
@@ -45,7 +36,8 @@ const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
 });
-let node = t.getGraph();
+let heap = t.getGraph();
+let node = heap.getRoot();
 let path = [node];
 let hide = true;
 const MAX_COL_SIZE = 25;
@@ -65,15 +57,17 @@ function column(strs: string[], lens: number[]): string {
 }
 function runRound(filter?: string) {
   console.log(`Current Node: ${node.name} [${SnapshotNodeTypeToString(node.type)}]`);
-  const children = node.children ? node.children : [];
   console.log(`[..] Previous node, [h] ${hide ? "unhide system properties" : "hide system properties"}, [f (string)] Filter, [q] Quit`);
   let choices: string[][] = [];
   let sizes: number[] = [0, 0, 0, 0, 0];
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
+  let i = -1;
+  for (const it = node.children; it.hasNext(); it.next()) {
+    i++;
+    const child = it.item();
+    const to = child.to;
     // Skip some types of children.
     if (hide) {
-      switch (child.to.type) {
+      switch (to.type) {
         //case SnapshotNodeType.Code:
         case SnapshotNodeType.ConsString:
         case SnapshotNodeType.HeapNumber:
@@ -85,7 +79,7 @@ function runRound(filter?: string) {
       }
     }
     if (!filter || `${child.indexOrName}`.toLowerCase().indexOf(filter) !== -1) {
-      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, child.to.name, `[${SnapshotNodeTypeToString(child.to.type)}]${child.to.growing ? "*" : ""}`, `[Count: ${child.to.numProperties()}]`, `[New? ${child.to.isNew ? "Y" : "N"}]`, `[DV: ${child.to.leakReferences}]`];
+      let choice = [`[${i}]`, `${child.indexOrName}`, `=[${SnapshotEdgeTypeToString(child.snapshotType)}]=>`, to.name, `[${SnapshotNodeTypeToString(to.type)}]${t.isGrowing(to.nodeIndex) ? "*" : ""}`, `[Count: ${to.numProperties()}]`, `[Non-leak-reachable? ${t._nonLeakVisits.get(to.nodeIndex)}, Leak visits: ${t._leakRefs[to.nodeIndex]}, NI: ${to.nodeIndex}]`];
       choices.push(choice);
       for (let j = 0; j < choice.length; j++) {
         if (choice[j].length > sizes[j]) {
@@ -121,9 +115,15 @@ function runRound(filter?: string) {
         filter = a2.slice(2).trim();
         break;
       }
+      case 's': {
+        const latest = path[path.length - 1];
+        latest.nodeIndex = <any> parseInt(a2.slice(2).trim(), 10);
+        path = [heap.getRoot(), latest];
+        break;
+      }
       default:
         const choice = parseInt(a2, 10);
-        const child = node.children[choice];
+        const child = node.getChild(choice);
         if (!child) {
           console.log(`Invalid choice: ${choice}.`);
         } else {
@@ -132,7 +132,7 @@ function runRound(filter?: string) {
         break;
     }
     if (path.length === 0) {
-      path.push(t.getGraph());
+      path.push(heap.getRoot());
     }
     node = path[path.length - 1];
     runRound(filter);

@@ -14,7 +14,7 @@ const magicString = '//# sourceMappingURL=data:application/json;base64,';
 export default class StackFrameConverter {
   private _maps = new Map<string, SourceMapConsumer>();
 
-  public static ConvertGrowthStacks(proxy: IProxy, stacks: {[p: string]: string[]}, agentUrl: string = DEFAULT_AGENT_URL): Promise<{[p: string]: StackFrame[][]}> {
+  public static ConvertGrowthStacks(proxy: IProxy, stacks: {[p: number]: string[]}, agentUrl: string = DEFAULT_AGENT_URL): Promise<{[p: string]: StackFrame[][]}> {
     return new StackFrameConverter().convertGrowthStacks(proxy, stacks, agentUrl);
   }
 
@@ -69,12 +69,12 @@ export default class StackFrameConverter {
     });
   }
 
-  public convertGrowthStacks(proxy: IProxy, stacks: {[p: string]: string[]}, agentUrl: string): Promise<{[p: string]: StackFrame[][]}> {
+  public convertGrowthStacks(proxy: IProxy, stacks: {[p: number]: string[]}, agentUrl: string): Promise<{[p: string]: StackFrame[][]}> {
     // First pass: Get all unique URLs and their source maps.
     const urls = new Set<string>();
     const convertedStacks: {[p: string]: StackFrame[][]} = {};
     Object.keys(stacks).forEach((path) => {
-      const pathStacks = stacks[path];
+      const pathStacks = stacks[parseInt(path, 10)];
       convertedStacks[path] = pathStacks.map((stack) => {
         const frames = ErrorStackParser(<any> {stack: stack})
           .filter((f) => f.fileName ? f.fileName.indexOf(agentUrl) === -1 : true)

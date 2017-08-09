@@ -83,10 +83,8 @@ export interface Step  {
  * Represents a leak in the application.
  * (For now.)
  */
-export interface Leak {
-  obj: GrowthObject;
+export interface Leak extends GrowthObject {
   stacks: StackFrame[][];
-  rankMetrics: {[metric: string]: number};
 }
 
 /**

@@ -15,7 +15,7 @@ interface Function {
 }
 
 interface Window {
-  $$$INSTRUMENT_PATHS$$$(p: SerializeableGCPath[][]): void;
+  $$$INSTRUMENT_PATHS$$$(p: SerializeableGrowthObject[]): void;
   $$$GET_STACK_TRACE$$$(): string;
   $$$CREATE_SCOPE_OBJECT$$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope;
   $$$SEQ$$$(a: any, b: any): boolean;
@@ -29,6 +29,14 @@ interface Window {
 interface SerializeableGCPath {
   root: SerializeableRoot;
   path: SerializeableEdge[];
+}
+
+/**
+ * Describes a set of paths that typically point to the same leaking object.
+ */
+interface SerializeableGrowthObject {
+  id: number;
+  paths: SerializeableGCPath[];
 }
 
 const enum RootType {
