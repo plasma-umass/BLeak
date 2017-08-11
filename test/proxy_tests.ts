@@ -54,7 +54,7 @@ describe('Proxy', function() {
     assertEqual(response.data.equals(expected), true);
   }
 
-  it("Properly proxies text files", function(done) {
+  it("Properly proxies text files", async function() {
     function nop(f: SourceFile): SourceFile {
       return f;
     }
@@ -63,10 +63,10 @@ describe('Proxy', function() {
       return requestFile(filename, FILES[filename].data);
     });
     promises.push(requestFile('/test.jpg', FILES['/test.jpg'].data));
-    Promise.all(promises).then(() => done()).catch(done);
+    return Promise.all(promises);
   });
 
-  it("Properly rewrites text files", function(done) {
+  it("Properly rewrites text files", async function() {
     const MAGIC_STRING = Buffer.from("HELLO THERE", 'utf8');
     function transform(f: SourceFile): SourceFile {
       f.contents = MAGIC_STRING;
@@ -77,22 +77,22 @@ describe('Proxy', function() {
       return requestFile(filename, MAGIC_STRING);
     });
     promises.push(requestFile('/test.jpg', FILES['/test.jpg'].data));
-    Promise.all(promises).then(() => done()).catch(done);
+    return Promise.all(promises);
   });
 
-  it("Properly proxies huge binary files", function(done) {
+  it("Properly proxies huge binary files", async function() {
     proxy.onRequest((f) => f);
-    requestFile('/huge.jpg', FILES['/huge.jpg'].data).then(() => done()).catch(done);
+    return requestFile('/huge.jpg', FILES['/huge.jpg'].data);
   });
 
-  it("Properly proxies huge text files", function(done) {
+  it("Properly proxies huge text files", async function() {
     const raw = FILES['/huge.html'].data;
     const expected = Buffer.alloc(raw.length, 98);
     proxy.onRequest((f) => {
       f.contents = Buffer.from(f.contents.toString().replace(/a/g, 'b'), 'utf8');
       return f;
     });
-    requestFile('/huge.html', expected).then(() => done()).catch(done);
+    return requestFile('/huge.html', expected);
   });
 
   after(function(done) {

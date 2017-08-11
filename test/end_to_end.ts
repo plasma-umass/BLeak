@@ -261,9 +261,9 @@ describe('End-to-end Tests', function() {
   });
 
   function createStandardLeakTest(description: string, rootFilename: string, expected_line: number): void {
-    it(description, function(done) {
+    it(description, async function() {
       let i = 0;
-      BLeak.FindLeaks(`
+      const leaks = await BLeak.FindLeaks(`
         exports.url = 'http://localhost:${HTTP_PORT}/${rootFilename}.html';
         exports.loop = [
           {
@@ -280,21 +280,19 @@ describe('End-to-end Tests', function() {
       `, proxy, driver, (ss) => {
         writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
         i++;
-      }).then((leaks) => {
-        assertEqual(leaks.length > 0, true);
-        leaks.forEach((leak) => {
-          const stacks = leak.stacks;
-          assertEqual(stacks.length > 0, true);
-          stacks.forEach((s) => {
-            assertEqual(s.length > 0, true);
-            const topFrame = s[0];
-            //console.log(topFrame.toString());
-            assertEqual(topFrame.lineNumber, expected_line);
-            assertEqual(topFrame.fileName.indexOf(`${rootFilename}.js`) !== -1, true);
-          });
+      });
+      assertEqual(leaks.length > 0, true);
+      leaks.forEach((leak) => {
+        const stacks = leak.stacks;
+        assertEqual(stacks.length > 0, true);
+        stacks.forEach((s) => {
+          assertEqual(s.length > 0, true);
+          const topFrame = s[0];
+          //console.log(topFrame.toString());
+          assertEqual(topFrame.lineNumber, expected_line);
+          assertEqual(topFrame.fileName.indexOf(`${rootFilename}.js`) !== -1, true);
         });
-        done();
-      }).catch(done);
+      });
     });
   }
 

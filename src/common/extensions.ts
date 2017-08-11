@@ -1,7 +1,3 @@
-interface PromiseLike<T> {
-  catch(cb: Function): PromiseLike<T>;
-}
-
 interface Object {
   $$$PROXY$$$?: any;
 }

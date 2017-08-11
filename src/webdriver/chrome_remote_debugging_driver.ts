@@ -204,17 +204,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
   onRequest(cb: (f: SourceFile) => SourceFile): void {
     this._onRequest = cb;
   }
-
-  getHTTPPort(): number {
-    return 5554;
-  }
-  getHTTPSPort(): number {
-    return 5555;
-  }
-  getHost(): string {
-    return "localhost";
-  }
-  shutdown(): PromiseLike<void> {
+  shutdown(): Promise<void> {
     return this._process.dispose();
   }
 

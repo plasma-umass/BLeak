@@ -11,10 +11,6 @@ export interface SourceFile {
   contents: Buffer;
 }
 
-export interface IProxyConstructor<T extends IProxy> {
-  listen(httpPort: number, httpsPort: number): PromiseLike<T>;
-}
-
 export interface IHTTPResponse {
   statusCode: number;
   headers: any;
@@ -26,11 +22,8 @@ export interface IProxy {
    * Register a function that can rewrite *text* files requested over the network.
    */
   onRequest(cb: (f: SourceFile) => SourceFile): void;
-  getHTTPPort(): number;
-  getHTTPSPort(): number;
-  getHost(): string;
-  httpGet(url: string, headers?: any, body?: string): PromiseLike<IHTTPResponse>;
-  shutdown(): PromiseLike<void>;
+  httpGet(url: string, headers?: any, body?: string): Promise<IHTTPResponse>;
+  shutdown(): Promise<void>;
 }
 
 /**
@@ -40,15 +33,15 @@ export interface IBrowserDriver {
   /**
    * Navigates to the given URL. Invokes promise once page loads.
    */
-  navigateTo(url: string): PromiseLike<any>;
+  navigateTo(url: string): Promise<any>;
   /**
    * Evals the given code on the webpage, and returns result as a string.
    */
-  runCode(code: string): PromiseLike<string>;
+  runCode(code: string): Promise<string>;
   /**
    * Takes a heap snapshot of the current webpage.
    */
-  takeHeapSnapshot(): PromiseLike<HeapSnapshot>;
+  takeHeapSnapshot(): Promise<HeapSnapshot>;
 }
 
 /**
@@ -81,9 +74,9 @@ export interface Step  {
   // (Optional) Name for debugging purposes.
   name?: string;
   // Return 'true' if the program has finished loading the current state
-  check: () => boolean | PromiseLike<boolean>;
+  check: () => boolean | Promise<boolean>;
   // Transitions to the next step.
-  next: () => null | undefined | PromiseLike<void>;
+  next: () => null | undefined | Promise<void>;
 }
 
 /**
