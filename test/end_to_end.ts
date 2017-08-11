@@ -1,16 +1,15 @@
 import {Server as HTTPServer} from 'http';
-import ChromeDriver from '../src/webdriver/chrome_driver';
+// import ChromeDriver from '../src/webdriver/chrome_driver';
 import BLeak from '../src/lib/bleak';
 import createHTTPServer from './util/http_server';
-import Proxy from '../src/proxy/proxy';
+// import Proxy from '../src/proxy/proxy';
+import ChromeRemoteDebuggingDriver from '../src/webdriver/chrome_remote_debugging_driver';
 //import {readFileSync} from 'fs';
 import {readFileSync, writeFileSync} from 'fs';
 import {equal as assertEqual} from 'assert';
-// import {Leak} from '../src/common/interfaces';
+import {IProxy} from '../src/common/interfaces';
 
 const HTTP_PORT = 8875;
-const PROXY_PORT = 5554;
-const CHROME_DRIVER_PORT = 4444;
 
 interface TestFile {
   mimeType: string;
@@ -252,20 +251,13 @@ const FILES: {[name: string]: TestFile} = {
 describe('End-to-end Tests', function() {
   // 10 minute timeout.
   this.timeout(600000);
-  let proxy: Proxy;
+  let proxy: IProxy;
   let httpServer: HTTPServer;
-  let driver: ChromeDriver;
-  before(function(done) {
-    createHTTPServer(FILES, HTTP_PORT).then((server) => {
-      httpServer = server;
-      return Proxy.listen(PROXY_PORT);
-    }).then((_proxy) => {
-      proxy = _proxy;
-      ChromeDriver.Launch(proxy, CHROME_DRIVER_PORT).then((_driver) => {
-        driver = _driver;
-        done();
-      });
-    }).catch(done);
+  let driver: ChromeRemoteDebuggingDriver;
+  before(async function() {
+    httpServer = await createHTTPServer(FILES, HTTP_PORT);
+    driver = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
+    proxy = driver;
   });
 
   function createStandardLeakTest(description: string, rootFilename: string, expected_line: number): void {
@@ -327,10 +319,8 @@ describe('End-to-end Tests', function() {
       if (e) {
         done(e);
       } else {
-        driver.close().then(() => {
-          return proxy.shutdown().then(() => {
-            done();
-          });
+        driver.shutdown().then(() => {
+          done();
         }).catch(done);
       }
     });

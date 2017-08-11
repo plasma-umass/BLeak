@@ -1,13 +1,10 @@
 import {readFileSync, openSync, writeSync, closeSync, writeFileSync} from 'fs';
 import {extname} from 'path';
 import BLeak from '../lib/bleak';
-import Proxy from '../proxy/proxy';
-import ChromeDriver from '../webdriver/chrome_driver';
+import ChromeRemoteDebuggingDriver from '../webdriver/chrome_remote_debugging_driver';
 import {Leak} from '../common/interfaces';
 import {path2string} from '../common/util';
 import {ToSerializeableGCPath} from '../lib/growth_graph';
-const PROXY_PORT = 5554;
-const CHROME_DRIVER_PORT = 4444;
 
 const configFileName = process.argv[2];
 const outFileName = process.argv[3];
@@ -53,38 +50,19 @@ function printLeak(l: Leak, retainedSize: boolean, rank: number): void {
   LOG(``);
 }
 
-let proxyGlobal: Proxy = null;
-let driverGlobal: ChromeDriver = null;
-let interval: any = null;
-const configFileSource = readFileSync(configFileName).toString();
-Proxy.listen(PROXY_PORT)
-  .then((proxy) => {
-    proxyGlobal = proxy;
-    return ChromeDriver.Launch(proxy, CHROME_DRIVER_PORT)
-  })
-  .then((driver) => {
-    driverGlobal = driver;
-    interval = setInterval(function() {
-      driverGlobal.getLogs().then((logs) => {
-        for (const log of logs) {
-          LOG(`[${new Date(log.timestamp * 1000)}] ${log.level} - ${log.message}`);
-        }
-      });
-    }, 100);
-    let i = 0;
-    let base = outFileName.slice(0, -1 * extname(outFileName).length);
-    return BLeak.FindLeaks(configFileSource, proxyGlobal, driver, (ss) => {
-      const p = `${base}${i}.heapsnapshot`;
-      console.log(`Writing ${p}...`);
-      writeFileSync(p, Buffer.from(JSON.stringify(ss), 'utf8'));
-      i++;
-    });
-  })
-  //.then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => {
-  //  clearInterval(interval);
-  //  return leaks;
-  //}))
-  .then((leaks) => {
+async function main() {
+  const configFileSource = readFileSync(configFileName).toString();
+  let chromeDriver = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
+  const leaks = await BLeak.FindLeaks(configFileSource, chromeDriver, chromeDriver);/*, (ss) => {
+        const p = `${base}${i}.heapsnapshot`;
+        console.log(`Writing ${p}...`);
+        writeFileSync(p, Buffer.from(JSON.stringify(ss), 'utf8'));
+        i++;
+      });*/
+    //.then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => {
+    //  clearInterval(interval);
+    //  return leaks;
+    //}))
   if (leaks.length === 0) {
     LOG(`No leaks found.`);
   } else {
@@ -103,8 +81,6 @@ Proxy.listen(PROXY_PORT)
   }
   closeSync(outFile);
   console.log(`Leaks written to ${outFileName}`);
-}).catch((e) => {
-  console.error("Failure!");
-  console.error(e);
-});
+}
 
+main();

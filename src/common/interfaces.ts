@@ -8,11 +8,17 @@ export interface SourceFile {
   status: number;
   url: string;
   mimetype: string;
-  contents: string;
+  contents: Buffer;
 }
 
 export interface IProxyConstructor<T extends IProxy> {
-  listen(port: number): PromiseLike<T>;
+  listen(httpPort: number, httpsPort: number): PromiseLike<T>;
+}
+
+export interface IHTTPResponse {
+  statusCode: number;
+  headers: any;
+  data: Buffer;
 }
 
 export interface IProxy {
@@ -23,6 +29,7 @@ export interface IProxy {
   getHTTPPort(): number;
   getHTTPSPort(): number;
   getHost(): string;
+  httpGet(url: string, headers?: any, body?: string): PromiseLike<IHTTPResponse>;
   shutdown(): PromiseLike<void>;
 }
 

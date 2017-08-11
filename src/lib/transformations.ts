@@ -911,7 +911,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
 export const DEFAULT_AGENT_LOCATION = require.resolve('./bleak_agent');
 export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
 export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixes: number[] = [], agentURL = DEFAULT_AGENT_URL, agentLocation = DEFAULT_AGENT_LOCATION): (f: SourceFile) => SourceFile {
-  const agentText = readFileSync(agentLocation, 'utf8');
+  const agentData = readFileSync(agentLocation);
   return (f: SourceFile): SourceFile => {
     let mime = f.mimetype.toLowerCase();
     if (mime.indexOf(";") !== -1) {
@@ -921,7 +921,7 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
     const url = parseURL(f.url);
     if (url.path.toLowerCase() === agentURL) {
       f.status = 200;
-      f.contents = agentText;
+      f.contents = agentData;
       // Note: mimetype may not be javascript.
       f.mimetype = "text/javascript";
       return f;
@@ -929,20 +929,20 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
     switch (mime) {
       case 'text/html':
         if (f.status === 200) {
-          f.contents = injectIntoHead(f.contents, `<script type="text/javascript" src="${agentURL}"></script>
+          f.contents = Buffer.from(injectIntoHead(f.contents.toString("utf8"), `<script type="text/javascript" src="${agentURL}"></script>
   <script type="text/javascript">
     ${JSON.stringify(fixes)}.forEach(function(num) {
       $$$SHOULDFIX$$$(num, true);
     });
     ${config}
-  </script>`);
+  </script>`), 'utf8');
         }
         break;
       case 'text/javascript':
       case 'application/javascript':
         if (f.status === 200 && rewrite) {
           console.log(`Rewriting ${f.url}...`);
-          f.contents = exposeClosureState(url.path, f.contents, false);
+          f.contents = Buffer.from(exposeClosureState(url.path, f.contents.toString("utf8"), false), 'utf8');
         }
         break;
     }

@@ -1,9 +1,6 @@
-import Proxy from '../proxy/proxy';
-import ChromeDriver from '../webdriver/chrome_driver';
+import ChromeRemoteDebuggingDriver from '../webdriver/chrome_remote_debugging_driver';
 import {proxyRewriteFunction} from '../lib/transformations';
 
-const PROXY_PORT = 5554;
-const CHROME_DRIVER_PORT = 4444;
 
 const url = process.argv[2];
 const diagnose = process.argv.indexOf('--diagnose');
@@ -16,15 +13,7 @@ if (!url) {
   process.exit(0);
 }
 
-let proxyGlobal: Proxy = null;
-let driverGlobal: ChromeDriver = null;
-Proxy.listen(PROXY_PORT)
-  .then((proxy) => {
-    proxyGlobal = proxy;
-    proxy.onRequest(proxyRewriteFunction(diagnose !== -1, "", fixes));
-    return ChromeDriver.Launch(proxy, CHROME_DRIVER_PORT)
-  })
-  .then((driver) => {
-    driverGlobal = driver;
-    driver.navigateTo(url).then(() => driver.debug());
-  });
+ChromeRemoteDebuggingDriver.Launch(<any> process.stdout).then((driver) => {
+  driver.onRequest(proxyRewriteFunction(diagnose !== -1, "", fixes))
+  driver.navigateTo(url);
+});

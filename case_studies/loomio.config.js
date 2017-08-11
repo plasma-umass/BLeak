@@ -1,5 +1,5 @@
 exports.url = "http://localhost:3000/dashboard";
-// exports.fixedLeaks = [0, 1, 2, 3, 4, 5, 13, 14]; //, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+exports.fixedLeaks = [0, 1, 2, 3, 4, 5, 13, 14]; //, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 exports.iterations = 8;
 exports.login = [
   {

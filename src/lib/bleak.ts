@@ -84,10 +84,10 @@ export class BLeakDetector {
     this._snapshotCb = snapshotCb;
     this._configInject = getConfigBrowserInjection(configSource);
     // Initialize proxy.
-    this.configureProxy(false);
+    this.configureProxy(false, []);
   }
 
-  public configureProxy(rewriteJavaScript: boolean, fixes = this._config.fixedLeaks): void {
+  public configureProxy(rewriteJavaScript: boolean, fixes: number[]): void {
     this._proxy.onRequest(proxyRewriteFunction(rewriteJavaScript, this._configInject, fixes));
   }
 
@@ -136,7 +136,7 @@ export class BLeakDetector {
         if (growthObjects.length > 0) {
           console.log("Going to diagnose now...");
           // Flip on JS instrumentation.
-          this.configureProxy(true);
+          this.configureProxy(true, []);
           return this._execute(1, false)
             .then(() => {
               console.log("Instrumenting growth paths...");

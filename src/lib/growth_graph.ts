@@ -119,10 +119,10 @@ function hash(parent: Node, edge: Edge): string | number {
 }
 
 function mergeGraphs(oldG: HeapGraph, oldGrowth: TwoBitArray, newG: HeapGraph, newGrowth: TwoBitArray): void {
-  const numOldNodes = oldG.nodeCount;
   const numNewNodes = newG.nodeCount;
   let index = 0;
-  let queue = new Uint32Array(Math.max(numOldNodes, numNewNodes) << 1);
+  // We visit each new node at most once.
+  let queue = new Uint32Array(numNewNodes << 1);
   let queueLength = 0;
   // Only store visit bits for the new graph.
   const visitBits = new OneBitArray(numNewNodes);
@@ -648,6 +648,7 @@ export class HeapGraph {
     this.visitUserRoots((n) => {
       const nodeType = n.type;
       const nodeSelfSize = n.size;
+      rv.totalSize += n.size;
       switch (nodeType) {
         case SnapshotNodeType.Array:
           rv.arraySize += nodeSelfSize;

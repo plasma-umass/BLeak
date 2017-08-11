@@ -1,11 +1,10 @@
-import {Server as HTTPServer, IncomingMessage, request as HTTPRequest} from 'http';
+import {Server as HTTPServer} from 'http';
 import createHTTPServer from './util/http_server';
-import Proxy from '../src/proxy/proxy';
 import {equal as assertEqual} from 'assert';
 import {SourceFile} from '../src/common/interfaces';
+import ChromeRemoteDebuggingDriver from '../src/webdriver/chrome_remote_debugging_driver';
 
 const HTTP_PORT = 8888;
-const PROXY_PORT = 4443;
 
 interface TestFile {
   mimeType: string;
@@ -43,52 +42,16 @@ const FILES: {[name: string]: TestFile} = {
 
 describe('Proxy', function() {
   this.timeout(30000);
-  let proxy: Proxy;
+  let proxy: ChromeRemoteDebuggingDriver;
   let httpServer: HTTPServer;
-  before(function(done) {
-    createHTTPServer(FILES, HTTP_PORT).then((server) => {
-      httpServer = server;
-      return Proxy.listen(PROXY_PORT);
-    }).then((_proxy) => {
-      proxy = _proxy;
-      done();
-    }).catch(done);
+  before(async function() {
+    httpServer = await createHTTPServer(FILES, HTTP_PORT);
+    proxy = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
   });
 
-  function makeProxyRequest(url: string): Promise<IncomingMessage> {
-    return new Promise<IncomingMessage>((res, rej) => {
-      // https://stackoverflow.com/questions/3862813/how-can-i-use-an-http-proxy-with-node-js-http-client/5810547#5810547
-      const request = HTTPRequest({
-        method: 'get',
-        hostname: '127.0.0.1',
-        port: PROXY_PORT,
-        path: `http://localhost:${HTTP_PORT}${url}`,
-        headers: {
-          Host: `localhost:${HTTP_PORT}`
-        }
-      }, res);
-      request.on('error', rej);
-      request.end();
-    });
-  }
-
-  function requestFile(url: string, expected: Buffer): Promise<void> {
-    return new Promise<void>((res, rej) => {
-      makeProxyRequest(url).then((result) => {
-        let data = new Buffer(0);
-        result.on('data', (chunk: Buffer) => {
-          data = Buffer.concat([data, chunk]);
-        });
-        result.on('end', () => {
-          try {
-            assertEqual(data.equals(expected), true);
-            res();
-          } catch (e) {
-            rej(e);
-          }
-        });
-      }).catch(rej);
-    });
+  async function requestFile(path: string, expected: Buffer): Promise<void> {
+    const response = await proxy.httpGet(`http://localhost:${HTTP_PORT}${path}`);
+    assertEqual(response.data.equals(expected), true);
   }
 
   it("Properly proxies text files", function(done) {
@@ -104,14 +67,14 @@ describe('Proxy', function() {
   });
 
   it("Properly rewrites text files", function(done) {
-    const MAGIC_STRING = "HELLO THERE";
+    const MAGIC_STRING = Buffer.from("HELLO THERE", 'utf8');
     function transform(f: SourceFile): SourceFile {
       f.contents = MAGIC_STRING;
       return f;
     }
     proxy.onRequest(transform);
     const promises = ['/test.html', '/test.js'].map((filename) => {
-      return requestFile(filename, Buffer.from(MAGIC_STRING, 'utf8'));
+      return requestFile(filename, MAGIC_STRING);
     });
     promises.push(requestFile('/test.jpg', FILES['/test.jpg'].data));
     Promise.all(promises).then(() => done()).catch(done);
@@ -126,7 +89,7 @@ describe('Proxy', function() {
     const raw = FILES['/huge.html'].data;
     const expected = Buffer.alloc(raw.length, 98);
     proxy.onRequest((f) => {
-      f.contents = f.contents.replace(/a/g, 'b');
+      f.contents = Buffer.from(f.contents.toString().replace(/a/g, 'b'), 'utf8');
       return f;
     });
     requestFile('/huge.html', expected).then(() => done()).catch(done);
