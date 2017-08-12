@@ -13,7 +13,12 @@ if (!url) {
   process.exit(0);
 }
 
-ChromeRemoteDebuggingDriver.Launch(<any> process.stdout).then((driver) => {
+async function main() {
+  const driver = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
   driver.onRequest(proxyRewriteFunction(diagnose !== -1, "", fixes))
-  driver.navigateTo(url);
-});
+  await driver.navigateTo(url);
+  await driver.debugLoop();
+  await driver.shutdown();
+}
+
+main();

@@ -6,6 +6,8 @@ import {WriteStream} from 'fs';
 import {request as HTTPRequest, STATUS_CODES} from 'http';
 import {request as HTTPSRequest} from 'https';
 import {parse as parseURL} from 'url';
+import * as repl from 'repl';
+import {parse as parseJavaScript} from 'esprima';
 
 function wait(ms: number): Promise<void> {
   return new Promise<void>((res) => {
@@ -121,8 +123,8 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     this._console = console;
 
     this._console.messageAdded = (evt) => {
-      //const m = evt.message;
-      //log.write(`[${m.level}] [${m.source}] ${m.url}:${m.line}:${m.column} ${m.text}\n`);
+      const m = evt.message;
+      log.write(`[${m.level}] [${m.source}] ${m.url}:${m.line}:${m.column} ${m.text}\n`);
     };
 
     this._network.requestIntercepted = async (evt) => {
@@ -193,13 +195,29 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     return `${e.result.value}`;
   }
   async takeHeapSnapshot(): Promise<HeapSnapshot> {
-    // TODO: Use buffers instead.
+    // TODO: Use buffers instead / parse on-the-fly?
     let buffer = "";
     this._heapProfiler.addHeapSnapshotChunk = (evt) => {
       buffer += evt.chunk;
     };
     await this._heapProfiler.takeHeapSnapshot({ reportProgress: false });
     return JSON.parse(buffer);
+  }
+  async debugLoop(): Promise<void> {
+    const evalJavascript = (cmd: string, context: any, filename: string, callback: (e: any, result?: string) => void): void => {
+      try {
+        parseJavaScript(cmd);
+        this.runCode(cmd).then((result) => {
+          callback(null, result);
+        }).catch(callback);
+      } catch (e) {
+        callback(new (<any>repl).Recoverable(e));
+      }
+    };
+    return new Promise<void>((resolve, reject) => {
+      const r = repl.start({ prompt: "> ", eval: evalJavascript });
+      r.on('exit', resolve);
+    });
   }
   onRequest(cb: (f: SourceFile) => SourceFile): void {
     this._onRequest = cb;

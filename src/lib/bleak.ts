@@ -193,6 +193,8 @@ export class BLeakDetector {
     while (true) {
       const success = await this._driver.runCode(`BLeakConfig.${prop}[${i}].check()`);
       if (success === "true") {
+        // Delay before returning to give browser time to "catch up".
+        await wait(500);
         return;
       }
       await wait(1000);
