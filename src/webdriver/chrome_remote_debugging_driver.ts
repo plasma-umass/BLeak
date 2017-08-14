@@ -127,6 +127,11 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
       log.write(`[${m.level}] [${m.source}] ${m.url}:${m.line}:${m.column} ${m.text}\n`);
     };
 
+    this._runtime.exceptionThrown = (evt) => {
+      const e = evt.exceptionDetails;
+      log.write(`${e.url}:${e.lineNumber}:${e.columnNumber} Uncaught ${e.exception.className}: ${e.text}\n${e.stackTrace.description}\n  ${e.stackTrace.callFrames.map((f) => `${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ")}\n`);
+    };
+
     this._network.requestIntercepted = async (evt) => {
       // global.console.log(evt);
       // If redirect or not get: Allow with no modifications.
@@ -151,7 +156,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     };
   }
 
-  async httpGet(url: string, headers: any = { "Host": parseURL(url).host }, body?: string): Promise<IHTTPResponse> {
+  public async httpGet(url: string, headers: any = { "Host": parseURL(url).host }, body?: string): Promise<IHTTPResponse> {
     const response = await makeHttpRequest(url, 'get', headers, body);
     let mimeType = response.headers['content-type'] as string;
     let statusCode = response.statusCode;
@@ -181,7 +186,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     return response;
   }
 
-  async navigateTo(url: string): Promise<any> {
+  public async navigateTo(url: string): Promise<any> {
     this._loadedFrames.clear();
     const f = await this._page.navigate({ url });
     while (!this._loadedFrames.has(f.frameId)) {
@@ -189,12 +194,12 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
       await wait(5);
     }
   }
-  async runCode(expression: string): Promise<string> {
+  public async runCode(expression: string): Promise<string> {
     const e = await this._runtime.evaluate({ expression, returnByValue: true });
     console.log(`${expression} => ${e.result.value}`);
     return `${e.result.value}`;
   }
-  async takeHeapSnapshot(): Promise<HeapSnapshot> {
+  public async takeHeapSnapshot(): Promise<HeapSnapshot> {
     // TODO: Use buffers instead / parse on-the-fly?
     let buffer = "";
     this._heapProfiler.addHeapSnapshotChunk = (evt) => {
@@ -203,7 +208,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     await this._heapProfiler.takeHeapSnapshot({ reportProgress: false });
     return JSON.parse(buffer);
   }
-  async debugLoop(): Promise<void> {
+  public async debugLoop(): Promise<void> {
     const evalJavascript = (cmd: string, context: any, filename: string, callback: (e: any, result?: string) => void): void => {
       try {
         parseJavaScript(cmd);
@@ -219,10 +224,10 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
       r.on('exit', resolve);
     });
   }
-  onRequest(cb: (f: SourceFile) => SourceFile): void {
+  public onRequest(cb: (f: SourceFile) => SourceFile): void {
     this._onRequest = cb;
   }
-  shutdown(): Promise<void> {
+  public shutdown(): Promise<void> {
     return this._process.dispose();
   }
 

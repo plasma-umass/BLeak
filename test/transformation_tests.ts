@@ -1,5 +1,5 @@
 import {equal as assertEqual} from 'assert';
-import {injectIntoHead, exposeClosureState} from '../src/lib/transformations';
+import {injectIntoHead, exposeClosureState, parseHTML} from '../src/lib/transformations';
 import {readFileSync} from 'fs';
 
 const AGENT_SOURCE = readFileSync(require.resolve('../src/lib/bleak_agent'), "utf8");
@@ -9,19 +9,29 @@ describe('Transformations', function() {
     const headTagTypes = [
       [`<head>`, `</head>`, 'is in lowercase'],
       [`<HEAD>`, `</HEAD>`, 'is in uppercase'],
-      [`<heAd>`, `</HeAd>`, 'is in a mix of lower and uppercase'],
-      [`< head >`, `</ head>`, 'has whitespace within tag'],
-      [`<\n\thead\n\t>`, `</\n\thead>`, 'has newlines within tag'],
+      [`<heAd>`, `</heAd>`, 'is in a mix of lower and uppercase'],
       [``, ``, 'is missing']
     ];
-
+    const rawInjection = `<script>hello</script>`;
+    const injection = parseHTML(rawInjection);
     headTagTypes.forEach((headTag) => {
       it(`should work when the head tag ${headTag[2]}`, function() {
         const source = `<!DOCTYPE html><html>${headTag[0]}${headTag[1]}</html>`;
-        const injection = `hello`;
-        const output = `<!DOCTYPE html><html>${headTag[0]}${injection}${headTag[1]}</html>`;
-        assertEqual(injectIntoHead(source, injection), output);
+        const output = `<!DOCTYPE html><html>${headTag[0]}${rawInjection}${headTag[1]}</html>`;
+        assertEqual(injectIntoHead("test.html", source, injection), output);
       });
+    });
+  });
+
+  describe(`Inline JavaScript`, function() {
+    it(`should rewrite inline JavaScript`, function() {
+      const source = `<html><head><script type="text/javascript">
+      function foo() {
+
+      }
+      </script></head></html>`;
+      const expected = `<html><head><script type="text/javascript">NO</script></head></html>`;
+      assertEqual(injectIntoHead("test.html", source, [], () => "NO"), expected);
     });
   });
 

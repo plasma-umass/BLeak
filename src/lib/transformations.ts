@@ -7,9 +7,12 @@ import {BlockStatement, Node, Program, SequenceExpression, VariableDeclaration, 
 import {SourceFile} from '../common/interfaces';
 import {parse as parseURL} from 'url';
 import {readFileSync} from 'fs';
+import {Parser as HTMLParser, DomHandler, DomUtils} from 'htmlparser2';
 
-const headRegex = /<\s*[hH][eE][aA][dD]\s*>/;
-const htmlRegex = /<\s*[hH][tT][mM][lL]\s*>/;
+declare module "htmlparser2" {
+  export const DomHandler: any;
+  export const DomUtils: any;
+}
 
 let seed = 0x2F6E2B1;
 function deterministicRandom(): number {
@@ -23,30 +26,100 @@ function deterministicRandom(): number {
   return (seed & 0xFFFFFFF) / 0x10000000;
 }
 
+export interface HTMLNode {
+  type: string;
+  name?: string;
+  data?: string;
+  children?: HTMLNode[];
+  attribs?: {[n: string]: string};
+}
+
+const HTML_PARSER_OPTS = {lowerCaseTags: false, lowerCaseAttributeNames: false};
+export function parseHTML(source: string): HTMLNode[] {
+  let rv: HTMLNode[];
+  let err: any;
+  const dom = new DomHandler((e: any, nodes: HTMLNode[]) => {
+    rv = nodes;
+    err = e;
+  });
+  const parser = new HTMLParser(dom, HTML_PARSER_OPTS);
+  parser.write(source);
+  parser.end();
+  if (err) {
+    return null;
+  }
+  return rv;
+}
+
+function identJSTransform(f: string, s: string, isNode: boolean) {
+  return s;
+}
+
 /**
  * Inject the injection string into the <head> portion of the HTML source.
  *
  * If <head> is missing, attempts to inject after the <html> tag.
  *
+ * @param filename Path to the HTML file.
  * @param source Source of an HTML file.
  * @param injection Content to inject into the head.
  */
-export function injectIntoHead(source: string, injection: string): string {
-  const headPosition = headRegex.exec(source);
-  let injectionIndex = -1;
-  if (headPosition) {
-    injectionIndex = headPosition.index + headPosition[0].length;
-  } else {
-    const htmlPosition = htmlRegex.exec(source);
-    if (htmlPosition) {
-      injectionIndex = htmlPosition.index + htmlPosition[0].length;
+export function injectIntoHead(filename: string, source: string, injection: HTMLNode[], jsTransform: (filename: string, source: string, isNode: boolean) => string = identJSTransform): string {
+  const parsedHTML = parseHTML(source);
+  if (parsedHTML === null) {
+    // Parsing failed.
+    return source;
+  }
+
+  let htmlNode: HTMLNode;
+  let headNode: HTMLNode;
+  let inlineScripts: HTMLNode[] = [];
+  function search(n: HTMLNode) {
+    // Traverse children first to avoid mutating state
+    // before it is traversed.
+    if (n.children) {
+      n.children.forEach(search);
+    }
+
+    if (n.name) {
+      switch (n.name.toLowerCase()) {
+        case 'head':
+          if (!headNode) {
+            headNode = n;
+          }
+          break;
+        case 'html':
+          if (!htmlNode) {
+            htmlNode = n;
+          }
+          break;
+        case 'script':
+          if (n.attribs && !n.attribs.src && !n.attribs.Src && !n.attribs.sRc && !n.attribs.srC && !n.attribs.SRc && !n.attribs.SrC && !n.attribs.sRC && !n.attribs.SRC) {
+            inlineScripts.push(n);
+          }
+          break;
+      }
     }
   }
-  if (injectionIndex !== -1) {
-    return source.slice(0, injectionIndex) + injection + source.slice(injectionIndex);
-  } else {
-    // This might be an HTML fragment, such as an AngularJS template, that lacks a root <html> node.
+  parsedHTML.forEach(search);
+
+  if (!headNode && !htmlNode) {
+    // Might be an angular template.
     return source;
+  } else {
+    const injectionTarget = headNode ? headNode : htmlNode;
+    if (!injectionTarget.children) {
+      injectionTarget.children = [];
+    }
+    injectionTarget.children = injection.concat(injectionTarget.children);
+
+    inlineScripts.forEach((n, i) => {
+      if (!n.children || n.children.length !== 1) {
+        console.log(`Weird! Found JS node with the following children: ${JSON.stringify(n.children)}`);
+      }
+      n.children[0].data = jsTransform(`${filename}-inline${i}.js`, n.children[0].data, false);
+    });
+    return DomUtils.getOuterHTML(parsedHTML);
   }
 }
 
@@ -912,6 +985,13 @@ export const DEFAULT_AGENT_LOCATION = require.resolve('./bleak_agent');
 export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
 export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixes: number[] = [], agentURL = DEFAULT_AGENT_URL, agentLocation = DEFAULT_AGENT_LOCATION): (f: SourceFile) => SourceFile {
   const agentData = readFileSync(agentLocation);
+  const parsedInjection = parseHTML(`<script type="text/javascript" src="${agentURL}"></script>
+  <script type="text/javascript">
+    ${JSON.stringify(fixes)}.forEach(function(num) {
+      $$$SHOULDFIX$$$(num, true);
+    });
+    ${config}
+  </script>`);
   return (f: SourceFile): SourceFile => {
     let mime = f.mimetype.toLowerCase();
     if (mime.indexOf(";") !== -1) {
@@ -928,15 +1008,9 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
     }
     switch (mime) {
       case 'text/html':
-        if (f.status === 200) {
-          f.contents = Buffer.from(injectIntoHead(f.contents.toString("utf8"), `<script type="text/javascript" src="${agentURL}"></script>
-  <script type="text/javascript">
-    ${JSON.stringify(fixes)}.forEach(function(num) {
-      $$$SHOULDFIX$$$(num, true);
-    });
-    ${config}
-  </script>`), 'utf8');
-        }
+        //if (f.status === 200) {
+          f.contents = Buffer.from(injectIntoHead(url.path, f.contents.toString("utf8"), parsedInjection, rewrite ? exposeClosureState : identJSTransform), 'utf8');
+        //}
         break;
       case 'text/javascript':
       case 'application/javascript':

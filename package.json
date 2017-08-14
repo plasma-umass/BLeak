@@ -34,6 +34,7 @@
     "@types/estree": "0.0.34",
     "@types/extract-zip": "^1.6.2",
     "@types/glob": "^5.0.30",
+    "@types/htmlparser2": "^3.7.29",
     "@types/mocha": "^2.2.40",
     "@types/node": "^7.0.12",
     "@types/source-map": "^0.5.1",
@@ -52,6 +53,7 @@
     "extract-zip": "^1.6.0",
     "glob": "^7.1.1",
     "heapdump": "^0.3.9",
+    "htmlparser2": "^3.9.2",
     "locate-java-home": "^0.1.6",
     "microtime": "^2.1.6",
     "source-map": "^0.5.6"
