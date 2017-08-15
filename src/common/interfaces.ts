@@ -22,7 +22,7 @@ export interface IProxy {
    * Register a function that can rewrite *text* files requested over the network.
    */
   onRequest(cb: (f: SourceFile) => SourceFile): void;
-  httpGet(url: string, headers?: any, body?: string): Promise<IHTTPResponse>;
+  httpGet(url: string, headers?: any, body?: string, fromCache?: boolean): Promise<IHTTPResponse>;
   shutdown(): Promise<void>;
 }
 

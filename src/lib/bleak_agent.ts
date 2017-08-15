@@ -8,6 +8,8 @@ interface EventTarget {
   $$listeners?: {[type: string]: ListenerInfo[]};
 }
 
+declare function importScripts(s: string): void;
+
 /**
  * Agent injected into the webpage to surface browser-hidden leaks at the JS level.
  */
@@ -295,7 +297,7 @@ interface EventTarget {
    */
   function getProxy(accessStr: string, obj: any, initialInstallation = false): any {
     if (!isProxyable(obj)) {
-      console.log(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
+      // console.log(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
       return obj;
     } else if (!obj.hasOwnProperty('$$$PROXY$$$')) {
       const map = initialInstallation ? new Map<string | number | symbol, Set<string>>() : _initializeMap(obj);
@@ -439,15 +441,19 @@ interface EventTarget {
   }
 
   // Global variables.
-  const root = <Window> (typeof(window) !== "undefined" ? window : global);
+  const IS_WINDOW = typeof(window) !== "undefined";
+  const IS_WORKER = typeof(importScripts) !== "undefined";
+
+  const root = <Window> (IS_WINDOW ? window : IS_WORKER ? self : global);
   root.$$$INSTRUMENT_PATHS$$$ = $$$INSTRUMENT_PATHS$$$;
   root.$$$GET_STACK_TRACE$$$ = $$$GET_STACK_TRACE$$$;
   root.$$$CREATE_SCOPE_OBJECT$$$ = $$$CREATE_SCOPE_OBJECT$$$;
   root.$$$EQ$$$ = $$$EQ$$$;
   root.$$$SEQ$$$ = $$$SEQ$$$;
   root.$$$SHOULDFIX$$$ = $$$SHOULDFIX$$$;
+  root.$$$GLOBAL$$$ = root;
 
-  if (typeof(window) !== "undefined") {
+  if (IS_WINDOW || IS_WORKER) {
     // Disable these in NodeJS.
 
     const addEventListener = EventTarget.prototype.addEventListener;
@@ -753,22 +759,23 @@ interface EventTarget {
       }
     }
 
-    [Document.prototype, Element.prototype, MediaQueryList.prototype, FileReader.prototype,
-      HTMLBodyElement.prototype, HTMLElement.prototype, HTMLFrameSetElement.prototype,
-      ApplicationCache.prototype, //EventSource.prototype, SVGAnimationElement.prototype,
-      SVGElement.prototype, XMLHttpRequest.prototype, //XMLHttpRequestEventTarget.prototype,
-      WebSocket.prototype, IDBDatabase.prototype, IDBOpenDBRequest.prototype,
-      IDBRequest.prototype, IDBTransaction.prototype, window].forEach((obj) => {
-        Object.keys(obj).filter((p) => p.startsWith("on")).forEach((p) => {
-          interpositionEventListenerProperty(obj, p);
+    if (IS_WINDOW) {
+      [Document.prototype, Element.prototype, MediaQueryList.prototype, FileReader.prototype,
+        HTMLBodyElement.prototype, HTMLElement.prototype, HTMLFrameSetElement.prototype,
+        ApplicationCache.prototype, //EventSource.prototype, SVGAnimationElement.prototype,
+        SVGElement.prototype, XMLHttpRequest.prototype, //XMLHttpRequestEventTarget.prototype,
+        WebSocket.prototype, IDBDatabase.prototype, IDBOpenDBRequest.prototype,
+        IDBRequest.prototype, IDBTransaction.prototype, window].forEach((obj) => {
+          Object.keys(obj).filter((p) => p.startsWith("on")).forEach((p) => {
+            interpositionEventListenerProperty(obj, p);
+          });
         });
-      });
 
-    //const countMap = new Map<string, Count>();
-    [[Node.prototype, "Node"], [Element.prototype, "Element"], [HTMLElement.prototype, "HTMLElement"],
-     [Document.prototype, "Document"], [HTMLCanvasElement.prototype, "HTMLCanvasElement"]]
-      .forEach((v) => Object.keys(v[0]).forEach((k) => proxyInterposition(v[0], k, `${v[1]}.${k}`)));
-
+      //const countMap = new Map<string, Count>();
+      [[Node.prototype, "Node"], [Element.prototype, "Element"], [HTMLElement.prototype, "HTMLElement"],
+      [Document.prototype, "Document"], [HTMLCanvasElement.prototype, "HTMLCanvasElement"]]
+        .forEach((v) => Object.keys(v[0]).forEach((k) => proxyInterposition(v[0], k, `${v[1]}.${k}`)));
+    }
 
 
 

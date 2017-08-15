@@ -49,7 +49,7 @@ async function makeHttpRequest(urlString: string, method: string, headers: any, 
       });
       res.on('error', reject);
     });
-    //nodeReq.on('error', reject);
+    nodeReq.on('error', reject);
     if (postData) {
       nodeReq.write(postData);
     }
@@ -109,6 +109,8 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
   private _console: ChromeConsole;
   private _loadedFrames = new Set<string>();
   private _onRequest: (f: SourceFile) => SourceFile = (f) => f;
+  // URL => contents
+  private _cache = new Map<string, IHTTPResponse>();
 
   private constructor(log: WriteStream, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole) {
     this._log = log;
@@ -156,7 +158,10 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     };
   }
 
-  public async httpGet(url: string, headers: any = { "Host": parseURL(url).host }, body?: string): Promise<IHTTPResponse> {
+  public async httpGet(url: string, headers: any = { "Host": parseURL(url).host }, body?: string, fromCache = false): Promise<IHTTPResponse> {
+    if (fromCache && this._cache.has(url)) {
+      return this._cache.get(url);
+    }
     const response = await makeHttpRequest(url, 'get', headers, body);
     let mimeType = response.headers['content-type'] as string;
     let statusCode = response.statusCode;
@@ -183,6 +188,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     response.headers['expires'] = 'Tue, 03 Jul 2001 06:00:00 GMT';
     response.headers['last-modified'] = `${(new Date()).toUTCString()}`;
     response.headers['cache-control'] = 'max-age=0, no-cache, must-revalidate, proxy-revalidate';
+    this._cache.set(url, response);
     return response;
   }
 

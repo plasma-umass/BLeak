@@ -17,6 +17,7 @@ interface Window {
   $$$SEQ$$$(a: any, b: any): boolean;
   $$$EQ$$$(a: any, b: any): boolean;
   $$$SHOULDFIX$$$(n: number): boolean;
+  $$$GLOBAL$$$: Window;
 }
 
 /**

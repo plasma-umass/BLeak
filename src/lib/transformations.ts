@@ -547,7 +547,7 @@ class GlobalScope extends Scope {
   }
 
   public get scopeIdentifier(): string {
-    return this._isNode ? "global" : "window";
+    return this._isNode ? "global" : "$$$GLOBAL$$$";
   }
 }
 
@@ -557,7 +557,7 @@ class GlobalScope extends Scope {
  *
  * @param source Source of the JavaScript file.
  */
-export function exposeClosureState(filename: string, source: string, isNode: boolean): string {
+export function exposeClosureState(filename: string, source: string, isNode: boolean, agentUrl="bleak_agent.js"): string {
   let ast = parseJavaScript(source, { loc: true });
   {
     const firstStatement = ast.body[0];
@@ -967,6 +967,8 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
   if (blockInsertions.length > 0) {
     body.unshift.apply(body, blockInsertions);
   }
+  // importScripts check!
+  body.unshift.apply(body, parseJavaScript(`if (typeof(importScripts) !== "undefined") { importScripts("${agentUrl}"); }`).body);
 
   // console.log("Finished second phase.");
   const map = new SourceMapGenerator({
@@ -1016,7 +1018,7 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
       case 'application/javascript':
         if (f.status === 200 && rewrite) {
           console.log(`Rewriting ${f.url}...`);
-          f.contents = Buffer.from(exposeClosureState(url.path, f.contents.toString("utf8"), false), 'utf8');
+          f.contents = Buffer.from(exposeClosureState(url.path, f.contents.toString("utf8"), false, agentURL), 'utf8');
         }
         break;
     }

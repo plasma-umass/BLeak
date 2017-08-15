@@ -22,16 +22,23 @@ export default class StackFrameConverter {
     }
     let map = this._maps.get(url);
     if (!map) {
-      const file = await proxy.httpGet(url);
-      const source = file.data.toString('utf8');
-      let sourceMapOffset = source.lastIndexOf(magicString)
-      if (sourceMapOffset > -1) {
-        sourceMapOffset += magicString.length;
-        const sourceMapBase64 = source.slice(sourceMapOffset);
-        const sourceMapString = new Buffer(sourceMapBase64, 'base64').toString('utf8');
-        const sourceMap = JSON.parse(sourceMapString);
-        const consumer = new SourceMapConsumer(sourceMap);
-        this._maps.set(url, consumer);
+      try {
+        console.log(url);
+        const file = await proxy.httpGet(url, undefined, undefined, true);
+        const source = file.data.toString('utf8');
+        let sourceMapOffset = source.lastIndexOf(magicString)
+        if (sourceMapOffset > -1) {
+          sourceMapOffset += magicString.length;
+          const sourceMapBase64 = source.slice(sourceMapOffset);
+          const sourceMapString = new Buffer(sourceMapBase64, 'base64').toString('utf8');
+          const sourceMap = JSON.parse(sourceMapString);
+          const consumer = new SourceMapConsumer(sourceMap);
+          this._maps.set(url, consumer);
+        }
+      } catch (e) {
+        // Failed to get map.
+        console.error(`Failed to get source map for ${url}:`);
+        console.error(e);
       }
     }
   }
