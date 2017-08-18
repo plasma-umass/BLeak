@@ -1,5 +1,6 @@
 import {StackFrame} from 'error-stack-parser';
 import {GrowthObject} from '../lib/growth_graph';
+import HeapSnapshotParser from '../lib/heap_snapshot_parser';
 
 /**
  * Contains information on a source file.
@@ -42,7 +43,7 @@ export interface IBrowserDriver {
   /**
    * Takes a heap snapshot of the current webpage.
    */
-  takeHeapSnapshot(): Promise<HeapSnapshot>;
+  takeHeapSnapshot(): HeapSnapshotParser;
 }
 
 /**

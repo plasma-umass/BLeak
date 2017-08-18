@@ -262,7 +262,7 @@ describe('End-to-end Tests', function() {
 
   function createStandardLeakTest(description: string, rootFilename: string, expected_line: number): void {
     it(description, async function() {
-      let i = 0;
+      // let i = 0;
       const leaks = await BLeak.FindLeaks(`
         exports.url = 'http://localhost:${HTTP_PORT}/${rootFilename}.html';
         exports.loop = [
@@ -278,8 +278,9 @@ describe('End-to-end Tests', function() {
         ];
         exports.timeout = 30000;
       `, proxy, driver, (ss) => {
-        writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
-        i++;
+        // writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
+        // i++;
+        return Promise.resolve();
       });
       assertEqual(leaks.length > 0, true);
       leaks.forEach((leak) => {
@@ -297,7 +298,7 @@ describe('End-to-end Tests', function() {
   }
 
   createStandardLeakTest('Catches leaks', 'test', 8);
-  createStandardLeakTest('Catches leaks in closures', 'closure_test', 9);
+  /*createStandardLeakTest('Catches leaks in closures', 'closure_test', 9);
   createStandardLeakTest('Catches leaks in closures when event listener is assigned on a property', 'closure_test_on_property', 9);
   createStandardLeakTest('Catches leaks in closures, even with irrelevant DOM objects', 'closure_test_irrelevant_dom', 9);
   createStandardLeakTest('Catches leaks in closures, even with disconnected DOM fragments', 'closure_test_disconnected_dom', 10);
@@ -308,7 +309,7 @@ describe('End-to-end Tests', function() {
   createStandardLeakTest('Ignores code that does not grow objects', 'irrelevant_paths_test', 8);
   createStandardLeakTest('Catches event listener leaks', 'event_listener_leak', 5);
   createStandardLeakTest('Ignores responsible event listener removal', 'event_listener_removal', 5);
-  createStandardLeakTest('Catches leaks that grow DOM unboundedly', 'dom_growth_test', 3);
+  createStandardLeakTest('Catches leaks that grow DOM unboundedly', 'dom_growth_test', 3);*/
 
   after(function(done) {
     //setTimeout(function() {

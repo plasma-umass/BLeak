@@ -1,4 +1,5 @@
-import {IProxy, IBrowserDriver, HeapSnapshot, SourceFile, IHTTPResponse} from '../common/interfaces';
+import {IProxy, IBrowserDriver, SourceFile, IHTTPResponse} from '../common/interfaces';
+import HeapSnapshotParser from '../lib/heap_snapshot_parser';
 import {createSession} from 'chrome-debugging-client';
 import {ISession as ChromeSession, IAPIClient as ChromeAPIClient, IBrowserProcess as ChromeProcess, IDebuggingProtocolClient as ChromeDebuggingProtocolClient} from 'chrome-debugging-client/dist/lib/types';
 import {HeapProfiler as ChromeHeapProfiler, Network as ChromeNetwork, Console as ChromeConsole, Page as ChromePage, Runtime as ChromeRuntime} from "chrome-debugging-client/dist/protocol/tot";
@@ -256,17 +257,14 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     console.log(`${expression} => ${e.result.value}`);
     return `${e.result.value}`;
   }
-  public async takeHeapSnapshot(): Promise<HeapSnapshot> {
-    // TODO: Use buffers instead / parse on-the-fly?
-    let buffer = "";
+  public takeHeapSnapshot(): HeapSnapshotParser {
+    const parser = new HeapSnapshotParser();
     // 200 KB chunks
     this._heapProfiler.addHeapSnapshotChunk = (evt) => {
-      // console.log(`Chunk Size: ${evt.chunk.length} characters (${(evt.chunk.length * 2)/1024} KB)`);
-      buffer += evt.chunk;
+      parser.addSnapshotChunk(evt.chunk);
     };
-    await this._heapProfiler.takeHeapSnapshot({ reportProgress: false });
-//    console.log(`Total Size: ${buffer.length} characters (${buffer.length * 2 / 1024} KB)`);
-    return JSON.parse(buffer);
+    this._heapProfiler.takeHeapSnapshot({ reportProgress: false });
+    return parser;
   }
   public async debugLoop(): Promise<void> {
     const evalJavascript = (cmd: string, context: any, filename: string, callback: (e: any, result?: string) => void): void => {

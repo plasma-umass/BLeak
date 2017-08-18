@@ -1,4 +1,5 @@
-import {HeapSnapshot, SnapshotEdgeType, SnapshotNodeType, SnapshotSizeSummary} from '../common/interfaces';
+import {SnapshotEdgeType, SnapshotNodeType, SnapshotSizeSummary} from '../common/interfaces';
+import {default as HeapSnapshotParser, DataTypes} from './heap_snapshot_parser';
 import {OneBitArray, TwoBitArray} from '../common/util';
 
 function isHidden(type: SnapshotEdgeType): boolean {
@@ -192,8 +193,8 @@ export class HeapGrowthTracker {
   public _leakRefs: Uint16Array = null;
   public _nonLeakVisits: OneBitArray = null;
 
-  public addSnapshot(snapshot: HeapSnapshot): void {
-    const heap = HeapGraph.Construct(snapshot, this._stringMap);
+  public async addSnapshot(parser: HeapSnapshotParser): Promise<void> {
+    const heap = await HeapGraph.Construct(parser, this._stringMap);
     const growthStatus = new TwoBitArray(heap.nodeCount);
     if (this._heap !== null) {
       // Initialize all new nodes to 'NOT_GROWING'.
@@ -499,8 +500,12 @@ class Node {
  * Represents a heap snapshot / heap graph.
  */
 export class HeapGraph {
-  public static Construct(snapshot: HeapSnapshot, stringMap: StringMap = new StringMap()): HeapGraph {
-    const snapshotInfo = snapshot.snapshot;
+  public static async Construct(parser: HeapSnapshotParser, stringMap: StringMap = new StringMap()): Promise<HeapGraph> {
+    const firstChunk = await parser.read();
+    if (firstChunk.type !== DataTypes.SNAPSHOT) {
+      throw new Error(`First chunk does not contain snapshot property.`);
+    }
+    const snapshotInfo = firstChunk.data;
     const meta = snapshotInfo.meta;
     const nodeFields = meta.node_fields;
     const nodeLength = nodeFields.length;
@@ -516,63 +521,95 @@ export class HeapGraph {
     const edgeToNodes = new Uint32Array(edgeCount);
 
     {
-      const strings = snapshot.strings;
-      const nodes = snapshot.nodes;
       const nodeTypeOffset = nodeFields.indexOf("type");
       const nodeNameOffset = nodeFields.indexOf("name");
       const nodeSelfSizeOffset = nodeFields.indexOf("self_size");
       const nodeEdgeCountOffset = nodeFields.indexOf("edge_count");
-      const edges = snapshot.edges;
       const edgeFields = meta.edge_fields;
       const edgeLength = edgeFields.length;
-      const numEdges = edges.length / edgeLength;
       const edgeTypeOffset = edgeFields.indexOf("type");
       const edgeNameOrIndexOffset = edgeFields.indexOf("name_or_index");
       const edgeToNodeOffset = edgeFields.indexOf("to_node");
+      let strings: Array<string> = [];
 
-      // Parse the snapshot into a graph.
+      let nodePtr = 0;
+      let edgePtr = 0;
       let nextEdge = 0;
-      for (let i = 0; i < nodeCount; i++) {
-        const base = i * nodeLength;
-        const nodeName = nodes[base + nodeNameOffset];
-        const nodeEdgeCount = nodes[base + nodeEdgeCountOffset];
-
-        nodeNames[i] = stringMap.get(strings[nodeName]);
-        nodeSizes[i] = nodes[base + nodeSelfSizeOffset];
-        nodeTypes[i] = nodes[base + nodeTypeOffset];
-        firstEdgeIndexes[i] = nextEdge;
-
-        const lastEdgeIndex = nextEdge + nodeEdgeCount;
-
-        for (let j = nextEdge; j < lastEdgeIndex; j++) {
-          const base = j * edgeLength;
-          let edgeNameOrIndex = edges[base + edgeNameOrIndexOffset];
-          const edgeType = edges[base + edgeTypeOffset];
-          switch(edgeType) {
-            case SnapshotEdgeType.Element: // Array element.
-            case SnapshotEdgeType.Hidden: // Hidden from developer, but influences in-memory size. Apparently has an index, not a name. Ignore for now.
-              break;
-            case SnapshotEdgeType.ContextVariable: // Function context. I think it has a name, like "context".
-            case SnapshotEdgeType.Internal: // Internal data structures that are not actionable to developers. Influence retained size. Ignore for now.
-            case SnapshotEdgeType.Shortcut: // Shortcut: Should be ignored; an internal detail.
-            case SnapshotEdgeType.Weak: // Weak reference: Doesn't hold onto memory.
-            case SnapshotEdgeType.Property: // Property on an object.
-              edgeNameOrIndex = stringMap.get(strings[edgeNameOrIndex]);
-              break;
-            default:
-              throw new Error(`Unrecognized edge type: ${edgeType}`);
-          }
-          edgeTypes[j] = edgeType;
-          edgeNamesOrIndexes[j] = edgeNameOrIndex;
-          edgeToNodes[j] = edges[base + edgeToNodeOffset] / nodeLength;
+      while (true) {
+        const chunk = await parser.read();
+        if (chunk === null) {
+          break;
         }
-        nextEdge = lastEdgeIndex;
-
-        if (lastEdgeIndex > numEdges) {
-          throw new Error(`Read past the edge array: ${lastEdgeIndex} > ${numEdges}`);
+        switch (chunk.type) {
+          case DataTypes.NODES: {
+            const data = chunk.data;
+            const dataLen = data.length;
+            const dataNodeCount = dataLen / nodeLength;
+            if (dataLen % nodeLength !== 0) {
+              throw new Error(`Expected chunk to contain whole nodes. Instead, contained ${dataNodeCount} nodes.`);
+            }
+            // Copy data into our typed arrays.
+            for (let i = 0; i < dataNodeCount; i++) {
+              const dataBase = i * nodeLength;
+              const arrayBase = nodePtr + i;
+              nodeTypes[arrayBase] = data[dataBase + nodeTypeOffset];
+              nodeNames[arrayBase] = data[dataBase + nodeNameOffset];
+              nodeSizes[arrayBase] = data[dataBase + nodeSelfSizeOffset];
+              firstEdgeIndexes[arrayBase] = nextEdge;
+              nextEdge += data[dataBase + nodeEdgeCountOffset];
+            }
+            nodePtr += dataNodeCount;
+            break;
+          }
+          case DataTypes.EDGES: {
+            const data = chunk.data;
+            const dataLen = data.length;
+            const dataEdgeCount = dataLen / edgeLength;
+            if (dataLen % edgeLength !== 0) {
+              throw new Error(`Expected chunk to contain whole nodes. Instead, contained ${dataEdgeCount} nodes.`);
+            }
+            // Copy data into our typed arrays.
+            for (let i = 0; i < dataEdgeCount; i++) {
+              const dataBase = i * edgeLength;
+              const arrayBase = edgePtr + i;
+              edgeTypes[arrayBase] = data[dataBase + edgeTypeOffset];
+              edgeNamesOrIndexes[arrayBase] = data[dataBase + edgeNameOrIndexOffset];
+              edgeToNodes[arrayBase] = data[dataBase + edgeToNodeOffset] / nodeLength;
+            }
+            edgePtr += dataEdgeCount;
+            break;
+          }
+          case DataTypes.STRINGS: {
+            strings = strings.concat(chunk.data);
+            break;
+          }
+          default:
+            throw new Error(`Unexpected snapshot chunk: ${chunk.type}.`);
         }
       }
-      firstEdgeIndexes[nodeCount] = numEdges;
+      // Process edgeNameOrIndex now.
+      for (let i = 0; i < edgeCount; i++) {
+        const edgeType = edgeTypes[i];
+        switch(edgeType) {
+          case SnapshotEdgeType.Element: // Array element.
+          case SnapshotEdgeType.Hidden: // Hidden from developer, but influences in-memory size. Apparently has an index, not a name. Ignore for now.
+            break;
+          case SnapshotEdgeType.ContextVariable: // Function context. I think it has a name, like "context".
+          case SnapshotEdgeType.Internal: // Internal data structures that are not actionable to developers. Influence retained size. Ignore for now.
+          case SnapshotEdgeType.Shortcut: // Shortcut: Should be ignored; an internal detail.
+          case SnapshotEdgeType.Weak: // Weak reference: Doesn't hold onto memory.
+          case SnapshotEdgeType.Property: // Property on an object.
+            edgeNamesOrIndexes[i] = stringMap.get(strings[edgeNamesOrIndexes[i]]);
+            break;
+          default:
+            throw new Error(`Unrecognized edge type: ${edgeType}`);
+        }
+      }
+      firstEdgeIndexes[nodeCount] = edgeCount;
+      // Process nodeNames now.
+      for (let i = 0; i < nodeCount; i++) {
+        nodeNames[i] = stringMap.get(strings[nodeNames[i]]);
+      }
     }
     return new HeapGraph(stringMap, nodeTypes, nodeNames, nodeSizes,
       firstEdgeIndexes, edgeTypes, edgeNamesOrIndexes, edgeToNodes, rootNodeIndex);

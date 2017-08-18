@@ -1,5 +1,6 @@
 import {proxyRewriteFunction, evalRewriteFunction, evalNopFunction} from './transformations';
-import {IProxy, IBrowserDriver, Leak, ConfigurationFile, HeapSnapshot} from '../common/interfaces';
+import {IProxy, IBrowserDriver, Leak, ConfigurationFile} from '../common/interfaces';
+import HeapSnapshotParser from './heap_snapshot_parser';
 import {HeapGrowthTracker, GrowthObject, ToSerializeableGCPath, ToSerializeableGrowthObject, HeapGraph} from './growth_graph';
 import {StackFrame} from 'error-stack-parser';
 import StackFrameConverter from './stack_frame_converter';
@@ -40,6 +41,10 @@ function getConfigBrowserInjection(configSource: string): string {
 })();`;
 }
 
+function defaultSnapshotCb(): Promise<void> {
+  return Promise.resolve();
+}
+
 export class BLeakDetector {
   /**
    * Find leaks in an application.
@@ -47,7 +52,7 @@ export class BLeakDetector {
    * @param proxy The proxy instance that relays connections from the webpage.
    * @param driver The application driver.
    */
-  public static FindLeaks(configSource: string, proxy: IProxy, driver: IBrowserDriver, snapshotCb: (sn: HeapSnapshot) => void = () => {}): Promise<Leak[]> {
+  public static FindLeaks(configSource: string, proxy: IProxy, driver: IBrowserDriver, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<Leak[]> {
     const detector = new BLeakDetector(proxy, driver, configSource, snapshotCb);
     return detector.findLeaks();
   }
@@ -63,7 +68,7 @@ export class BLeakDetector {
    * @param log Log function. Used to write a report. Assumes each call to `log` appends a newline.
    * @param snapshotCb (Optional) Snapshot callback.
    */
-  public static EvaluateLeakFixes(configSource: string, proxy: IProxy, driver: IBrowserDriver, iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (sn: HeapSnapshot) => void = () => {}): Promise<void> {
+  public static EvaluateLeakFixes(configSource: string, proxy: IProxy, driver: IBrowserDriver, iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<void> {
     const detector = new BLeakDetector(proxy, driver, configSource, snapshotCb);
     return detector.evaluateLeakFixes(iterations, iterationsPerSnapshot, log);
   }
@@ -74,9 +79,9 @@ export class BLeakDetector {
   private readonly _config: ConfigurationFile;
   private readonly _growthTracker = new HeapGrowthTracker();
   private _growthObjects: GrowthObject[] = null;
-  private _snapshotCb: (sn: HeapSnapshot) => void = () => {}
+  private _snapshotCb: (sn: HeapSnapshotParser) => Promise<void>;
   private readonly _configInject: string;
-  private constructor(proxy: IProxy, driver: IBrowserDriver, configSource: string, snapshotCb: (sn: HeapSnapshot) => void = () => {}) {
+  private constructor(proxy: IProxy, driver: IBrowserDriver, configSource: string, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb) {
     this._proxy = proxy;
     this._driver = driver;
     this._configSource = configSource;
@@ -92,8 +97,8 @@ export class BLeakDetector {
     this._proxy.onEval(rewriteJavaScript ? evalRewriteFunction : evalNopFunction);
   }
 
-  public async takeSnapshot(): Promise<HeapSnapshot> {
-    const sn = await this._driver.takeHeapSnapshot();
+  public takeSnapshot(): HeapSnapshotParser {
+    const sn = this._driver.takeHeapSnapshot();
     try {
       this._snapshotCb(sn);
     } catch (e) {
@@ -110,14 +115,14 @@ export class BLeakDetector {
    * @param runGc Whether or not to run the GC before taking a snapshot.
    * @param takeSnapshots If true, takes snapshots after every loop and passes it to the given callback.
    */
-  private async _execute(iterations: number, login: boolean, runGc: boolean = false, takeSnapshots: (sn: HeapSnapshot) => void | undefined = undefined, iterationsPerSnapshot: number = 1, snapshotOnFirst = false): Promise<void> {
+  private async _execute(iterations: number, login: boolean, runGc: boolean = false, takeSnapshots: (sn: HeapSnapshotParser) => Promise<void | undefined> = undefined, iterationsPerSnapshot: number = 1, snapshotOnFirst = false): Promise<void> {
     await this._driver.navigateTo(this._config.url);
     if (login) {
       await this._runLoop(false, 'login', false);
     }
     await this._runLoop(false, 'setup', false);
     if (takeSnapshots !== undefined && snapshotOnFirst) {
-      await this.takeSnapshot().then(takeSnapshots);
+      await takeSnapshots(this.takeSnapshot());
     }
     for (let i = 0; i < iterations; i++) {
       const snapshotRun = takeSnapshots !== undefined && (((i + 1) % iterationsPerSnapshot) === 0);
@@ -125,7 +130,7 @@ export class BLeakDetector {
       if (snapshotRun) {
         // console.log(`Waiting 100 seconds before snapshot.`);
         // await wait(100000);
-        takeSnapshots(sn);
+        await takeSnapshots(sn);
       }
     }
   }
@@ -168,8 +173,8 @@ export class BLeakDetector {
     let headerPrinted = false;
     let iterationCount = 0;
     let leaksFixed = 0;
-    function snapshotReport(sn: HeapSnapshot): void {
-      const g = HeapGraph.Construct(sn);
+    async function snapshotReport(sn: HeapSnapshotParser): Promise<void> {
+      const g = await HeapGraph.Construct(sn);
       const size = g.calculateSize();
       const data = Object.assign({ leaksFixed, iterationCount }, size);
       const keys = Object.keys(data).sort();
@@ -207,8 +212,8 @@ export class BLeakDetector {
   }
 
   private _runLoop(snapshotAtEnd: false, prop: string, isLoop: boolean): Promise<void>;
-  private _runLoop(snapshotAtEnd: true, prop: string, isLoop: boolean, gcBeforeSnapshot?: boolean): Promise<HeapSnapshot>;
-  private async _runLoop(snapshotAtEnd: boolean, prop: string, isLoop: boolean, gcBeforeSnapshot = false): Promise<HeapSnapshot | void> {
+  private _runLoop(snapshotAtEnd: true, prop: string, isLoop: boolean, gcBeforeSnapshot?: boolean): Promise<HeapSnapshotParser>;
+  private async _runLoop(snapshotAtEnd: boolean, prop: string, isLoop: boolean, gcBeforeSnapshot = false): Promise<HeapSnapshotParser | void> {
     const numSteps: number = (<any> this._config)[prop].length;
     // let promise: Promise<string | void> = Promise.resolve();
     if (numSteps > 0) {

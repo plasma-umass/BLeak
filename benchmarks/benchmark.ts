@@ -2,13 +2,14 @@ import * as Benchmark from 'benchmark';
 import {gunzipSync} from 'zlib';
 import {readFileSync, readdirSync, createWriteStream} from 'fs';
 import {join} from 'path';
-import {HeapSnapshot, SnapshotSizeSummary} from '../src/common/interfaces';
+import {SnapshotSizeSummary} from '../src/common/interfaces';
 import {HeapGrowthTracker, HeapGraph} from '../src/lib/growth_graph';
 import {exposeClosureState} from '../src/lib/transformations';
+import HeapSnapshotParser from '../src/lib/heap_snapshot_parser';
 
 const skipSnapshots = process.argv.indexOf("--skip-snapshots") !== -1;
-let loomioSnapshots: HeapSnapshot[] = [];
-let piwikSnapshots: HeapSnapshot[] = [];
+let loomioSnapshots: string[] = [];
+let piwikSnapshots: string[] = [];
 let loomioJs: string = null;
 let piwikJs: string = null;
 const suite = new Benchmark.Suite();
@@ -21,11 +22,11 @@ if (skipSnapshots) {
   console.log("Skipping snapshots.");
 }
 
-function getSnapshots(prefix: string): HeapSnapshot[] {
+function getSnapshots(prefix: string): string[] {
   return readdirSync(snapshotDir)
     .filter((s) => s.startsWith(prefix))
     .map((s) => join(snapshotDir, s))
-    .map((s) => JSON.parse(gunzipFile(s)));
+    .map(gunzipFile);
 }
 
 function getJavascript(file: string): string {
@@ -36,43 +37,44 @@ function gunzipFile(file: string): string {
   return gunzipSync(readFileSync(file)).toString("utf8");
 }
 
-function getGrowthPaths(snapshots: HeapSnapshot[]): any {
+async function getGrowthPaths(snapshots: string[]): Promise<any> {
   const builder = new HeapGrowthTracker();
   for (const snapshot of snapshots) {
-    builder.addSnapshot(snapshot);
+    await builder.addSnapshot(HeapSnapshotParser.FromString(snapshot));
   }
   return builder.getGrowingPaths();
 }
 
-function getHeapSize(snapshot: HeapSnapshot): SnapshotSizeSummary {
-  return HeapGraph.Construct(snapshot).calculateSize();
+async function getHeapSize(snapshot: string): Promise<SnapshotSizeSummary> {
+  const graph = await HeapGraph.Construct(HeapSnapshotParser.FromString(snapshot));
+  return graph.calculateSize();
 }
 
 if (!skipSnapshots) {
   suite
-    .add("Loomio: Growth Paths", function() {
-      getGrowthPaths(loomioSnapshots);
+    .add("Loomio: Growth Paths", async function() {
+      await getGrowthPaths(loomioSnapshots);
     }, {
       onStart: () => {
         loomioSnapshots = getSnapshots("loomio");
       }
     })
-    .add("Loomio: Heap Size", function() {
-      loomioSnapshots.forEach(getHeapSize);
+    .add("Loomio: Heap Size", async function() {
+      await Promise.all(loomioSnapshots.map(getHeapSize));
     }, {
       onComplete: () => {
         loomioSnapshots = [];
       }
     })
-    .add("Piwik: Growth Paths", function() {
-      getGrowthPaths(piwikSnapshots);
+    .add("Piwik: Growth Paths", async function() {
+      await getGrowthPaths(piwikSnapshots);
     }, {
       onStart: () => {
         piwikSnapshots = getSnapshots("piwik");
       }
     })
-    .add("Piwik: Heap Size", function() {
-      piwikSnapshots.forEach(getHeapSize);
+    .add("Piwik: Heap Size", async function() {
+      await Promise.all(piwikSnapshots.map(getHeapSize));
     }, {
       onComplete: () => {
         piwikSnapshots = [];
