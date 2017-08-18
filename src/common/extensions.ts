@@ -18,6 +18,7 @@ interface Window {
   $$$EQ$$$(a: any, b: any): boolean;
   $$$SHOULDFIX$$$(n: number): boolean;
   $$$GLOBAL$$$: Window;
+  $$$REWRITE_EVAL$$$(scope: any, source: string): any;
 }
 
 /**

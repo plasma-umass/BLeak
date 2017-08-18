@@ -2,6 +2,7 @@ import {SourceMapConsumer} from 'source-map';
 import {StackFrame, parse as ErrorStackParser} from 'error-stack-parser';
 import {IProxy} from '../common/interfaces';
 import {DEFAULT_AGENT_URL} from './transformations';
+import {resolve as resolveURL} from 'url';
 
 const magicString = '//# sourceMappingURL=data:application/json;base64,';
 
@@ -12,8 +13,8 @@ const magicString = '//# sourceMappingURL=data:application/json;base64,';
 export default class StackFrameConverter {
   private _maps = new Map<string, SourceMapConsumer>();
 
-  public static ConvertGrowthStacks(proxy: IProxy, stacks: {[p: number]: string[]}, agentUrl: string = DEFAULT_AGENT_URL): Promise<{[p: string]: StackFrame[][]}> {
-    return new StackFrameConverter().convertGrowthStacks(proxy, stacks, agentUrl);
+  public static ConvertGrowthStacks(proxy: IProxy, pageUrl: string, stacks: {[p: number]: string[]}, agentUrl: string = DEFAULT_AGENT_URL): Promise<{[p: string]: StackFrame[][]}> {
+    return new StackFrameConverter().convertGrowthStacks(proxy, pageUrl, stacks, agentUrl);
   }
 
   private async _fetchMap(proxy: IProxy, url: string): Promise<void> {
@@ -43,7 +44,7 @@ export default class StackFrameConverter {
     }
   }
 
-  public async convertGrowthStacks(proxy: IProxy, stacks: {[p: number]: string[]}, agentUrl: string): Promise<{[p: string]: StackFrame[][]}> {
+  public async convertGrowthStacks(proxy: IProxy, pageUrl: string, stacks: {[p: number]: string[]}, agentUrl: string): Promise<{[p: string]: StackFrame[][]}> {
     // First pass: Get all unique URLs and their source maps.
     const urls = new Set<string>();
     const convertedStacks: {[p: string]: StackFrame[][]} = {};
@@ -54,6 +55,10 @@ export default class StackFrameConverter {
           .filter((f) => f.fileName ? f.fileName.indexOf(agentUrl) === -1 : true)
           .filter((f) => f.functionName ? f.functionName.indexOf("eval") === -1 || f.functionName.indexOf(agentUrl) === -1 : true);
         frames.forEach((frame) => {
+          // Canonicalize URLs.
+          if (frame.fileName && !frame.fileName.toLowerCase().startsWith("http")) {
+            frame.fileName = resolveURL(pageUrl, frame.fileName);
+          }
           urls.add(frame.fileName);
         });
         return frames;

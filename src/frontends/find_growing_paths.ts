@@ -22,7 +22,7 @@ console.log(`Report`);
 console.log(`======`);
 console.log(``);
 growth.sort((a, b) => b.adjustedRetainedSize - a.adjustedRetainedSize).forEach((obj) => {
-  console.log(`* Adjusted Retained Size: ${obj.adjustedRetainedSize}, Retained Size: ${obj.retainedSize}`);
+  console.log(`* Adjusted Retained Size: ${obj.adjustedRetainedSize}, Retained Size: ${obj.retainedSize}, Transitive Closure Size: ${obj.transitiveClosureSize}`);
   obj.paths.slice(0, 5).forEach((p, i) => {
     console.log(`   * ${path2string(ToSerializeableGCPath(p), true)}`);
   });

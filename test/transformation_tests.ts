@@ -289,6 +289,16 @@ describe('Transformations', function() {
       `);
       assertEqual(module.obj.decl(1)()(), 4);
     });
+
+    it(`works on function expressions with names`, function() {
+      const module = instrumentModule<{obj: Function}>(`
+        exports.obj = function s() {
+          s = 4;
+          return s;
+        };
+      `);
+      assertEqual(module.obj(), module.obj);
+    });
   });
   // NEED A SWITCH CASE VERSION where it's not within a block!!!
 });

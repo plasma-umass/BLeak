@@ -79,6 +79,7 @@ export interface GrowthObject {
   paths: Edge[][];
   retainedSize: number;
   adjustedRetainedSize: number;
+  transitiveClosureSize: number;
 }
 
 function shouldTraverse(edge: Edge): boolean {
@@ -262,6 +263,7 @@ export class HeapGrowthTracker {
     growthPaths.forEach((paths, growthNodeIndex) => {
       let retainedSize = 0;
       let adjustedRetainedSize = 0;
+      let transitiveClosureSize = 0;
       bfsVisitor(this._heap, [growthNodeIndex], (n) => {
         const refCount = leakReferences[n.nodeIndex];
         if (refCount === 1) {
@@ -269,7 +271,14 @@ export class HeapGrowthTracker {
         }
         adjustedRetainedSize += n.size / refCount;
       }, nonLeakFilter);
-      rv.push({ node: new Node(growthNodeIndex, this._heap), paths, retainedSize, adjustedRetainedSize });
+
+      // Transitive closure size.
+      // Remove if bad.
+      bfsVisitor(this._heap, [growthNodeIndex], (n) => {
+        transitiveClosureSize += n.size;
+      }, filter);
+
+      rv.push({ node: new Node(growthNodeIndex, this._heap), paths, retainedSize, adjustedRetainedSize, transitiveClosureSize });
     });
 
     // DEBUG

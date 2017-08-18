@@ -94,7 +94,24 @@ export function injectIntoHead(filename: string, source: string, injection: HTML
           }
           break;
         case 'script':
-          if (n.attribs && !n.attribs.src && !n.attribs.Src && !n.attribs.sRc && !n.attribs.srC && !n.attribs.SRc && !n.attribs.SrC && !n.attribs.sRC && !n.attribs.SRC) {
+          const attribs = Object.keys(n.attribs);
+          const attribsLower = attribs.map((s) => s.toLowerCase());
+          if (n.attribs && attribsLower.indexOf("src") === -1) {
+            const typeIndex = attribsLower.indexOf("type");
+            if (typeIndex !== -1) {
+              const type = n.attribs[attribs[typeIndex]].toLowerCase();
+              switch(type) {
+                case 'application/javascript':
+                case 'text/javascript':
+                case 'text/x-javascript':
+                case 'text/x-javascript':
+                  break;
+                default:
+                  // IGNORE non-JS script tags.
+                  // These are used for things like templates.
+                  return;
+              }
+            }
             inlineScripts.push(n);
           }
           break;
@@ -131,7 +148,7 @@ function prependToBlock(node: BlockStatement, s: Statement[]): void {
   }
 }
 
-function getExpressionTransform(functionVarName: Identifier | MemberExpression, originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
+function getExpressionTransform(scope: Scope, functionVarName: Identifier | MemberExpression, originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
   let fvn: Identifier;
   if (functionVarName.type === "Identifier") {
     fvn = functionVarName;
@@ -147,7 +164,7 @@ function getExpressionTransform(functionVarName: Identifier | MemberExpression, 
       };
     }
   }
-  return {
+  const ce: CallExpression = {
     type: "CallExpression",
     callee: {
       type: "FunctionExpression",
@@ -180,6 +197,8 @@ function getExpressionTransform(functionVarName: Identifier | MemberExpression, 
     },
     arguments: []
   };
+
+  return ce;
 }
 
 function getScopeAssignment(functionVarName: Identifier, scopeVarName: Identifier): ExpressionStatement {
@@ -536,10 +555,9 @@ class Scope {
 }
 
 class GlobalScope extends Scope {
-  private _isNode: boolean;
   constructor(isNode: boolean) {
     super(null);
-    this._isNode = isNode;
+    this._scopeIdentifier = isNode ? "global" : "$$$GLOBAL$$$";
   }
 
   public finalize() {
@@ -547,7 +565,36 @@ class GlobalScope extends Scope {
   }
 
   public get scopeIdentifier(): string {
-    return this._isNode ? "global" : "$$$GLOBAL$$$";
+    return this._scopeIdentifier;
+  }
+}
+
+class EvalScope extends Scope {
+  constructor(scopeIdentifier: string) {
+    super(null);
+    this._scopeIdentifier = scopeIdentifier;
+  }
+
+  public finalize() {
+    // NOP
+  }
+
+  public getReplacement(identifier: Identifier): Identifier | MemberExpression {
+    return {
+      type: "MemberExpression",
+      computed: false,
+      object: {
+        type: "Identifier",
+        name: this.scopeIdentifier,
+        loc: identifier.loc
+      },
+      property: {
+        type: "Identifier",
+        name: identifier.name,
+        loc: identifier.loc
+      },
+      loc: identifier.loc
+    };
   }
 }
 
@@ -557,7 +604,7 @@ class GlobalScope extends Scope {
  *
  * @param source Source of the JavaScript file.
  */
-export function exposeClosureState(filename: string, source: string, isNode: boolean, agentUrl="bleak_agent.js"): string {
+export function exposeClosureState(filename: string, source: string, isNode: boolean, agentUrl="bleak_agent.js", parentScopeName?: string): string {
   let ast = parseJavaScript(source, { loc: true });
   {
     const firstStatement = ast.body[0];
@@ -570,7 +617,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
   }
 
   let allIdentifiers = new Set<string>();
-  let scope: Scope = new GlobalScope(isNode);
+  let scope: Scope = parentScopeName ? new EvalScope(parentScopeName) : new GlobalScope(isNode);
   let scopeMap = new Map<Program | FunctionDeclaration | FunctionExpression, Scope>();
   scopeMap.set(ast, scope);
 
@@ -666,10 +713,12 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
       }
       case 'FunctionExpression': {
         const name = node.id;
+        enterFunction(node);
+        // The identifier *only exists* within the function expression!
+        // It cannot be overwritten.
         if (name && name.type === "Identifier") {
           scope.add(name.name, VariableType.UNMOVED);
         }
-        enterFunction(node);
         break;
       }
       case 'CatchClause': {
@@ -784,15 +833,23 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
               break;
             case "CallExpression":
               if (node === parent.callee) {
-                // Preserve value of 'this' by doing scope.f || scope.f.
-                const le: LogicalExpression = {
-                  type: "LogicalExpression",
-                  operator: "||",
-                  left: scope.getReplacement(node),
-                  right: scope.getReplacement(node),
-                  loc: node.loc
-                };
-                return le;
+                if (node.name === "eval") {
+                  node.name = "$$$REWRITE_EVAL$$$";
+                  parent.arguments.unshift({
+                    type: "Identifier",
+                    name: scope.scopeIdentifier
+                  });
+                } else {
+                  // Preserve value of 'this' by doing scope.f || scope.f.
+                  const le: LogicalExpression = {
+                    type: "LogicalExpression",
+                    operator: "||",
+                    left: scope.getReplacement(node),
+                    right: scope.getReplacement(node),
+                    loc: node.loc
+                  };
+                  return le;
+                }
               }
               break;
           }
@@ -892,7 +949,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
       }
       case 'FunctionExpression': {
         scope = scope.parent;
-        return getExpressionTransform(node.id || (<any> parent).id || {
+        return getExpressionTransform(scope, node.id || (<any> parent).id || {
           type: "Identifier",
           name: "__anonymous_function__"
         }, node, {
@@ -959,7 +1016,13 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
   });
 
   const body = (<Program> newAst).body;
-  if (scope instanceof GlobalScope) {
+  if (
+    // Eval context: There's a parent scope, not a global scope.
+    (scope instanceof GlobalScope && parentScopeName)) {
+
+  }
+
+  if (scope instanceof GlobalScope || scope instanceof EvalScope) {
     //body.unshift.apply(body, scope.getPrelude());
   } else {
     throw new Error(`Forgot to pop a scope?`);
@@ -1008,6 +1071,24 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
       f.mimetype = "text/javascript";
       return f;
     }
+    /*if (url.path.indexOf('libraries') !== -1) {
+      // XXXX hot fix for mailpile
+      const c = f.contents.toString();
+      const magic = "tuples[3-i][2].disable,tuples[0][2].lock";
+      const i = c.indexOf(magic);
+      console.log(`Found jQuery text at ${i}`);
+      const newC = c.slice(0, i) + "tuples[3-i][2].disable,tuples[3-i][3].disable,tuples[ 0 ][ 2 ].lock,tuples[ 0 ][ 3 ].lock" + c.slice(i + magic.length);
+      f.contents = Buffer.from(newC, "utf8");
+    }*/
+    /*if (url.path.indexOf("app.js") !== -1) {
+      // XXX hot fix 2 for mailpile
+      const c = f.contents.toString();
+      const magic = `EventLog.subscribe(".mail_source"`;
+      const i = c.indexOf(magic);
+      console.log(`Found mailsource line at ${i}`);
+      const newC = c.slice(0, i) + `if (!window["$$HAS_SUBSCRIBED$$"]) window["$$HAS_SUBSCRIBED$$"] = true && EventLog.subscribe(".mail_source"` + c.slice(i + magic.length);
+      f.contents = Buffer.from(newC, "utf8");
+    }*/
     switch (mime) {
       case 'text/html':
         //if (f.status === 200) {
@@ -1016,6 +1097,8 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
         break;
       case 'text/javascript':
       case 'application/javascript':
+      case 'text/x-javascript':
+      case 'application/x-javascript':
         if (f.status === 200 && rewrite) {
           console.log(`Rewriting ${f.url}...`);
           f.contents = Buffer.from(exposeClosureState(url.path, f.contents.toString("utf8"), false, agentURL), 'utf8');
@@ -1024,4 +1107,12 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
     }
     return f;
   };
+}
+
+export function evalRewriteFunction(scope: string, source: string): string {
+  return exposeClosureState(`eval-${Math.random()}.js`, source, false, undefined, scope);
+}
+
+export function evalNopFunction(scope: string, source: string): string {
+  return source;
 }

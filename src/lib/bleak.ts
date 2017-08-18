@@ -1,4 +1,4 @@
-import {proxyRewriteFunction} from './transformations';
+import {proxyRewriteFunction, evalRewriteFunction, evalNopFunction} from './transformations';
 import {IProxy, IBrowserDriver, Leak, ConfigurationFile, HeapSnapshot} from '../common/interfaces';
 import {HeapGrowthTracker, GrowthObject, ToSerializeableGCPath, ToSerializeableGrowthObject, HeapGraph} from './growth_graph';
 import {StackFrame} from 'error-stack-parser';
@@ -89,6 +89,7 @@ export class BLeakDetector {
 
   public configureProxy(rewriteJavaScript: boolean, fixes: number[]): void {
     this._proxy.onRequest(proxyRewriteFunction(rewriteJavaScript, this._configInject, fixes));
+    this._proxy.onEval(rewriteJavaScript ? evalRewriteFunction : evalNopFunction);
   }
 
   public async takeSnapshot(): Promise<HeapSnapshot> {
@@ -109,16 +110,21 @@ export class BLeakDetector {
    * @param runGc Whether or not to run the GC before taking a snapshot.
    * @param takeSnapshots If true, takes snapshots after every loop and passes it to the given callback.
    */
-  private async _execute(iterations: number, login: boolean, runGc: boolean = false, takeSnapshots: (sn: HeapSnapshot) => void | undefined = undefined, iterationsPerSnapshot: number = 1): Promise<void> {
+  private async _execute(iterations: number, login: boolean, runGc: boolean = false, takeSnapshots: (sn: HeapSnapshot) => void | undefined = undefined, iterationsPerSnapshot: number = 1, snapshotOnFirst = false): Promise<void> {
     await this._driver.navigateTo(this._config.url);
     if (login) {
       await this._runLoop(false, 'login', false);
     }
     await this._runLoop(false, 'setup', false);
+    if (takeSnapshots !== undefined && snapshotOnFirst) {
+      await this.takeSnapshot().then(takeSnapshots);
+    }
     for (let i = 0; i < iterations; i++) {
-      const snapshotRun = takeSnapshots !== undefined && ((i + 1) % iterationsPerSnapshot) === 0;
+      const snapshotRun = takeSnapshots !== undefined && (((i + 1) % iterationsPerSnapshot) === 0);
       const sn = await this._runLoop(<any> snapshotRun, 'loop', true, runGc);
       if (snapshotRun) {
+        // console.log(`Waiting 100 seconds before snapshot.`);
+        // await wait(100000);
         takeSnapshots(sn);
       }
     }
@@ -161,7 +167,7 @@ export class BLeakDetector {
   public async evaluateLeakFixes(iterations: number, iterationsPerSnapshot: number, log: (s: string) => void): Promise<void> {
     let headerPrinted = false;
     let iterationCount = 0;
-    let leaksFixed = -1;
+    let leaksFixed = 0;
     function snapshotReport(sn: HeapSnapshot): void {
       const g = HeapGraph.Construct(sn);
       const size = g.calculateSize();
@@ -172,20 +178,14 @@ export class BLeakDetector {
         headerPrinted = true;
       }
       log(keys.map((k) => (<any> data)[k]).join(","));
+      iterationCount++;
     }
     // Disable fixes for base case.
     this.configureProxy(false, []);
-    for (let i = 0; i <= this._config.fixedLeaks.length; i++) {
-      leaksFixed++;
-      iterationCount = 1;
+    for (leaksFixed = 0; leaksFixed <= this._config.fixedLeaks.length; leaksFixed++) {
       this.configureProxy(false, this._config.fixedLeaks.slice(0, leaksFixed));
-      await this._execute(1, leaksFixed === 0, true, snapshotReport, 1);
-      // Reset count for loop.
       iterationCount = 0;
-      for (let i = 0; i < iterations; i += iterationsPerSnapshot) {
-        iterationCount += iterationsPerSnapshot;
-        await this._execute(iterationCount, false, true, snapshotReport, iterationCount);
-      }
+      await this._execute(iterations, leaksFixed === 0, true, snapshotReport, iterationsPerSnapshot, true);
     }
   }
 
@@ -241,7 +241,7 @@ export class BLeakDetector {
    */
   private async _getGrowthStacks(): Promise<{[p: number]: StackFrame[][]}> {
     const data = await this._driver.runCode(`window.$$$GET_STACK_TRACE$$$()`);
-    return StackFrameConverter.ConvertGrowthStacks(this._proxy, JSON.parse(data));
+    return StackFrameConverter.ConvertGrowthStacks(this._proxy, this._config.url, JSON.parse(data));
   }
 }
 

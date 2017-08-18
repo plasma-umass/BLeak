@@ -8,6 +8,7 @@ import {request as HTTPSRequest} from 'https';
 import {parse as parseURL} from 'url';
 import * as repl from 'repl';
 import {parse as parseJavaScript} from 'esprima';
+import {gunzipSync} from 'zlib';
 
 function wait(ms: number): Promise<void> {
   return new Promise<void>((res) => {
@@ -55,6 +56,32 @@ async function makeHttpRequest(urlString: string, method: string, headers: any, 
     }
     nodeReq.end();
   });
+}
+
+// Strip these headers from requests and responses.
+const BAD_HEADERS = [
+  "if-none-match",
+  "if-modified-since",
+  "content-security-policy",
+  "x-webkit-csp",
+  "x-content-security-policy",
+  "accept-encoding",
+  "content-encoding"
+];
+
+function lowerCase(s: string): string {
+  return s.toLowerCase();
+}
+
+function stripHeaders(headers: any): void {
+  const keys = Object.keys(headers);
+  const lowerKeys = keys.map(lowerCase);
+  const badHeaderIndices = BAD_HEADERS.map((h) => lowerKeys.indexOf(h));
+  for (const badIndex of badHeaderIndices) {
+    if (badIndex !== -1) {
+      delete headers[keys[badIndex]];
+    }
+  }
 }
 
 /**
@@ -109,6 +136,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
   private _console: ChromeConsole;
   private _loadedFrames = new Set<string>();
   private _onRequest: (f: SourceFile) => SourceFile = (f) => f;
+  private _onEval: (scope: string, source: string) => string = (sc, so) => so;
   // URL => contents
   private _cache = new Map<string, IHTTPResponse>();
 
@@ -131,13 +159,27 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
 
     this._runtime.exceptionThrown = (evt) => {
       const e = evt.exceptionDetails;
-      log.write(`${e.url}:${e.lineNumber}:${e.columnNumber} Uncaught ${e.exception.className}: ${e.text}\n${e.stackTrace.description}\n  ${e.stackTrace.callFrames.map((f) => `${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ")}\n`);
+      log.write(`${e.url}:${e.lineNumber}:${e.columnNumber} Uncaught ${e.exception.className}: ${e.text}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.map((f) => `${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`);
     };
 
     this._network.requestIntercepted = async (evt) => {
-      // global.console.log(evt);
-      // If redirect or not get: Allow with no modifications.
-      if (evt.redirectHeaders || evt.redirectUrl || evt.request.method.toLowerCase() !== "get") {
+      if (evt.request.method.toLowerCase() === "post" && parseURL(evt.request.url).path === "/eval") {
+        // BLeak-initiated /eval request.
+        const body: { scope: string, source: string } = JSON.parse(evt.request.postData);
+        const rewrite = Buffer.from(this._onEval(body.scope, body.source), 'utf8');
+        this._network.continueInterceptedRequest({
+          interceptionId: evt.interceptionId,
+          rawResponse: makeRawResponse({
+            statusCode: 200,
+            headers: {
+              'Content-Length': rewrite.byteLength,
+              'Content-Type': 'text/javascript'
+            },
+            data: rewrite
+          })
+        });
+      } else if (evt.redirectHeaders || evt.redirectUrl || evt.request.method.toLowerCase() !== "get") {
+        // Allow with no modifications
         this._network.continueInterceptedRequest({
           interceptionId: evt.interceptionId
         });
@@ -149,7 +191,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
         this._network.continueInterceptedRequest({
           interceptionId: evt.interceptionId,
           rawResponse: makeRawResponse(response)
-        })
+        });
       }
     };
 
@@ -162,24 +204,33 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     if (fromCache && this._cache.has(url)) {
       return this._cache.get(url);
     }
+
+    // Remove problematic caching headers, CSP, etc.
+    stripHeaders(headers);
     const response = await makeHttpRequest(url, 'get', headers, body);
+    if (response.headers['content-encoding']) {
+      // Sometimes, web servers don't respect our wishes and send us gzip.
+      if (response.headers['content-encoding'] === "gzip") {
+        response.data = gunzipSync(response.data);
+      } else {
+        console.warn(`Weird encoding: ${response.headers['content-encoding']}`);
+      }
+
+    }
+    stripHeaders(response.headers);
     let mimeType = response.headers['content-type'] as string;
     let statusCode = response.statusCode;
-    if (mimeType) {
-      mimeType = mimeType.toLowerCase();
-      // text/javascript or application/javascript
-      if (mimeType.indexOf('text') !== -1 || mimeType.indexOf('application/javascript') !== -1) {
-        const newFile = this._onRequest({
-          status: statusCode,
-          mimetype: mimeType,
-          url: url,
-          contents: response.data
-        });
-        response.data = newFile.contents;
-        response.headers['content-type'] = newFile.mimetype;
-        response.statusCode = newFile.status;
-      }
-    }
+    mimeType = mimeType ? mimeType.toLowerCase() : "";
+    // text/javascript or application/javascript
+    const newFile = this._onRequest({
+      status: statusCode,
+      mimetype: mimeType,
+      url: url,
+      contents: response.data
+    });
+    response.data = newFile.contents;
+    response.headers['content-type'] = newFile.mimetype;
+    response.statusCode = newFile.status;
     if (response.headers['content-length']) {
       response.headers['content-length'] = response.data.length;
     }
@@ -208,10 +259,13 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
   public async takeHeapSnapshot(): Promise<HeapSnapshot> {
     // TODO: Use buffers instead / parse on-the-fly?
     let buffer = "";
+    // 200 KB chunks
     this._heapProfiler.addHeapSnapshotChunk = (evt) => {
+      // console.log(`Chunk Size: ${evt.chunk.length} characters (${(evt.chunk.length * 2)/1024} KB)`);
       buffer += evt.chunk;
     };
     await this._heapProfiler.takeHeapSnapshot({ reportProgress: false });
+//    console.log(`Total Size: ${buffer.length} characters (${buffer.length * 2 / 1024} KB)`);
     return JSON.parse(buffer);
   }
   public async debugLoop(): Promise<void> {
@@ -232,6 +286,9 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
   }
   public onRequest(cb: (f: SourceFile) => SourceFile): void {
     this._onRequest = cb;
+  }
+  public onEval(cb: (scope: string, source: string) => string) {
+    this._onEval = cb;
   }
   public shutdown(): Promise<void> {
     return this._process.dispose();

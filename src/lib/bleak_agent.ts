@@ -114,6 +114,20 @@ declare function importScripts(s: string): void;
   }
 
   /**
+   * Sends text passed to `eval` to the server for rewriting,
+   * and then evaluates the new string.
+   * @param scope The context in which eval was called.
+   * @param text The JavaScript code to eval.
+   */
+  function $$$REWRITE_EVAL$$$(scope: any, source: string): any {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/eval', false);
+    xhr.setRequestHeader("Content-type", "application/json");
+    xhr.send(JSON.stringify({ scope: "scope", source }));
+    return eval(xhr.responseText);
+  }
+
+  /**
    * Returns whether or not value 'a' could harbor a proxy.
    * @param a
    */
@@ -452,6 +466,7 @@ declare function importScripts(s: string): void;
   root.$$$SEQ$$$ = $$$SEQ$$$;
   root.$$$SHOULDFIX$$$ = $$$SHOULDFIX$$$;
   root.$$$GLOBAL$$$ = root;
+  root.$$$REWRITE_EVAL$$$ = $$$REWRITE_EVAL$$$;
 
   if (IS_WINDOW || IS_WORKER) {
     // Disable these in NodeJS.

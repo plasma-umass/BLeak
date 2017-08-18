@@ -25,9 +25,9 @@ function LOG(str: string): void {
  * @param metric
  * @param rank
  */
-function printLeak(l: Leak, retainedSize: boolean, rank: number): void {
+function printLeak(l: Leak, metric: "retainedSize" | "adjustedRetainedSize" | "transitiveClosureSize", rank: number): void {
   const paths = l.paths.map((p) => ToSerializeableGCPath(p)).map((p) => path2string(p, true));
-  LOG(`## Object ${rank} [Score: ${retainedSize ? l.retainedSize : l.adjustedRetainedSize}]`);
+  LOG(`## Object ${rank} [Score: ${l[metric]}]`);
   LOG(``);
   LOG(`### GC Paths`);
   LOG(``);
@@ -69,13 +69,19 @@ async function main() {
     LOG(`# Ranking Metric Adjusted Retained Size`);
     LOG(``);
     leaks.sort((a, b) => b.adjustedRetainedSize - a.adjustedRetainedSize).forEach((l, i) => {
-      printLeak(l, false, i);
+      printLeak(l, "adjustedRetainedSize", i);
     });
     LOG(``);
     LOG(`# Ranking Metric Retained Size`);
     LOG(``);
     leaks.sort((a, b) => b.retainedSize - a.retainedSize).forEach((l, i) => {
-      printLeak(l, true, i);
+      printLeak(l, "retainedSize", i);
+    });
+    LOG(``);
+    LOG(`# Ranking Metric Transitive Closure`);
+    LOG(``);
+    leaks.sort((a, b) => b.retainedSize - a.retainedSize).forEach((l, i) => {
+      printLeak(l, "transitiveClosureSize", i);
     });
     LOG(``);
   }
