@@ -6,7 +6,7 @@ import {SourceMapGenerator} from 'source-map';
 import {BlockStatement, Node, Program, SequenceExpression, VariableDeclaration, Property, Literal, BinaryExpression, UnaryExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 import {SourceFile} from '../common/interfaces';
 import {parse as parseURL} from 'url';
-import {readFileSync, writeFileSync} from 'fs';
+import {readFileSync} from 'fs';
 import {Parser as HTMLParser, DomHandler, DomUtils} from 'htmlparser2';
 
 declare module "htmlparser2" {
@@ -148,56 +148,17 @@ function prependToBlock(node: BlockStatement, s: Statement[]): void {
   }
 }
 
-function getExpressionTransform(scope: Scope, functionVarName: Identifier | MemberExpression, originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
-  let fvn: Identifier;
-  if (functionVarName.type === "Identifier") {
-    fvn = functionVarName;
-  } else {
-    // MemberExpression -- it was rewritten to be a scope variable.
-    const p = functionVarName.property;
-    if (p.type === "Identifier") {
-      fvn = p;
-    } else {
-      fvn = {
-        type: "Identifier",
-        name: "__anonymous_function__"
-      };
-    }
-  }
+function getExpressionTransform(originalFunction: FunctionExpression, scopeVarName: Identifier): CallExpression {
   const ce: CallExpression = {
     type: "CallExpression",
     callee: {
-      type: "FunctionExpression",
-      id: null,
-      params: [],
-      body: {
-        type: "BlockStatement",
-        body: [{
-          type: "VariableDeclaration",
-          declarations: [{
-            type: "VariableDeclarator",
-            id: {
-              type: "Identifier",
-              name: fvn.name
-            },
-            init: originalFunction
-          }],
-          kind: "var"
-        }, getScopeAssignment(fvn, scopeVarName), {
-          type: "ReturnStatement",
-          argument: {
-            type: "Identifier",
-            name: fvn.name
-          }
-        }]
-      },
-      generator: false,
-      expression: false,
-      async: false
+      type: "Identifier",
+      name: "$$$FUNCTION_EXPRESSION$$$",
+      loc: originalFunction.loc
     },
-    arguments: []
+    arguments: [originalFunction, scopeVarName],
+    loc: originalFunction.loc
   };
-
   return ce;
 }
 
@@ -949,10 +910,7 @@ export function exposeClosureState(filename: string, source: string, isNode: boo
       }
       case 'FunctionExpression': {
         scope = scope.parent;
-        return getExpressionTransform(scope, node.id || (<any> parent).id || {
-          type: "Identifier",
-          name: "__anonymous_function__"
-        }, node, {
+        return getExpressionTransform(node, {
           type: "Identifier",
           name: scope.scopeIdentifier
         });

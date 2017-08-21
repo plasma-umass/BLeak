@@ -19,6 +19,7 @@ interface Window {
   $$$SHOULDFIX$$$(n: number): boolean;
   $$$GLOBAL$$$: Window;
   $$$REWRITE_EVAL$$$(scope: any, source: string): any;
+  $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function;
 }
 
 /**

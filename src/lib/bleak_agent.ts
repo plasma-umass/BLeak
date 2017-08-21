@@ -128,6 +128,16 @@ declare function importScripts(s: string): void;
   }
 
   /**
+   * Assigns the given scope to the given function object.
+   * @param fcn
+   * @param scope
+   */
+  function $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function {
+    fcn.__scope__ = scope;
+    return fcn;
+  }
+
+  /**
    * Returns whether or not value 'a' could harbor a proxy.
    * @param a
    */
@@ -467,6 +477,7 @@ declare function importScripts(s: string): void;
   root.$$$SHOULDFIX$$$ = $$$SHOULDFIX$$$;
   root.$$$GLOBAL$$$ = root;
   root.$$$REWRITE_EVAL$$$ = $$$REWRITE_EVAL$$$;
+  root.$$$FUNCTION_EXPRESSION$$$ = $$$FUNCTION_EXPRESSION$$$;
 
   if (IS_WINDOW || IS_WORKER) {
     // Disable these in NodeJS.
