@@ -1,4 +1,4 @@
-import {equal as assertEqual} from 'assert';
+import {equal as assertEqual, notEqual as assertNotEqual} from 'assert';
 import {injectIntoHead, exposeClosureState, parseHTML} from '../src/lib/transformations';
 import {readFileSync} from 'fs';
 
@@ -298,6 +298,32 @@ describe('Transformations', function() {
         };
       `);
       assertEqual(module.obj(), module.obj);
+    });
+
+    it(`makes proxy objects equal to original objects`, function() {
+      const module = instrumentModule<{obj: Function, cmp: (a: any) => boolean}>(`
+        global.a = {};
+        exports.obj = function () {
+          return a;
+        };
+        exports.cmp = function(b) {
+          return a === b;
+        };
+      `);
+      const a = module.obj();
+      (<Window> <any> global).$$$INSTRUMENT_PATHS$$$([{
+        id: 1,
+        paths: [{
+          root: { type: RootType.GLOBAL},
+          path: [{
+            type: EdgeType.NAMED,
+            indexOrName: "a"
+          }]
+        }]
+      }]);
+      assertNotEqual(module.obj(), a, `Proxy for global variable 'a' is properly installed`);
+      assertEqual(module.cmp(a), true, `a === Proxy(a)`);
+      assertEqual(module.cmp(module.obj()), true, `Proxy(a) === Proxy(a)`);
     });
   });
   // NEED A SWITCH CASE VERSION where it's not within a block!!!

@@ -14,6 +14,20 @@ declare function importScripts(s: string): void;
  * Agent injected into the webpage to surface browser-hidden leaks at the JS level.
  */
 (function() {
+  // Global variables.
+  const IS_WINDOW = typeof(window) !== "undefined";
+  const IS_WORKER = typeof(importScripts) !== "undefined";
+  const ROOT = <Window> (IS_WINDOW ? window : IS_WORKER ? self : global);
+  ROOT.$$$INSTRUMENT_PATHS$$$ = $$$INSTRUMENT_PATHS$$$;
+  ROOT.$$$GET_STACK_TRACE$$$ = $$$GET_STACK_TRACE$$$;
+  ROOT.$$$CREATE_SCOPE_OBJECT$$$ = $$$CREATE_SCOPE_OBJECT$$$;
+  ROOT.$$$EQ$$$ = $$$EQ$$$;
+  ROOT.$$$SEQ$$$ = $$$SEQ$$$;
+  ROOT.$$$SHOULDFIX$$$ = $$$SHOULDFIX$$$;
+  ROOT.$$$GLOBAL$$$ = ROOT;
+  ROOT.$$$REWRITE_EVAL$$$ = $$$REWRITE_EVAL$$$;
+  ROOT.$$$FUNCTION_EXPRESSION$$$ = $$$FUNCTION_EXPRESSION$$$;
+
   const r = /'/g;
 
   /**
@@ -216,7 +230,7 @@ declare function importScripts(s: string): void;
     const root = p.root;
     switch (root.type) {
       case RootType.GLOBAL: {
-        return [window];
+        return [ROOT.$$$GLOBAL$$$];
       }
       case RootType.DOM: {
         const elementType = root.elementType;
@@ -463,21 +477,6 @@ declare function importScripts(s: string): void;
 
     return JSON.stringify(rv);
   }
-
-  // Global variables.
-  const IS_WINDOW = typeof(window) !== "undefined";
-  const IS_WORKER = typeof(importScripts) !== "undefined";
-
-  const root = <Window> (IS_WINDOW ? window : IS_WORKER ? self : global);
-  root.$$$INSTRUMENT_PATHS$$$ = $$$INSTRUMENT_PATHS$$$;
-  root.$$$GET_STACK_TRACE$$$ = $$$GET_STACK_TRACE$$$;
-  root.$$$CREATE_SCOPE_OBJECT$$$ = $$$CREATE_SCOPE_OBJECT$$$;
-  root.$$$EQ$$$ = $$$EQ$$$;
-  root.$$$SEQ$$$ = $$$SEQ$$$;
-  root.$$$SHOULDFIX$$$ = $$$SHOULDFIX$$$;
-  root.$$$GLOBAL$$$ = root;
-  root.$$$REWRITE_EVAL$$$ = $$$REWRITE_EVAL$$$;
-  root.$$$FUNCTION_EXPRESSION$$$ = $$$FUNCTION_EXPRESSION$$$;
 
   if (IS_WINDOW || IS_WORKER) {
     // Disable these in NodeJS.
