@@ -6,7 +6,7 @@ import {SourceMapGenerator} from 'source-map';
 import {BlockStatement, Node, Program, SequenceExpression, VariableDeclaration, Property, Literal, BinaryExpression, UnaryExpression, LogicalExpression, VariableDeclarator, ExpressionStatement, CallExpression, AssignmentExpression, Statement, MemberExpression, Identifier, FunctionDeclaration, FunctionExpression} from 'estree';
 import {SourceFile} from '../common/interfaces';
 import {parse as parseURL} from 'url';
-import {readFileSync} from 'fs';
+import {readFileSync, writeFileSync} from 'fs';
 import {Parser as HTMLParser, DomHandler, DomUtils} from 'htmlparser2';
 
 declare module "htmlparser2" {

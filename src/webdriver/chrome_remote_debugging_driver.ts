@@ -160,7 +160,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
 
     this._runtime.exceptionThrown = (evt) => {
       const e = evt.exceptionDetails;
-      log.write(`${e.url}:${e.lineNumber}:${e.columnNumber} Uncaught ${e.exception.className}: ${e.text}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.map((f) => `${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`);
+      log.write(`${e.url}:${e.lineNumber}:${e.columnNumber} Uncaught ${e.exception ? e.exception.className : "exception"}: ${e.text}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.map((f) => `${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`);
     };
 
     this._network.requestIntercepted = async (evt) => {
@@ -187,12 +187,17 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
       } else {
         // It's a GET request that's not redirected.
         // Attempt to fetch, pass to callback.
-        const response = await this.httpGet(evt.request.url, evt.request.headers, evt.request.postData);
-        // Send back to client.
-        this._network.continueInterceptedRequest({
-          interceptionId: evt.interceptionId,
-          rawResponse: makeRawResponse(response)
-        });
+        try {
+          const response = await this.httpGet(evt.request.url, evt.request.headers, evt.request.postData);
+          // Send back to client.
+          this._network.continueInterceptedRequest({
+            interceptionId: evt.interceptionId,
+            rawResponse: makeRawResponse(response)
+          });
+        } catch (e) {
+          global.console.log(`Failed to rewrite file ${evt.request.url}!`);
+          global.console.log(e);
+        }
       }
     };
 
