@@ -20,6 +20,7 @@ interface Window {
   $$$GLOBAL$$$: Window;
   $$$REWRITE_EVAL$$$(scope: any, source: string): any;
   $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function;
+  $$$CREATE_WITH_SCOPE$$$(withObj: Object, scope: Scope): Scope;
 }
 
 /**

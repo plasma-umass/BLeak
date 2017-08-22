@@ -1,8 +1,19 @@
 import {equal as assertEqual, notEqual as assertNotEqual} from 'assert';
-import {injectIntoHead, exposeClosureState, parseHTML} from '../src/lib/transformations';
+import {injectIntoHead, exposeClosureState, parseHTML, evalRewriteFunction} from '../src/lib/transformations';
 import {readFileSync} from 'fs';
 
 const AGENT_SOURCE = readFileSync(require.resolve('../src/lib/bleak_agent'), "utf8");
+
+class XHRShim {
+  public responseText: string = null;
+  public open() {}
+  public setRequestHeader() {}
+  public send(data: string) {
+    const d: { scope: string, source: string } = JSON.parse(data);
+    this.responseText = evalRewriteFunction(d.scope, d.source);
+    // console.log(`Eval:\n${this.responseText}`);
+  }
+}
 
 describe('Transformations', function() {
   describe('injectIntoHead', function() {
@@ -37,34 +48,37 @@ describe('Transformations', function() {
 
   describe('exposeClosureState', function() {
     function instrumentModule<T>(source: string): T {
-      const newSource = exposeClosureState("main.js", `(function(exports) { ${source} })(exports);`, true);
+      const newSource = exposeClosureState("main.js", `(function(exports) { ${source} })(exports);`);
       // Super basic CommonJS shim.
       const exp: any = {};
       //console.log("Original Source:\n" + source);
-      //console.log("\nNew Source:\n" + newSource);
-      new Function('exports', AGENT_SOURCE + "\n" + newSource)(exp);
+      // console.log("\nNew Source:\n" + newSource);
+      new Function('exports', 'XMLHttpRequest', AGENT_SOURCE + "\n" + newSource)(exp, XHRShim);
       return exp;
     }
 
     it('works with function declarations', function() {
       const module = instrumentModule<{decl: Function}>(`
         var a = 'hello';
-        function decl(){}
+        var b = 'hello';
+        function decl(){ if (false) { decl(); } return a; }
         exports.decl = decl;
       `);
       assertEqual(module.decl.__scope__['a'], 'hello');
       assertEqual(module.decl.__scope__['decl'], module.decl);
+      // b isn't closed over.
+      assertEqual(module.decl.__scope__['b'], undefined);
       module.decl.__scope__['a'] = 'no';
       assertEqual(module.decl.__scope__['a'], 'no');
       const arr = [1,2,3];
       module.decl.__scope__['a'] = arr;
-      assertEqual(module.decl.__scope__['a'], arr);
+      assertEqual(module.decl(), arr);
     });
 
     it('works with function expressions', function() {
       const module = instrumentModule<{decl: Function}>(`
         var a = 'hello';
-        exports.decl = function(){};
+        exports.decl = function(){ if (exports) {} return a; };
       `);
       assertEqual(module.decl.__scope__['a'], 'hello');
       assertEqual(module.decl.__scope__['exports'].decl, module.decl);
@@ -73,7 +87,7 @@ describe('Transformations', function() {
     it(`works with named function expressions`, function() {
       const module = instrumentModule<{decl: Function}>(`
         var a = 'hello';
-        exports.decl = function decl2(){};
+        exports.decl = function decl2(){ return a; };
       `);
       assertEqual(module.decl.__scope__['a'], 'hello');
     });
@@ -82,8 +96,8 @@ describe('Transformations', function() {
       const module = instrumentModule<{decl: Function, decl2: Function}>(`
         var a='hello';
         var b=3;
-        exports.decl=function(){};
-        exports.decl2=function(){};
+        exports.decl=function(){ return a + b; };
+        exports.decl2=function(){ return a + b; };
       `);
       assertEqual(module.decl.__scope__['a'], 'hello');
       assertEqual(module.decl2.__scope__['a'], 'hello');
@@ -94,7 +108,7 @@ describe('Transformations', function() {
     it(`works with nested functions`, function() {
       const module = instrumentModule<{decl: Function, notDecl: Function}>(`
         var a = 'hello';
-        function decl(){}
+        function decl(){ return a; }
         function notDecl(){
           var decl = function decl(){};
           return decl;
@@ -110,7 +124,7 @@ describe('Transformations', function() {
     it(`works with nested function declarations`, function() {
       const module = instrumentModule<{decl: Function, notDecl: Function}>(`
         var a = 'hello';
-        function decl(){}
+        function decl(){ return a; }
         function notDecl(){
           function decl(){}
           return decl;
@@ -127,7 +141,7 @@ describe('Transformations', function() {
       const module = instrumentModule<{obj: {decl: Function, decl2: Function}}>(`
         var a = 'hello';
         exports.obj = {
-          decl: function() {},
+          decl: function() { return a; },
           decl2: function() {
             return 3
           }
@@ -325,6 +339,85 @@ describe('Transformations', function() {
       assertEqual(module.cmp(a), true, `a === Proxy(a)`);
       assertEqual(module.cmp(module.obj()), true, `Proxy(a) === Proxy(a)`);
     });
+
+    it(`works with null array entry`, function() {
+      const module = instrumentModule<{obj: (number | null)[]}>(`exports.obj = [,1,2];`);
+      assertEqual(module.obj[0], null);
+    });
+
+    it(`works with computed properties`, function() {
+      const module = instrumentModule<{fcn: () => number}>(`
+        var a = "hello";
+        var obj = { hello: 3 };
+        exports.fcn = function() {
+          return obj[a];
+        };`);
+
+        assertEqual(module.fcn(), 3);
+        assertEqual(module.fcn.__scope__.a, "hello");
+    });
+
+    it(`works with arguments that do not escape`, function() {
+      const module = instrumentModule<{fcn: (a: number) => number}>(`
+        exports.fcn = function(a) {
+          return a
+        };`);
+      assertEqual(module.fcn(3), 3);
+    });
+
+    it(`works with arguments that escape`, function() {
+      const module = instrumentModule<{fcn: (a: number) => () => number}>(`
+        exports.fcn = function(a) {
+          return function() { return a; };
+        };`);
+      assertEqual(module.fcn(3)(), 3);
+    });
+
+    it(`moves all heap objects when eval is used`, function() {
+      const module = instrumentModule<{fcn: (a: string) => any}>(`
+        var secret = 3;
+        exports.fcn = function(a) {
+          return eval(a);
+        };`);
+      assertEqual(module.fcn("secret"), 3);
+      assertEqual(module.fcn.__scope__.secret, 3);
+      assertEqual(module.fcn("a"), "a");
+    });
+
+    it(`appropriately overwrites variables when eval is used`, function() {
+      const module = instrumentModule<{fcn: (a: string) => any}>(`
+        global.secret = 3;
+        exports.fcn = function(a) {
+          return eval(a);
+        };`);
+      assertEqual(module.fcn.__scope__.secret, 3);
+      assertEqual((<any> global).secret, 3);
+      (<any> global).secret = 4;
+      assertEqual(module.fcn.__scope__.secret, 4);
+      module.fcn("secret = 6");
+      assertEqual(module.fcn.__scope__.secret, 6);
+      assertEqual((<any> global).secret, 6);
+    });
+
+    it(`works with with()`, function() {
+      const module = instrumentModule<{fcn: () => any, assign: (v: any) => any}>(`
+        var l = 3;
+        var o = { l: 5 };
+        exports.fcn = function() {
+          with(o) {
+            return l;
+          }
+        };
+        exports.assign = function(v) {
+          with(o) { l = v; return l; }
+        };`);
+      assertEqual(module.fcn(), 5);
+      assertEqual(module.assign(7), 7);
+      assertEqual(module.fcn(), 7);
+    });
+
+    // instrument a global variable and get stack traces
+    // with() with undefined / null / zeroish values.
   });
   // NEED A SWITCH CASE VERSION where it's not within a block!!!
 });

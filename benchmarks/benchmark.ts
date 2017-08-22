@@ -82,7 +82,7 @@ if (!skipSnapshots) {
     });
 }
 suite.add("Loomio: Expose Closure State", function() {
-    exposeClosureState('loomio_vendor.js', loomioJs, false);
+    exposeClosureState('loomio_vendor.js', loomioJs);
   }, {
     onStart: () => {
       loomioJs = getJavascript('loomio_vendor.js.gz');
@@ -92,7 +92,7 @@ suite.add("Loomio: Expose Closure State", function() {
     }
   })
   .add("Piwik: Expose Closure State", function() {
-    exposeClosureState('piwik_app.js', piwikJs, false);
+    exposeClosureState('piwik_app.js', piwikJs);
   }, {
     onStart: () => {
       piwikJs = getJavascript('piwik_app.js.gz');

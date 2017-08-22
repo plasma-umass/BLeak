@@ -27,6 +27,7 @@ declare function importScripts(s: string): void;
   ROOT.$$$GLOBAL$$$ = ROOT;
   ROOT.$$$REWRITE_EVAL$$$ = $$$REWRITE_EVAL$$$;
   ROOT.$$$FUNCTION_EXPRESSION$$$ = $$$FUNCTION_EXPRESSION$$$;
+  ROOT.$$$CREATE_WITH_SCOPE$$$ = $$$CREATE_WITH_SCOPE$$$;
 
   const r = /'/g;
 
@@ -127,6 +128,32 @@ declare function importScripts(s: string): void;
     }
   }
 
+  function applyWrite(target: any, key: string, value: any): boolean {
+    if (target === null) {
+      return false;
+    } else if (target.hasOwnProperty(key)) {
+      target[key] = value;
+      return true;
+    } else {
+      return applyWrite(Object.getPrototypeOf(target), key, value);
+    }
+  }
+
+  // Sentinel
+  const PROP_NOT_FOUND = {};
+
+  function applyGet(target: any, key: string): any {
+    if (target === null) {
+      return PROP_NOT_FOUND;
+    } else if (target.hasOwnProperty(key)) {
+      return target[key];
+    } else {
+      return applyGet(Object.getPrototypeOf(target), key);
+    }
+  }
+
+  const EVAL_FCN = new Function('scope', '$$$SRC$$$', 'return eval($$$SRC$$$);');
+
   /**
    * Sends text passed to `eval` to the server for rewriting,
    * and then evaluates the new string.
@@ -138,7 +165,32 @@ declare function importScripts(s: string): void;
     xhr.open('POST', '/eval', false);
     xhr.setRequestHeader("Content-type", "application/json");
     xhr.send(JSON.stringify({ scope: "scope", source }));
-    return eval(xhr.responseText);
+    return EVAL_FCN(new Proxy(scope, {
+      // Appropriately relay writes to first scope with the given variable name.
+      // Otherwise, it'll overwrite the property on the outermost scope!
+      set: applyWrite
+    }), xhr.responseText);
+  }
+
+  function $$$CREATE_WITH_SCOPE$$$(withObj: Object, scope: Scope): Scope {
+    // Add 'withObj' to the scope chain.
+    return new Proxy(withObj, {
+      get: function(target, key: string) {
+        const v = applyGet(target, key);
+        if (v === PROP_NOT_FOUND) {
+          const v = applyGet(scope, key);
+          if (v === PROP_NOT_FOUND) {
+            throw new ReferenceError(`${key} is not defined`);
+          }
+          return v;
+        } else {
+          return v;
+        }
+      },
+      set: function(target, key: string, value) {
+        return applyWrite(target, key, value) || applyWrite(scope, key, value);
+      }
+    });
   }
 
   /**
@@ -147,7 +199,12 @@ declare function importScripts(s: string): void;
    * @param scope
    */
   function $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function {
-    fcn.__scope__ = scope;
+    Object.defineProperty(fcn, '__scope__', {
+      get: function() {
+        return scope;
+      },
+      configurable: true
+    });
     return fcn;
   }
 

@@ -8,6 +8,9 @@ import {SourceFile} from '../common/interfaces';
 import {parse as parseURL} from 'url';
 import {readFileSync} from 'fs';
 import {Parser as HTMLParser, DomHandler, DomUtils} from 'htmlparser2';
+import {exposeClosureState} from './closure_state_transform';
+
+export {exposeClosureState} from './closure_state_transform';
 
 declare module "htmlparser2" {
   export const DomHandler: any;
@@ -51,7 +54,7 @@ export function parseHTML(source: string): HTMLNode[] {
   return rv;
 }
 
-function identJSTransform(f: string, s: string, isNode: boolean) {
+function identJSTransform(f: string, s: string) {
   return s;
 }
 
@@ -64,7 +67,7 @@ function identJSTransform(f: string, s: string, isNode: boolean) {
  * @param source Source of an HTML file.
  * @param injection Content to inject into the head.
  */
-export function injectIntoHead(filename: string, source: string, injection: HTMLNode[], jsTransform: (filename: string, source: string, isNode: boolean) => string = identJSTransform): string {
+export function injectIntoHead(filename: string, source: string, injection: HTMLNode[], jsTransform: (filename: string, source: string) => string = identJSTransform): string {
   const parsedHTML = parseHTML(source);
   if (parsedHTML === null) {
     // Parsing failed.
@@ -134,7 +137,7 @@ export function injectIntoHead(filename: string, source: string, injection: HTML
       if (!n.children || n.children.length !== 1) {
         console.log(`Weird! Found JS node with the following children: ${JSON.stringify(n.children)}`);
       }
-      n.children[0].data = jsTransform(`${filename}-inline${i}.js`, n.children[0].data, false);
+      n.children[0].data = jsTransform(`${filename}-inline${i}.js`, n.children[0].data);
     });
     return DomUtils.getOuterHTML(parsedHTML);
   }
@@ -565,7 +568,7 @@ class EvalScope extends Scope {
  *
  * @param source Source of the JavaScript file.
  */
-export function exposeClosureState(filename: string, source: string, isNode: boolean, agentUrl="bleak_agent.js", parentScopeName?: string): string {
+export function exposeClosureStateOld(filename: string, source: string, isNode: boolean, agentUrl="bleak_agent.js", parentScopeName?: string): string {
   let ast = parseJavaScript(source, { loc: true });
   {
     const firstStatement = ast.body[0];
@@ -1059,7 +1062,7 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
       case 'application/x-javascript':
         if (f.status === 200 && rewrite) {
           console.log(`Rewriting ${f.url}...`);
-          f.contents = Buffer.from(exposeClosureState(url.path, f.contents.toString("utf8"), false, agentURL), 'utf8');
+          f.contents = Buffer.from(exposeClosureState(url.path, f.contents.toString("utf8"), agentURL), 'utf8');
         }
         break;
     }
@@ -1068,7 +1071,7 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
 }
 
 export function evalRewriteFunction(scope: string, source: string): string {
-  return exposeClosureState(`eval-${Math.random()}.js`, source, false, undefined, scope);
+  return exposeClosureState(`eval-${Math.random()}.js`, source, undefined, scope);
 }
 
 export function evalNopFunction(scope: string, source: string): string {

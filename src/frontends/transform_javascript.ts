@@ -8,4 +8,4 @@ if (!inputFile) {
 }
 
 const data = readFileSync(inputFile, 'utf8');
-console.log(exposeClosureState("file.js", data, false));
+console.log(exposeClosureState("file.js", data));
