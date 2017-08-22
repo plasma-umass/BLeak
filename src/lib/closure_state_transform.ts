@@ -1876,5 +1876,4 @@ export function exposeClosureState(filename: string, source: string, agentUrl="b
   // Embed sourcemap into code.
   const convertedCode = `${converted}//# sourceMappingURL=data:application/json;base64,${new Buffer(sourceMap.toString(), "utf8").toString("base64")}`;
   return convertedCode;
-
 }
