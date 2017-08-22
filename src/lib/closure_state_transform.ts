@@ -32,13 +32,13 @@ function getProgramPrelude(agentUrl: string): IfStatement {
     type: "IfStatement",
     test: {
       type: "BinaryExpression",
-      operator: "!==",
+      operator: "===",
       left: {
         type: "UnaryExpression",
         operator: "typeof",
         argument: {
           type: "Identifier",
-          name: "importScripts"
+          name: "$$$CREATE_SCOPE_OBJECT$$$"
         },
         prefix: true
       },
@@ -51,18 +51,179 @@ function getProgramPrelude(agentUrl: string): IfStatement {
     consequent: {
       type: "BlockStatement",
       body: [{
-        type: "ExpressionStatement",
-        expression: {
-          type: "CallExpression",
-          callee: {
-            type: "Identifier",
-            name: "importScripts"
+        type: "IfStatement",
+        test: {
+          type: "BinaryExpression",
+          operator: "!==",
+          left: {
+            type: "UnaryExpression",
+            operator: "typeof",
+            argument: {
+              type: "Identifier",
+              name: "XMLHttpRequest"
+            },
+            prefix: true
           },
-          arguments: [{
+          right: {
             type: "Literal",
-            value: agentUrl,
-            raw: JSON.stringify(agentUrl)
+            value: "undefined",
+            raw: "\"undefined\""
+          }
+        },
+        consequent: {
+          type: "BlockStatement",
+          body: [{
+            type: "VariableDeclaration",
+            declarations: [{
+              type: "VariableDeclarator",
+              id: {
+                  type: "Identifier",
+                  name: "xhr"
+              },
+              init: {
+                  type: "NewExpression",
+                  callee: {
+                      type: "Identifier",
+                      name: "XMLHttpRequest"
+                  },
+                  arguments: []
+              }
+            }],
+            kind: "const"
+          }, {
+            type: "ExpressionStatement",
+            expression: {
+              type: "CallExpression",
+              callee: {
+                type: "MemberExpression",
+                computed: false,
+                object: {
+                  type: "Identifier",
+                  name: "xhr"
+                },
+                property: {
+                  type: "Identifier",
+                  name: "open"
+                }
+              },
+              arguments: [{
+                  type: "Literal",
+                  value: "GET",
+                  raw: "'GET'"
+                },
+                {
+                  type: "Literal",
+                  value: agentUrl,
+                  raw: JSON.stringify(agentUrl)
+                },
+                {
+                  type: "Literal",
+                  value: false,
+                  raw: "false"
+                }
+              ]
+            }
+          }, {
+            type: "ExpressionStatement",
+            expression: {
+              type: "CallExpression",
+              callee: {
+                type: "MemberExpression",
+                computed: false,
+                object: {
+                  type: "Identifier",
+                  name: "xhr"
+                },
+                property: {
+                  type: "Identifier",
+                  name: "send"
+                }
+              },
+              arguments: []
+            }
+          }, {
+            type: "ExpressionStatement",
+            expression: {
+              type: "CallExpression",
+              callee: {
+                type: "NewExpression",
+                callee: {
+                  type: "Identifier",
+                  name: "Function"
+                },
+                arguments: [{
+                  type: "MemberExpression",
+                  computed: false,
+                  object: {
+                    type: "Identifier",
+                    name: "xhr"
+                  },
+                  property: {
+                    type: "Identifier",
+                    name: "responseText"
+                  }
+                }]
+              },
+              arguments: []
+            }
           }]
+        },
+        alternate: {
+          type: "IfStatement",
+          test: {
+            type: "BinaryExpression",
+            operator: "!==",
+            left: {
+              type: "UnaryExpression",
+              operator: "typeof",
+              argument: {
+                type: "Identifier",
+                name: "importScripts"
+              },
+              prefix: true
+            },
+            right: {
+              type: "Literal",
+              value: "undefined",
+              raw: "\"undefined\""
+            }
+          },
+          consequent: {
+            type: "BlockStatement",
+            body: [{
+              type: "ExpressionStatement",
+              expression: {
+                type: "CallExpression",
+                callee: {
+                  type: "Identifier",
+                  name: "importScripts"
+                },
+                arguments: [{
+                  type: "Literal",
+                  value: agentUrl,
+                  raw: JSON.stringify(agentUrl)
+                }]
+              }
+            }]
+          },
+          alternate: {
+            type: "BlockStatement",
+            body: [{
+              type: "ThrowStatement",
+              argument: {
+                type: "NewExpression",
+                callee: {
+                  type: "Identifier",
+                  name: "Error"
+                },
+                arguments: [{
+                  type: "Literal",
+                  value: "Unable to load BLeak agent.",
+                  raw: "\"Unable to load BLeak agent.\""
+                }]
+              }
+            }]
+          }
         }
       }]
     },
