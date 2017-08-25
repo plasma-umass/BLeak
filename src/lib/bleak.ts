@@ -1,9 +1,10 @@
-import {proxyRewriteFunction, evalRewriteFunction, evalNopFunction} from './transformations';
-import {IProxy, IBrowserDriver, Leak, ConfigurationFile} from '../common/interfaces';
+import {Leak, ConfigurationFile} from '../common/interfaces';
 import HeapSnapshotParser from './heap_snapshot_parser';
-import {HeapGrowthTracker, GrowthObject, ToSerializeableGCPath, ToSerializeableGrowthObject, HeapGraph} from './growth_graph';
+import {HeapGrowthTracker, GrowthObject, HeapGraph, toSerializeableGrowingPaths} from './growth_graph';
 import {StackFrame} from 'error-stack-parser';
 import StackFrameConverter from './stack_frame_converter';
+import ChromeDriver from './chrome_driver';
+import {configureProxy} from '../common/util';
 
 const DEFAULT_CONFIG: ConfigurationFile = {
   name: "unknown",
@@ -52,8 +53,9 @@ export class BLeakDetector {
    * @param proxy The proxy instance that relays connections from the webpage.
    * @param driver The application driver.
    */
-  public static FindLeaks(configSource: string, proxy: IProxy, driver: IBrowserDriver, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<Leak[]> {
-    const detector = new BLeakDetector(proxy, driver, configSource, snapshotCb);
+  public static async FindLeaks(configSource: string, driver: ChromeDriver, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<Leak[]> {
+    const detector = new BLeakDetector(driver, configSource, snapshotCb);
+    await detector.configureProxy(false, []);
     return detector.findLeaks();
   }
 
@@ -61,40 +63,35 @@ export class BLeakDetector {
    * Evaluate the effectiveness of leak fixes. Runs the application without any of the fixes,
    * and then with each fix in successive order. Outputs a CSV report to the `log` function.
    * @param configSource The source code of the configuration file as a CommonJS module.
-   * @param proxy The proxy instance that relays connections from the webpage.
-   * @param driver The application driver.
+   * @param driver The browser driver.
    * @param iterations Number of loop iterations to perform.
    * @param iterationsPerSnapshot Number of loop iterations to perform before each snapshot.
    * @param log Log function. Used to write a report. Assumes each call to `log` appends a newline.
    * @param snapshotCb (Optional) Snapshot callback.
    */
-  public static EvaluateLeakFixes(configSource: string, proxy: IProxy, driver: IBrowserDriver, iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<void> {
-    const detector = new BLeakDetector(proxy, driver, configSource, snapshotCb);
+  public static async EvaluateLeakFixes(configSource: string, driver: ChromeDriver, iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<void> {
+    const detector = new BLeakDetector(driver, configSource, snapshotCb);
+    await detector.configureProxy(false, []);
     return detector.evaluateLeakFixes(iterations, iterationsPerSnapshot, log);
   }
 
-  private readonly _proxy: IProxy;
-  private readonly _driver: IBrowserDriver;
+  private readonly _driver: ChromeDriver;
   private readonly _configSource: string;
   private readonly _config: ConfigurationFile;
   private readonly _growthTracker = new HeapGrowthTracker();
   private _growthObjects: GrowthObject[] = null;
   private _snapshotCb: (sn: HeapSnapshotParser) => Promise<void>;
   private readonly _configInject: string;
-  private constructor(proxy: IProxy, driver: IBrowserDriver, configSource: string, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb) {
-    this._proxy = proxy;
+  private constructor(driver: ChromeDriver, configSource: string, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb) {
     this._driver = driver;
     this._configSource = configSource;
     this._config = getConfigFromSource(configSource);
     this._snapshotCb = snapshotCb;
     this._configInject = getConfigBrowserInjection(configSource);
-    // Initialize proxy.
-    this.configureProxy(false, []);
   }
 
-  public configureProxy(rewriteJavaScript: boolean, fixes: number[]): void {
-    this._proxy.onRequest(proxyRewriteFunction(rewriteJavaScript, this._configInject, fixes));
-    this._proxy.onEval(rewriteJavaScript ? evalRewriteFunction : evalNopFunction);
+  public async configureProxy(rewriteJavaScript: boolean, fixes: number[]): Promise<void> {
+    return configureProxy(this._driver, rewriteJavaScript, fixes, this._configInject);
   }
 
   public takeSnapshot(): HeapSnapshotParser {
@@ -115,18 +112,19 @@ export class BLeakDetector {
    * @param runGc Whether or not to run the GC before taking a snapshot.
    * @param takeSnapshots If true, takes snapshots after every loop and passes it to the given callback.
    */
-  private async _execute(iterations: number, login: boolean, runGc: boolean = false, takeSnapshots: (sn: HeapSnapshotParser) => Promise<void | undefined> = undefined, iterationsPerSnapshot: number = 1, snapshotOnFirst = false): Promise<void> {
+  private async _execute(iterations: number, login: boolean, takeSnapshots: (sn: HeapSnapshotParser) => Promise<void | undefined> = undefined, iterationsPerSnapshot: number = 1, snapshotOnFirst = false): Promise<void> {
     await this._driver.navigateTo(this._config.url);
     if (login) {
       await this._runLoop(false, 'login', false);
     }
     await this._runLoop(false, 'setup', false);
     if (takeSnapshots !== undefined && snapshotOnFirst) {
+      await this._driver.takeDOMSnapshot();
       await takeSnapshots(this.takeSnapshot());
     }
     for (let i = 0; i < iterations; i++) {
       const snapshotRun = takeSnapshots !== undefined && (((i + 1) % iterationsPerSnapshot) === 0);
-      const sn = await this._runLoop(<any> snapshotRun, 'loop', true, runGc);
+      const sn = await this._runLoop(<true> snapshotRun, 'loop', true);
       if (snapshotRun) {
         // console.log(`Waiting 100 seconds before snapshot.`);
         // await wait(100000);
@@ -136,9 +134,9 @@ export class BLeakDetector {
   }
 
   public async findLeaks(): Promise<Leak[]> {
-    await this._execute(this._config.iterations, true, true, (sn) => this._growthTracker.addSnapshot(sn));
+    await this._execute(this._config.iterations, true, (sn) => this._growthTracker.addSnapshot(sn));
     const growthObjects = this._growthObjects = this._growthTracker.getGrowingPaths();
-    console.log(`Growing paths:\n${growthObjects.map((go) => go.paths[0]).map((p) => JSON.stringify(ToSerializeableGCPath(p))).join("\n")}`);
+    console.log(`Growing paths:\n${JSON.stringify(toSerializeableGrowingPaths(growthObjects))}`);
     // We now have all needed closure modifications ready.
     // Run once.
     if (growthObjects.length > 0) {
@@ -190,14 +188,14 @@ export class BLeakDetector {
     for (leaksFixed = 0; leaksFixed <= this._config.fixedLeaks.length; leaksFixed++) {
       this.configureProxy(false, this._config.fixedLeaks.slice(0, leaksFixed));
       iterationCount = 0;
-      await this._execute(iterations, leaksFixed === 0, true, snapshotReport, iterationsPerSnapshot, true);
+      await this._execute(iterations, leaksFixed === 0, snapshotReport, iterationsPerSnapshot, true);
     }
   }
 
   private async _waitUntilTrue(i: number, prop: string): Promise<void> {
     while (true) {
       const success = await this._driver.runCode(`BLeakConfig.${prop}[${i}].check()`);
-      if (success === "true") {
+      if (success) {
         // Delay before returning to give browser time to "catch up".
         await wait(500);
         return;
@@ -206,14 +204,14 @@ export class BLeakDetector {
     }
   }
 
-  private async _nextStep(i: number, prop: string): Promise<string> {
+  private async _nextStep(i: number, prop: string): Promise<void> {
     await this._waitUntilTrue(i, prop);
-    return this._driver.runCode(`BLeakConfig.${prop}[${i}].next()`);
+    return this._driver.runCode<void>(`BLeakConfig.${prop}[${i}].next()`);
   }
 
   private _runLoop(snapshotAtEnd: false, prop: string, isLoop: boolean): Promise<void>;
-  private _runLoop(snapshotAtEnd: true, prop: string, isLoop: boolean, gcBeforeSnapshot?: boolean): Promise<HeapSnapshotParser>;
-  private async _runLoop(snapshotAtEnd: boolean, prop: string, isLoop: boolean, gcBeforeSnapshot = false): Promise<HeapSnapshotParser | void> {
+  private _runLoop(snapshotAtEnd: true, prop: string, isLoop: boolean): Promise<HeapSnapshotParser>;
+  private async _runLoop(snapshotAtEnd: boolean, prop: string, isLoop: boolean): Promise<HeapSnapshotParser | void> {
     const numSteps: number = (<any> this._config)[prop].length;
     // let promise: Promise<string | void> = Promise.resolve();
     if (numSteps > 0) {
@@ -225,9 +223,7 @@ export class BLeakDetector {
         await this._waitUntilTrue(0, prop);
       }
       if (snapshotAtEnd) {
-        if (gcBeforeSnapshot) {
-          await this._driver.runCode('window.gc()');
-        }
+        await this._driver.takeDOMSnapshot();
         return this.takeSnapshot();
       }
     }
@@ -237,16 +233,16 @@ export class BLeakDetector {
    * Instruments the objects at the growth paths so they record stack traces whenever they expand.
    * @param ps
    */
-  private _instrumentGrowingObjects(): Promise<any> {
-    return this._driver.runCode(`window.$$$INSTRUMENT_PATHS$$$(${JSON.stringify(this._growthObjects.map(ToSerializeableGrowthObject))})`);
+  private _instrumentGrowingObjects(): Promise<void> {
+    return this._driver.runCode<void>(`window.$$$INSTRUMENT_PATHS$$$(${JSON.stringify(toSerializeableGrowingPaths(this._growthObjects))})`);
   }
 
   /**
    * Returns all of the stack traces associated with growing objects.
    */
-  private async _getGrowthStacks(): Promise<{[p: number]: StackFrame[][]}> {
-    const data = await this._driver.runCode(`window.$$$GET_STACK_TRACE$$$()`);
-    return StackFrameConverter.ConvertGrowthStacks(this._proxy, this._config.url, JSON.parse(data));
+  private async _getGrowthStacks(): Promise<{[id: number]: StackFrame[][]}> {
+    const traces = await this._driver.runCode<GrowingStackTraces>(`window.$$$GET_STACK_TRACES$$$()`);
+    return StackFrameConverter.ConvertGrowthStacks(this._driver, this._config.url, traces);
   }
 }
 

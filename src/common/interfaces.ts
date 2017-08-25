@@ -1,6 +1,5 @@
 import {StackFrame} from 'error-stack-parser';
 import {GrowthObject} from '../lib/growth_graph';
-import HeapSnapshotParser from '../lib/heap_snapshot_parser';
 
 /**
  * Contains information on a source file.
@@ -16,34 +15,6 @@ export interface IHTTPResponse {
   statusCode: number;
   headers: any;
   data: Buffer;
-}
-
-export interface IProxy {
-  /**
-   * Register a function that can rewrite *text* files requested over the network.
-   */
-  onRequest(cb: (f: SourceFile) => SourceFile): void;
-  onEval(cb: (scope: string, source: string) => string): void;
-  httpGet(url: string, headers?: any, body?: string, fromCache?: boolean): Promise<IHTTPResponse>;
-  shutdown(): Promise<void>;
-}
-
-/**
- * Drives the browser on behalf of BLeak.
- */
-export interface IBrowserDriver {
-  /**
-   * Navigates to the given URL. Invokes promise once page loads.
-   */
-  navigateTo(url: string): Promise<any>;
-  /**
-   * Evals the given code on the webpage, and returns result as a string.
-   */
-  runCode(code: string): Promise<string>;
-  /**
-   * Takes a heap snapshot of the current webpage.
-   */
-  takeHeapSnapshot(): HeapSnapshotParser;
 }
 
 /**

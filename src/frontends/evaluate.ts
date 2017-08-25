@@ -1,6 +1,6 @@
 import {openSync, writeSync, readFileSync} from 'fs';
 import BLeak from '../lib/bleak';
-import ChromeRemoteDebuggingDriver from '../webdriver/chrome_remote_debugging_driver';
+import ChromeDriver from '../lib/chrome_driver';
 
 const configFileName = process.argv[2];
 const outFileName = process.argv[3];
@@ -19,8 +19,8 @@ function LOG(str: string): void {
 
 async function main() {
   const configFileSource = readFileSync(configFileName).toString();
-  const chromeDriver = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
-  BLeak.EvaluateLeakFixes(configFileSource, chromeDriver, chromeDriver, iterations, iterations_per_snapshot, LOG);
+  const chromeDriver = await ChromeDriver.Launch(<any> process.stdout);
+  BLeak.EvaluateLeakFixes(configFileSource, chromeDriver, iterations, iterations_per_snapshot, LOG);
 }
 
 main();

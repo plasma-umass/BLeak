@@ -1,8 +1,8 @@
-import {IProxy, IBrowserDriver, SourceFile, IHTTPResponse} from '../common/interfaces';
+import {SourceFile, IHTTPResponse} from '../common/interfaces';
 import HeapSnapshotParser from '../lib/heap_snapshot_parser';
 import {createSession} from 'chrome-debugging-client';
 import {ISession as ChromeSession, IAPIClient as ChromeAPIClient, IBrowserProcess as ChromeProcess, IDebuggingProtocolClient as ChromeDebuggingProtocolClient} from 'chrome-debugging-client/dist/lib/types';
-import {HeapProfiler as ChromeHeapProfiler, Network as ChromeNetwork, Console as ChromeConsole, Page as ChromePage, Runtime as ChromeRuntime} from "chrome-debugging-client/dist/protocol/tot";
+import {HeapProfiler as ChromeHeapProfiler, Network as ChromeNetwork, Console as ChromeConsole, Page as ChromePage, Runtime as ChromeRuntime, DOM as ChromeDOM} from "chrome-debugging-client/dist/protocol/tot";
 import {WriteStream} from 'fs';
 import {request as HTTPRequest, STATUS_CODES} from 'http';
 import {request as HTTPSRequest} from 'https';
@@ -11,10 +11,18 @@ import * as repl from 'repl';
 import {parse as parseJavaScript} from 'esprima';
 import {gunzipSync} from 'zlib';
 
+export interface DOMNode extends ChromeDOM.Node {
+  eventListenerCounts: {[name: string]: number};
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise<void>((res) => {
     setTimeout(res, ms);
   });
+}
+
+function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
+  return `${e.url}:${e.lineNumber}:${e.columnNumber} Uncaught ${e.exception ? e.exception.className : "exception"}: ${e.text}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.map((f) => `${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`;
 }
 
 /**
@@ -96,8 +104,8 @@ function makeRawResponse(res: IHTTPResponse): string {
   return response.toString('base64');
 }
 
-export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriver {
-  public static async Launch(log: WriteStream): Promise<ChromeRemoteDebuggingDriver> {
+export default class ChromeDriver {
+  public static async Launch(log: WriteStream): Promise<ChromeDriver> {
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
     // spawns a chrome instance with a tmp user data
     // and the debugger open to an ephemeral port
@@ -119,10 +127,14 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     const console = new ChromeConsole(debugClient);
     const page = new ChromePage(debugClient);
     const runtime = new ChromeRuntime(debugClient);
-    await Promise.all([heapProfiler.enable(), network.enable({}),  console.enable(), page.enable(), runtime.enable()]);
-    await network.setRequestInterceptionEnabled({ enabled: true });
+    const dom = new ChromeDOM(debugClient);
+    await Promise.all([heapProfiler.enable(), network.enable({}),  console.enable(), page.enable(), runtime.enable(), dom.enable()]);
+    await Promise.all([
+      network.setRequestInterceptionEnabled({ enabled: true }),
+      network.setCacheDisabled({ cacheDisabled: true }),
+      network.setBypassServiceWorker({ bypass: true })]);
 
-    return new ChromeRemoteDebuggingDriver(log, session, process, client, debugClient, page, runtime, heapProfiler, network, console);
+    return new ChromeDriver(log, session, process, client, debugClient, page, runtime, heapProfiler, network, console, dom);
   }
 
   private _log: WriteStream;
@@ -135,13 +147,14 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
   private _heapProfiler: ChromeHeapProfiler;
   private _network: ChromeNetwork;
   private _console: ChromeConsole;
+  private _dom: ChromeDOM;
   private _loadedFrames = new Set<string>();
   private _onRequest: (f: SourceFile) => SourceFile = (f) => f;
   private _onEval: (scope: string, source: string) => string = (sc, so) => so;
   // URL => contents
   private _cache = new Map<string, IHTTPResponse>();
 
-  private constructor(log: WriteStream, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole) {
+  private constructor(log: WriteStream, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole, dom: ChromeDOM) {
     this._log = log;
     this._session = session;
     this._process = process;
@@ -152,6 +165,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     this._heapProfiler = heapProfiler;
     this._network = network;
     this._console = console;
+    this._dom = dom;
 
     this._console.messageAdded = (evt) => {
       const m = evt.message;
@@ -160,7 +174,7 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
 
     this._runtime.exceptionThrown = (evt) => {
       const e = evt.exceptionDetails;
-      log.write(`${e.url}:${e.lineNumber}:${e.columnNumber} Uncaught ${e.exception ? e.exception.className : "exception"}: ${e.text}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.map((f) => `${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`);
+      log.write(exceptionDetailsToString(e));
     };
 
     this._network.requestIntercepted = async (evt) => {
@@ -206,6 +220,15 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     };
   }
 
+  public async addScriptToEvaluateOnNewDocument(source: string): Promise<string> {
+    const response = await this._page.addScriptToEvaluateOnNewDocument({ source });
+    return response.identifier;
+  }
+
+  public removeScriptToEvaluateOnNewDocument(identifier: string): Promise<void> {
+    return this._page.removeScriptToEvaluateOnNewDocument({ identifier });
+  }
+
   public async httpGet(url: string, headers: any = { "Host": parseURL(url).host }, body?: string, fromCache = false): Promise<IHTTPResponse> {
     if (fromCache && this._cache.has(url)) {
       return this._cache.get(url);
@@ -227,7 +250,6 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     let mimeType = response.headers['content-type'] as string;
     let statusCode = response.statusCode;
     mimeType = mimeType ? mimeType.toLowerCase() : "";
-    // text/javascript or application/javascript
     const newFile = this._onRequest({
       status: statusCode,
       mimetype: mimeType,
@@ -257,10 +279,13 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
       await wait(5);
     }
   }
-  public async runCode(expression: string): Promise<string> {
+  public async runCode<T>(expression: string): Promise<T> {
     const e = await this._runtime.evaluate({ expression, returnByValue: true });
-    console.log(`${expression} => ${e.result.value}`);
-    return `${e.result.value}`;
+    console.log(`${expression} => ${JSON.stringify(e.result.value)}`);
+    if (e.exceptionDetails) {
+      throw new Error(exceptionDetailsToString(e.exceptionDetails));
+    }
+    return e.result.value;
   }
   public takeHeapSnapshot(): HeapSnapshotParser {
     const parser = new HeapSnapshotParser();
@@ -271,12 +296,18 @@ export default class ChromeRemoteDebuggingDriver implements IProxy, IBrowserDriv
     this._heapProfiler.takeHeapSnapshot({ reportProgress: false });
     return parser;
   }
+  public async takeDOMSnapshot(): Promise<void> {
+    const response = await this._runtime.evaluate({
+      expression: "$$$SERIALIZE_DOM$$$()", returnByValue: true
+    });
+    return response.result.value;
+  }
   public async debugLoop(): Promise<void> {
     const evalJavascript = (cmd: string, context: any, filename: string, callback: (e: any, result?: string) => void): void => {
       try {
         parseJavaScript(cmd);
         this.runCode(cmd).then((result) => {
-          callback(null, result);
+          callback(null, `${result}`);
         }).catch(callback);
       } catch (e) {
         callback(new (<any>repl).Recoverable(e));

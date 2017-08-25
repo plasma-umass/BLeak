@@ -1,10 +1,9 @@
 import createHTTPServer from './util/http_server';
 import {Server as HTTPServer} from 'http';
 //import ChromeBrowserDriver from '../src/webdriver/chrome_driver';
-import ChromeRemoteDebuggingDriver from '../src/webdriver/chrome_remote_debugging_driver';
+import ChromeDriver from '../src/lib/chrome_driver';
 // import Proxy from '../src/proxy/proxy';
 import {equal as assertEqual} from 'assert';
-import {IProxy} from '../src/common/interfaces';
 
 //const PROXY_HTTP_PORT = 4445;
 //const PROXY_HTTPS_PORT = 4446;
@@ -15,12 +14,11 @@ const HTTP_PORT = 8889;
 // Make sure it finishes loading before it runs scripts.
 // Check magic values in page.
 
-describe("WebDriver", function() {
+describe("Chrome Driver", function() {
   // 30 second timeout.
   this.timeout(30000);
   let httpServer: HTTPServer;
-  let chromeDriver: ChromeRemoteDebuggingDriver;
-  let proxy: IProxy;
+  let chromeDriver: ChromeDriver;
   before(async function() {
     httpServer = await createHTTPServer({
       "/": {
@@ -28,8 +26,7 @@ describe("WebDriver", function() {
         data: Buffer.from("<!doctype html><html><div id='container'>ContainerText</div></html>", "utf8")
       }
     }, HTTP_PORT);
-    chromeDriver = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
-    proxy = chromeDriver;
+    chromeDriver = await ChromeDriver.Launch(<any> process.stdout);
   });
 
   it("Successfully loads a webpage", async function() {

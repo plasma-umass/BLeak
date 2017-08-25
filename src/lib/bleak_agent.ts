@@ -6,7 +6,11 @@ interface ListenerInfo {
 
 interface EventTarget {
   $$listeners?: {[type: string]: ListenerInfo[]};
+  // Note: Needs to be a string so it shows up in the snapshot.
+  $$id?: string;
 }
+
+type GrowthObjectStackTraces = Map<string | number | symbol, Set<string>>;
 
 declare function importScripts(s: string): void;
 
@@ -19,7 +23,7 @@ declare function importScripts(s: string): void;
   const IS_WORKER = typeof(importScripts) !== "undefined";
   const ROOT = <Window> (IS_WINDOW ? window : IS_WORKER ? self : global);
   ROOT.$$$INSTRUMENT_PATHS$$$ = $$$INSTRUMENT_PATHS$$$;
-  ROOT.$$$GET_STACK_TRACE$$$ = $$$GET_STACK_TRACE$$$;
+  ROOT.$$$GET_STACK_TRACES$$$ = $$$GET_STACK_TRACES$$$;
   ROOT.$$$CREATE_SCOPE_OBJECT$$$ = $$$CREATE_SCOPE_OBJECT$$$;
   ROOT.$$$EQ$$$ = $$$EQ$$$;
   ROOT.$$$SEQ$$$ = $$$SEQ$$$;
@@ -28,6 +32,7 @@ declare function importScripts(s: string): void;
   ROOT.$$$REWRITE_EVAL$$$ = $$$REWRITE_EVAL$$$;
   ROOT.$$$FUNCTION_EXPRESSION$$$ = $$$FUNCTION_EXPRESSION$$$;
   ROOT.$$$CREATE_WITH_SCOPE$$$ = $$$CREATE_WITH_SCOPE$$$;
+  ROOT.$$$SERIALIZE_DOM$$$ = $$$SERIALIZE_DOM$$$;
 
   const r = /'/g;
 
@@ -128,7 +133,17 @@ declare function importScripts(s: string): void;
     }
   }
 
-  function applyWrite(target: any, key: string, value: any): boolean {
+  /**
+   * Applies a write to the given scope. Used in `eval()` to avoid storing/transmitting
+   * metadata for particular scope objects.
+   *
+   * Searches the scope chain for the given `key`. If found, it overwrites the value on
+   * the relevant scope in the scope chain.
+   * @param target
+   * @param key
+   * @param value
+   */
+  function applyWrite(target: Scope, key: string, value: any): boolean {
     if (target === null) {
       return false;
     } else if (target.hasOwnProperty(key)) {
@@ -142,16 +157,21 @@ declare function importScripts(s: string): void;
   // Sentinel
   const PROP_NOT_FOUND = {};
 
-  function applyGet(target: any, key: string): any {
-    if (target === null) {
-      return PROP_NOT_FOUND;
-    } else if (target.hasOwnProperty(key)) {
+  /**
+   * Goes up the scope chain of the object (which may be a scope or the target
+   * of a `with()` statement) to determine if a given key is defined in the object.
+   * @param target The scope object or with target.
+   * @param key The key we are looking for.
+   */
+  function withGet(target: any, key: string): any {
+    if (key in target) {
       return target[key];
     } else {
-      return applyGet(Object.getPrototypeOf(target), key);
+      return PROP_NOT_FOUND;
     }
   }
 
+  // Reuseable eval() function. Does not have a polluted scope.
   const EVAL_FCN = new Function('scope', '$$$SRC$$$', 'return eval($$$SRC$$$);');
 
   /**
@@ -172,13 +192,18 @@ declare function importScripts(s: string): void;
     }), xhr.responseText);
   }
 
+  /**
+   * Creates a Scope object for use in a `with()` statement.
+   * @param withObj The target of the `with` statement.
+   * @param scope The scope of the `with()` statement.
+   */
   function $$$CREATE_WITH_SCOPE$$$(withObj: Object, scope: Scope): Scope {
     // Add 'withObj' to the scope chain.
     return new Proxy(withObj, {
       get: function(target, key: string) {
-        const v = applyGet(target, key);
+        const v = withGet(target, key);
         if (v === PROP_NOT_FOUND) {
-          const v = applyGet(scope, key);
+          const v = withGet(scope, key);
           if (v === PROP_NOT_FOUND) {
             throw new ReferenceError(`${key} is not defined`);
           }
@@ -195,8 +220,6 @@ declare function importScripts(s: string): void;
 
   /**
    * Assigns the given scope to the given function object.
-   * @param fcn
-   * @param scope
    */
   function $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function {
     Object.defineProperty(fcn, '__scope__', {
@@ -206,6 +229,28 @@ declare function importScripts(s: string): void;
       configurable: true
     });
     return fcn;
+  }
+
+  /**
+   * Converts the node's tree structure into a JavaScript-visible tree structure.
+   * TODO: Mutate to include any other Node properties that could be the source of leaks!
+   * @param n
+   */
+  function makeMirrorNode(n: Node): MirrorNode {
+    const childNodes = n.childNodes;
+    const numChildren = childNodes.length;
+    const m: MirrorNode = { root: n, childNodes: new Array<MirrorNode>(numChildren) };
+    for (let i = 0; i < numChildren; i++) {
+      m.childNodes[i] = makeMirrorNode(childNodes[i]);
+    }
+    return m;
+  }
+
+  /**
+   * Serializes the DOM into a JavaScript-visible tree structure.
+   */
+  function $$$SERIALIZE_DOM$$$(n: Node = document): void {
+    window.$$$DOM$$$ = makeMirrorNode(document);
   }
 
   /**
@@ -250,6 +295,10 @@ declare function importScripts(s: string): void;
     return ProxyStatus.NO_PROXY;
   }
 
+  function getProxyStackTraces(a: any): GrowthObjectStackTraces {
+    return a.$$$STACKTRACES$$$;
+  }
+
   /**
    * If `a` is a proxy, returns the original object.
    * Otherwise, returns `a` itself.
@@ -280,66 +329,11 @@ declare function importScripts(s: string): void;
   }
 
   /**
-   * Get all of the possible root objects for the given path.
-   * @param p
-   */
-  function getPossibleRoots(p: SerializeableGCPath): any[] {
-    const root = p.root;
-    switch (root.type) {
-      case RootType.GLOBAL: {
-        return [ROOT.$$$GLOBAL$$$];
-      }
-      case RootType.DOM: {
-        const elementType = root.elementType;
-        const rootObjs: any[] = [];
-        if (elementType.startsWith("HTML") && elementType.endsWith("Element")) {
-          const tag = elementType.slice(4, -7).toLowerCase();
-          const elements = document.getElementsByTagName(tag);
-          for (let i = 0; i < elements.length; i++) {
-            rootObjs.push(elements[i]);
-          }
-        }
-        return rootObjs;
-      }
-    }
-  }
-
-  /**
-   * Returns an evaluateable JavaScript string to access the object at the given path
-   * from a root.
-   * @param p
-   */
-  function getAccessString(p: SerializeableGCPath, parent: boolean): string {
-    let accessStr = "root";
-    const path = p.path;
-    const end = path[path.length - 1];
-    for (const l of path) {
-      if (parent && l === end) {
-        if (l.type === EdgeType.CLOSURE) {
-          return accessStr + `.__scope__`;
-        } else {
-          return accessStr;
-        }
-      }
-      switch(l.type) {
-        case EdgeType.CLOSURE:
-          accessStr += `.__scope__['${l.indexOrName}']`;
-          break;
-        case EdgeType.INDEX:
-        case EdgeType.NAMED:
-          accessStr += `['${safeString(`${l.indexOrName}`)}']`;
-          break;
-      }
-    }
-    return accessStr;
-  }
-
-  /**
    * Adds a stack trace to the given map for the given property.
    * @param map
    * @param property
    */
-  function _addStackTrace(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol, stack = _getStackTrace()): void {
+  function _addStackTrace(map: GrowthObjectStackTraces, property: string | number | symbol, stack = _getStackTrace()): void {
     let set = map.get(property);
     if (!set) {
       set = new Set<string>();
@@ -352,7 +346,7 @@ declare function importScripts(s: string): void;
    * @param map
    * @param property
    */
-  function _removeStacks(map: Map<string | number | symbol, Set<string>>, property: string | number | symbol): void {
+  function _removeStacks(map: GrowthObjectStackTraces, property: string | number | symbol): void {
     if (map.has(property)) {
       map.delete(property);
     }
@@ -363,7 +357,7 @@ declare function importScripts(s: string): void;
    * @param from
    * @param to
    */
-  function _copyStacks(map: Map<string | number | symbol, Set<string>>, from: string | number | symbol, to: string | number | symbol): void {
+  function _copyStacks(map: GrowthObjectStackTraces, from: string | number | symbol, to: string | number | symbol): void {
     if (map.has(from)) {
       map.set(to, map.get(from));
     }
@@ -371,12 +365,8 @@ declare function importScripts(s: string): void;
 
   /**
    * Initialize a map to contain stack traces for all of the properties of the given object.
-   * @param map
-   * @param obj
    */
-  function _initializeMap(obj: any): Map<string | number | symbol, Set<string>> {
-    const map = new Map<string | number | symbol, Set<string>>();
-    const trace = _getStackTrace();
+  function _initializeMap(obj: any, map: GrowthObjectStackTraces, trace: string): GrowthObjectStackTraces {
     Object.keys(obj).forEach((k) => {
       _addStackTrace(map, k, trace);
     });
@@ -386,16 +376,16 @@ declare function importScripts(s: string): void;
   /**
    * Returns a proxy object for the given object, if applicable. Creates a new object if the object
    * is not already proxied.
-   * @param accessStr
-   * @param obj
-   * @param map
    */
-  function getProxy(accessStr: string, obj: any, initialInstallation = false): any {
+  function getProxy(accessStr: string, obj: any, stackTrace: string = null): any {
     if (!isProxyable(obj)) {
       // console.log(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
       return obj;
     } else if (!obj.hasOwnProperty('$$$PROXY$$$')) {
-      const map = initialInstallation ? new Map<string | number | symbol, Set<string>>() : _initializeMap(obj);
+      const map = new Map<string | number | symbol, Set<string>>();
+      if (stackTrace !== null) {
+        _initializeMap(obj, map, stackTrace);
+      }
       Object.defineProperty(obj, '$$$ORIGINAL$$$', {
         value: obj,
         writable: false,
@@ -412,14 +402,14 @@ declare function importScripts(s: string): void;
         defineProperty: function(target, property, descriptor): boolean {
           if (!disableProxies) {
             // Capture a stack trace.
-            _addStackTrace(target.$$$STACKTRACES$$$, property);
+            _addStackTrace(getProxyStackTraces(target), property);
           }
           return Reflect.defineProperty(target, property, descriptor);
         },
         set: function(target, property, value, receiver): boolean {
           if (!disableProxies) {
             // Capture a stack trace.
-            _addStackTrace(target.$$$STACKTRACES$$$, property);
+            _addStackTrace(getProxyStackTraces(target), property);
           }
           return Reflect.set(target, property, value, target);
         },
@@ -429,7 +419,7 @@ declare function importScripts(s: string): void;
         deleteProperty: function(target, property): boolean {
           if (!disableProxies) {
             // Remove stack traces that set this property.
-            _removeStacks(target.$$$STACKTRACES$$$, property);
+            _removeStacks(getProxyStackTraces(target), property);
           }
           return Reflect.deleteProperty(target, property);
         }
@@ -438,101 +428,210 @@ declare function importScripts(s: string): void;
     return obj.$$$PROXY$$$;
   }
 
-  /**
-   * Installs a proxy object at the given location, and a getter/setter on the parent location to
-   * capture writes to the heap location.
-   * @param accessStr
-   * @param parentAccessStr
-   * @param parent
-   * @param obj
-   * @param propName
-   */
-  function installProxy(accessStr: string, parentAccessStr: string, parent: any, obj: any, propName: string | number): void {
-    let hiddenValue = getProxy(accessStr, obj, true);
-    if ((typeof(parent) === "object" || typeof(parent) === "function") && parent !== null) {
-      Object.defineProperty(parent, propName, {
-        get: function() {
-          return hiddenValue;
-        },
-        set: function(val) {
-          hiddenValue = getProxy(accessStr, val);
-          return true;
-        }
-      });
-    } else {
-      console.log(`[PARENT FAILURE]: Unable to install getter on parent at ${parentAccessStr}.`);
+  interface AssignmentProxy {
+    (v: any): boolean;
+    $$trees: SerializeableGrowingPathTree[];
+    $$rootAccessString: string;
+    $$update: (stackTrace: string) => void;
+    $$root: any;
+  }
+
+  function updateAssignmentProxy(this: AssignmentProxy, stackTrace: string): void {
+    const root = this.$$root;
+    const trees = this.$$trees;
+    const rootAccessString = this.$$rootAccessString;
+    for (const tree of trees) {
+      instrumentTree(rootAccessString, root, tree, stackTrace);
     }
   }
 
-  function replaceObjectsWithProxies(roots: any[], propName: string | number, accessStr: string, parentAccessStr: string): void {
-    try {
-      const getObjFcn: (root: any) => [any, any] | null = <any> new Function("root", `try { return [${parentAccessStr}, ${accessStr}]; } catch (e) { return null; }`);
-      roots.map(getObjFcn).filter((o) => o !== null).forEach((objs) => {
-        installProxy(accessStr, parentAccessStr, objs[0], objs[1], propName);
+  function instrumentPath(rootAccessString: string, accessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
+    let setProxy: AssignmentProxy;
+    console.log(`Instrumenting ${accessString} at ${rootAccessString}`);
+    const prop = Object.getOwnPropertyDescriptor(root, tree.indexOrName);
+    if (prop && prop.set && Array.isArray((<any> prop.set)['$$trees'])) {
+      console.log(`It's already instrumented!`);
+      setProxy = <any> prop.set;
+    } else {
+      console.log(`New instrumentation.`);
+      let hiddenValue = root[tree.indexOrName];
+      const isGrowing = tree.isGrowing;
+      if (isGrowing) {
+        console.log(`Converting the hidden value into a proxy.`)
+        hiddenValue = getProxy(accessString, hiddenValue);
+        if (stackTrace !== null && getProxyStatus(hiddenValue) === ProxyStatus.IS_PROXY) {
+          const map: GrowthObjectStackTraces = getProxyStackTraces(hiddenValue);
+          _initializeMap(hiddenValue, map, stackTrace);
+        }
+      }
+      setProxy = <any> function(this: any, v: any): boolean {
+        const trace = _getStackTrace();
+        hiddenValue = isGrowing ? getProxy(accessString, v, trace) : v;
+        setProxy.$$update(trace);
+        return true;
+      };
+      setProxy.$$rootAccessString = rootAccessString;
+      setProxy.$$trees = [];
+      setProxy.$$update = updateAssignmentProxy;
+      setProxy.$$root = root;
+
+      Object.defineProperty(root, tree.indexOrName, {
+        get: () => hiddenValue,
+        set: setProxy
       });
-    } catch (e) {
-      console.log(`[PROXY REPLACE ERROR] Failed to install proxy at ${accessStr}: ${e}`);
+    }
+
+    if (setProxy.$$trees.indexOf(tree) === -1) {
+      setProxy.$$trees.push(tree);
+      // Only update inner proxies if:
+      // - the tree is new (tree already exists === this path is already updated)
+      //   - Prevents infinite loops due to cycles!
+      // - there is a stack trace (no stack trace === initial installation)
+      //   - Otherwise we are already updating this proxy!
+      if (stackTrace) {
+        setProxy.$$update(stackTrace);
+      }
+    }
+  }
+
+  function instrumentDOMTree(rootAccessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
+    // For now: Simply crawl to the node(s) and instrument regularly from there. Don't try to plant getters/setters.
+    // $$DOM - - - - - -> root [regular subtree]
+    let obj: any;
+    let accessString = rootAccessString;
+    let switchToRegularTree = false;
+    switch (tree.indexOrName) {
+      case "$$$DOM$$$":
+        obj = document;
+        accessString = "document";
+        break;
+      case 'root':
+        switchToRegularTree = true;
+        obj = root;
+        break;
+      default:
+        obj = root[tree.indexOrName];
+        accessString += `['${safeString(`${tree.indexOrName}`)}']`;
+        break;
+    }
+
+    // Capture writes of children.
+    const children = tree.children;
+    const instrumentFunction = switchToRegularTree ? instrumentTree : instrumentDOMTree;
+    const len = children.length;
+    for (let i = 0; i < len; i++) {
+      const child = children[i];
+      instrumentFunction(accessString, obj, child, stackTrace);
+    }
+  }
+
+  function instrumentTree(rootAccessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
+    const accessString = rootAccessString + `[${safeString(`${tree.indexOrName}`)}]`;
+    console.log(`access string: ${accessString}`);
+    // Ignore roots that are not proxyable.
+    if (!isProxyable(root)) {
+      console.log(`Not a proxyable root.`);
+      return;
+    }
+    const obj = root[tree.indexOrName];
+    instrumentPath(rootAccessString, accessString, root, tree, stackTrace);
+
+    // Capture writes of children.
+    const children = tree.children;
+    const len = children.length;
+    for (let i = 0; i < len; i++) {
+      const child = children[i];
+      instrumentTree(accessString, obj, child, stackTrace);
     }
   }
 
   // Disables proxy interception.
   let disableProxies = false;
-  function instrumentLocation(loc: SerializeableGrowthObject): void {
-    const paths = loc.paths;
-    // Fetch the objects.
-    for (const p of paths) {
-      const accessString = getAccessString(p, false);
-      const parentAccessString = getAccessString(p, true);
-      const roots = getPossibleRoots(p);
-      if (p.path.length > 0) {
-        replaceObjectsWithProxies(roots, p.path[p.path.length - 1].indexOrName, accessString, parentAccessString);
+
+  function isDOMRoot(tree: SerializeableGrowingPathTree): boolean {
+    return tree.indexOrName === "$$$DOM$$$";
+  }
+
+  let instrumentedTrees: SerializeableGrowingPaths = [];
+  function $$$INSTRUMENT_PATHS$$$(trees: SerializeableGrowingPaths): void {
+    for (const tree of trees) {
+      if (isDOMRoot(tree)) {
+        instrumentDOMTree("$$$GLOBAL$$$", ROOT.$$$GLOBAL$$$, tree);
+      } else {
+        instrumentTree("$$$GLOBAL$$$", ROOT.$$$GLOBAL$$$, tree);
+      }
+    }
+    instrumentedTrees = instrumentedTrees.concat(trees);
+  }
+
+  function getStackTraces(root: any, path: SerializeableGrowingPathTree, stacksMap: {[id: number]: Set<string>}): void {
+    const obj = root[path.indexOrName];
+    if (isProxyable(obj)) {
+      if (path.isGrowing && getProxyStatus(obj) === ProxyStatus.IS_PROXY) {
+        const map = getProxyStackTraces(obj);
+        const stackTraces = stacksMap[path.id] ? stacksMap[path.id] : new Set<string>();
+        map.forEach((v, k) => {
+          v.forEach((s) => stackTraces.add(s));
+        });
+        stacksMap[path.id] = stackTraces;
+      }
+
+      const children = path.children;
+      for (const child of children) {
+        getStackTraces(obj, child, stacksMap);
       }
     }
   }
 
-  let instrumentedLocations: SerializeableGrowthObject[] = [];
-  function $$$INSTRUMENT_PATHS$$$(locs: SerializeableGrowthObject[]): void {
-    for (const loc of locs) {
-      instrumentLocation(loc);
+  function getDOMStackTraces(root: any, path: SerializeableGrowingPathTree, stacksMap: {[id: number]: Set<string>}): void {
+    let obj: any;
+    let switchToRegularTree = false;
+    switch (path.indexOrName) {
+      case "$$$DOM$$$":
+        obj = document;
+        break;
+      case 'root':
+        switchToRegularTree = true;
+        obj = root;
+        break;
+      default:
+        obj = root[path.indexOrName];
+        break;
     }
-    instrumentedLocations = instrumentedLocations.concat(locs);
+
+    // Capture writes of children.
+    const children = path.children;
+    const getStackTracesFunction = switchToRegularTree ? getStackTraces : getDOMStackTraces;
+    const len = children.length;
+    for (let i = 0; i < len; i++) {
+      const child = children[i];
+      getStackTracesFunction(obj, child, stacksMap);
+    }
   }
 
-  function $$$GET_STACK_TRACE$$$(): string {
-    const allMaps = new Map<number, Set<string>>();
-    instrumentedLocations.forEach((loc) => {
-      const stacks = new Set<string>();
-      allMaps.set(loc.id, stacks);
-      loc.paths.forEach((p) => {
-        const accessStr = getAccessString(p, false);
-        const roots = getPossibleRoots(p);
-        const getObjFcn = <any> new Function("root", `try { return ${accessStr}; } catch (e) { return null; }`);
-        roots.map(getObjFcn).forEach((o) => {
-          if (isProxyable(o)) {
-            const map: Map<string | number | symbol, Set<string>> = (<any> o)['$$$STACKTRACES$$$'];
-            if (map) {
-              map.forEach((propStacks, key) => {
-                propStacks.forEach((s) => {
-                  stacks.add(s);
-                })
-              });
-            }
-          }
-        });
-      });
-    });
-
-    const rv: {[i: number]: string[]} = {};
-    allMaps.forEach((stacks, key) => {
-      const arr = new Array<string>(stacks.size);
-      rv[key] = arr;
-      let i = 0;
-      stacks.forEach((v) => {
-        arr[i++] = v;
-      });
-    });
-
-    return JSON.stringify(rv);
+  function $$$GET_STACK_TRACES$$$(): GrowingStackTraces {
+    const stacksMap: {[id: number]: Set<string>} = {};
+    for (const tree of instrumentedTrees) {
+      if (isDOMRoot(tree)) {
+        getDOMStackTraces(ROOT.$$$GLOBAL$$$, tree, stacksMap);
+      } else {
+        getStackTraces(ROOT.$$$GLOBAL$$$, tree, stacksMap);
+      }
+    }
+    const jsonableStacksMap: GrowingStackTraces = {};
+    for (const stringId in stacksMap) {
+      if (stacksMap.hasOwnProperty(stringId)) {
+        const id = parseInt(stringId, 10);
+        const stacks = stacksMap[id];
+        let i = 0;
+        const stackArray = new Array<string>(stacks.size);
+        stacks.forEach((s) => {
+          stackArray[i++] = s;
+        })
+        jsonableStacksMap[id] = stackArray;
+      }
+    }
+    return jsonableStacksMap;
   }
 
   if (IS_WINDOW || IS_WORKER) {
@@ -585,7 +684,7 @@ declare function importScripts(s: string): void;
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
+            const map: GrowthObjectStackTraces = getProxyStackTraces(this);
             const trace = _getStackTrace();
             for (let i = 0; i < items.length; i++) {
               _addStackTrace(map, `${this.length + i}`, trace);
@@ -603,7 +702,7 @@ declare function importScripts(s: string): void;
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
+            const map: GrowthObjectStackTraces = getProxyStackTraces(this);
             const newItemLen = items.length;
             const trace = _getStackTrace();
             for (let i = items.length - 1; i >= 0; i--) {
@@ -626,7 +725,7 @@ declare function importScripts(s: string): void;
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
+            const map: GrowthObjectStackTraces = getProxyStackTraces(this);
             _removeStacks(map, `${this.length - 1}`);
           }
           return pop.apply(this);
@@ -641,7 +740,7 @@ declare function importScripts(s: string): void;
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
+            const map: GrowthObjectStackTraces = getProxyStackTraces(this);
             _removeStacks(map, "0");
             for (let i = 1; i < this.length; i++) {
               _copyStacks(map, `${i}`, `${i - 1}`);
@@ -660,7 +759,7 @@ declare function importScripts(s: string): void;
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
-            const map: Map<string | number | symbol,  Set<string>> = (<any> this)["$$$STACKTRACES$$$"];
+            const map: GrowthObjectStackTraces = getProxyStackTraces(this);
             let actualStart = start | 0;
             if (actualStart === undefined) {
               return [];
@@ -792,6 +891,9 @@ declare function importScripts(s: string): void;
      */
     function proxyInterposition(obj: any, property: string, key: string): void {
       const original = Object.getOwnPropertyDescriptor(obj, property);
+      if (!original.configurable) {
+        return;
+      }
       try {
         Object.defineProperty(obj, property, {
           get: function() {

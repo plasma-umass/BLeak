@@ -1,36 +1,14 @@
-export function path2string(p: SerializeableGCPath, escapeForMarkdown: boolean = false): string {
-  let rv = "";
-  switch (p.root.type) {
-    case RootType.DOM:
-      if (escapeForMarkdown) {
-        rv = `\<${p.root.elementType}\>`;
-      } else {
-        rv = `<${p.root.elementType}>`;
-      }
-      break;
-    case RootType.GLOBAL:
-      rv = `window`;
-      break;
+import ChromeDriver from '../lib/chrome_driver';
+import {proxyRewriteFunction, evalRewriteFunction} from '../lib/transformations';
+
+export const DEFAULT_AGENT_PATH = require.resolve('../lib/bleak_agent');
+export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
+
+export async function configureProxy(driver: ChromeDriver, diagnose: boolean, fixes: number[] = [], config = ""): Promise<void> {
+  driver.onRequest(proxyRewriteFunction(diagnose, config, fixes));
+  if (diagnose) {
+    driver.onEval(evalRewriteFunction);
   }
-  const path = p.path;
-  for (const l of path) {
-    switch (l.type) {
-      case EdgeType.CLOSURE:
-        if (escapeForMarkdown) {
-          rv += `.\_\_closure\_\_(${l.indexOrName})`;
-        } else {
-          rv += `.__closure__(${l.indexOrName})`;
-        }
-        break;
-      case EdgeType.INDEX:
-        rv += `['${l.indexOrName}']`;
-        break;
-      case EdgeType.NAMED:
-        rv += `.${l.indexOrName}`;
-        break;
-    }
-  }
-  return rv;
 }
 
 export function time<T>(n: string, action: () => T, log?: (s: string) => void): T {

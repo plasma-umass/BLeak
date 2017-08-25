@@ -10,9 +10,14 @@ interface Function {
   __scope__: Scope;
 }
 
+interface MirrorNode {
+  root: Node;
+  childNodes: MirrorNode[];
+}
+
 interface Window {
-  $$$INSTRUMENT_PATHS$$$(p: SerializeableGrowthObject[]): void;
-  $$$GET_STACK_TRACE$$$(): string;
+  $$$INSTRUMENT_PATHS$$$(p: SerializeableGrowingPaths): void;
+  $$$GET_STACK_TRACES$$$(): GrowingStackTraces;
   $$$CREATE_SCOPE_OBJECT$$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope;
   $$$SEQ$$$(a: any, b: any): boolean;
   $$$EQ$$$(a: any, b: any): boolean;
@@ -21,47 +26,46 @@ interface Window {
   $$$REWRITE_EVAL$$$(scope: any, source: string): any;
   $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function;
   $$$CREATE_WITH_SCOPE$$$(withObj: Object, scope: Scope): Scope;
+  $$$SERIALIZE_DOM$$$(): void;
+  $$$DOM$$$: MirrorNode;
 }
 
 /**
- * A path to an object from a GC root.
+ * ID => stack traces.
  */
-interface SerializeableGCPath {
-  root: SerializeableRoot;
-  path: SerializeableEdge[];
+interface GrowingStackTraces {
+  [id: number]: string[];
 }
 
 /**
- * Describes a set of paths that typically point to the same leaking object.
+ * A tree of growing GC paths from the global window object.
  */
-interface SerializeableGrowthObject {
-  id: number;
-  paths: SerializeableGCPath[];
-}
-
-const enum RootType {
-  GLOBAL = 0,
-  DOM = 1
-}
-
-type SerializeableRoot = SerializeableGlobalRoot | SerializeableDOMRoot;
-
-interface SerializeableGlobalRoot {
-  type: RootType.GLOBAL;
-}
-
-interface SerializeableDOMRoot {
-  type: RootType.DOM;
-  elementType: string;
-}
-
-interface SerializeableEdge {
+interface SerializeableGrowingPathTree {
   type: EdgeType;
   indexOrName: string | number;
+  isGrowing: boolean;
+  children: SerializeableGrowingPathTree[];
+  id?: number; // ID of growing object at path.
 }
+
+/**
+ * List of growing paths from the global window objects, expressed in
+ * tree form.
+ */
+type SerializeableGrowingPaths = SerializeableGrowingPathTree[];
 
 const enum EdgeType {
   INDEX = 0,
   NAMED = 1,
-  CLOSURE = 2
+  // CLOSURE = 2
+}
+
+/**
+ * Indicates an item's growth status.
+ * **MUST FIT INTO 2 BITS.** (Value <= 3)
+ */
+const enum GrowthStatus {
+  NEW = 0,
+  NOT_GROWING = 1,
+  GROWING = 2
 }

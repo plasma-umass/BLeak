@@ -2,78 +2,90 @@ import {SnapshotEdgeType, SnapshotNodeType, SnapshotSizeSummary} from '../common
 import {default as HeapSnapshotParser, DataTypes} from './heap_snapshot_parser';
 import {OneBitArray, TwoBitArray} from '../common/util';
 
-function isHidden(type: SnapshotEdgeType): boolean {
-  switch(type) {
+/**
+ * Returns true if the given edge type is visible from JavaScript.
+ * @param edge
+ */
+function isNotHidden(edge: Edge): boolean {
+  switch(edge.snapshotType) {
     case SnapshotEdgeType.Internal:
+      // Keep around closure edges so we can convert them to __scope__.
+      return edge.indexOrName === "context";
     case SnapshotEdgeType.Hidden:
     case SnapshotEdgeType.Shortcut:
-      return true;
-    default:
       return false;
-  }
-}
-
-type EdgeIndex = number & { ___EdgeIndex: true };
-type NodeIndex = number & { ___NodeIndex: true };
-
-export function ToSerializeableGCPath(path: Edge[]): SerializeableGCPath {
-  const rv: SerializeableGCPath = {
-    root: null,
-    path: null
-  };
-  const firstLink = path[0];
-  if (firstLink.to.name.startsWith("Window ")) {
-    rv.root = {
-      type: RootType.GLOBAL
-    };
-  } else {
-    // DOM object. Skip:
-    // - DOM tree collection
-    // - index
-    if (path.length < 3) {
-      console.log("WTF:");
-      path.forEach((p, i) => {
-        console.log(`[${i}] ${p.to.name}`);
-        console.log(`[${i}] ${p.indexOrName}`);
-      });
-      rv.root = {
-        type: RootType.DOM,
-        elementType: "HTMLBodyElement"
-      };
-    } else {
-      rv.root = {
-        type: RootType.DOM,
-        elementType: path[2].to.name
-      };
-    }
-    path = path.slice(3);
-  }
-  rv.path = path.filter((l) => {
-    if (l.type === EdgeType.CLOSURE) {
+    default:
       return true;
-    } else {
-      return !isHidden(l.snapshotType);
-    }
-  });
-  return rv;
+  }
 }
 
-export function ToSerializeableGrowthObject(o: GrowthObject): SerializeableGrowthObject {
-  return {
-    id: o.node.nodeIndex,
-    paths: o.paths.map(ToSerializeableGCPath)
-  };
+const r = /'/g;
+/**
+ * Escapes single quotes in the given string.
+ * @param s
+ */
+function safeString(s: string): string {
+  return s.replace(r, "\\'");
+}
+
+export function pathToString(e: Edge[]): string {
+  const filtered = e.filter(isNotHidden);
+  return `global` + filtered.map((f) => `['${safeString(`${f.indexOrName}`)}']`).join("");
 }
 
 /**
- * Indicates a node's growth status.
- * **MUST FIT INTO 2 BITS.** (Value <= 3)
+ * Converts the given growth objects into a tree form for sending to the agent.
  */
-const enum GrowthStatus {
-  NEW = 0,
-  NOT_GROWING = 1,
-  GROWING = 2
+export function toSerializeableGrowingPaths(objs: GrowthObject[]): SerializeableGrowingPaths {
+  const tree: SerializeableGrowingPaths = [];
+
+  function addPath(p: Edge[], id: number, index = 0, children = tree): void {
+    if (p.length === 0) {
+      return;
+    }
+    const e = p[index];
+    const indexOrName = e.indexOrName;
+    const matches = children.filter((c) => c.indexOrName === indexOrName);
+    let recur: SerializeableGrowingPathTree;
+    if (matches.length > 0) {
+      recur = matches[0];
+    } else {
+      // Add to children list.
+      recur = {
+        type: e.type,
+        indexOrName,
+        isGrowing: false,
+        children: []
+      };
+      // Convert 'context' references to our '__scope__' variable.
+      if (e.snapshotType === SnapshotEdgeType.Internal) {
+        recur.indexOrName = "__scope__";
+      }
+      children.push(recur);
+    }
+    const next = index + 1;
+    if (next === p.length) {
+      recur.isGrowing = true;
+      recur.id = id;
+    } else {
+      addPath(p, id, next, recur.children);
+    }
+  }
+
+  objs.forEach((o) => {
+    o.paths.forEach((p) => {
+      addPath(p.filter(isNotHidden), o.node.nodeIndex);
+    });
+  });
+
+  return tree;
 }
+
+// Edge brand
+type EdgeIndex = number & { ___EdgeIndex: true };
+// Node brand
+type NodeIndex = number & { ___NodeIndex: true };
+
 
 export interface GrowthObject {
   node: Node;
@@ -99,7 +111,9 @@ function shouldTraverse(edge: Edge): boolean {
       case "context":
         return true;
       default:
-        return edge.to.name.startsWith("Document DOM");
+        return false;
+      //default:
+      //  return edge.to.name.startsWith("Document DOM");
     }
   } else if (edge.to.type === SnapshotNodeType.Synthetic) {
     return edge.to.name === "(Document DOM trees)";
@@ -190,6 +204,7 @@ export class HeapGrowthTracker {
   private _stringMap: StringMap = new StringMap();
   private _heap: HeapGraph = null;
   private _growthStatus: TwoBitArray = null;
+  // DEBUG INFO
   public _leakRefs: Uint16Array = null;
   public _nonLeakVisits: OneBitArray = null;
 
@@ -229,7 +244,7 @@ export class HeapGrowthTracker {
     }
 
     // Get the growing paths.
-    this._heap.visitUserEdges((e, getPath) => {
+    this._heap.visitGlobalEdges((e, getPath) => {
       if (this._growthStatus.get(e.toIndex) === GrowthStatus.GROWING) {
         addPath(getPath());
       }
@@ -317,6 +332,9 @@ class StringMap {
   }
 }
 
+/**
+ * Edge mirror
+ */
 export class Edge {
   public edgeIndex: EdgeIndex;
   private _heap: HeapGraph;
@@ -340,7 +358,7 @@ export class Edge {
     switch (type) {
       case EdgeType.INDEX:
         return nameOrIndex;
-      case EdgeType.CLOSURE:
+      // case EdgeType.CLOSURE:
       case EdgeType.NAMED:
         return this._heap.stringMap.fromId(nameOrIndex);
     }
@@ -350,8 +368,8 @@ export class Edge {
       case SnapshotEdgeType.Element: // Array element.
       case SnapshotEdgeType.Hidden: // Hidden from developer, but influences in-memory size. Apparently has an index, not a name. Ignore for now.
         return EdgeType.INDEX;
-      case SnapshotEdgeType.ContextVariable: // Function context. I think it has a name, like "context".
-        return EdgeType.CLOSURE;
+      case SnapshotEdgeType.ContextVariable: // Closure variable.
+        // return EdgeType.CLOSURE;
       case SnapshotEdgeType.Internal: // Internal data structures that are not actionable to developers. Influence retained size. Ignore for now.
       case SnapshotEdgeType.Shortcut: // Shortcut: Should be ignored; an internal detail.
       case SnapshotEdgeType.Weak: // Weak reference: Doesn't hold onto memory.
@@ -360,12 +378,6 @@ export class Edge {
       default:
         throw new Error(`Unrecognized edge type: ${this.snapshotType}`);
     }
-  }
-  public toJSON(): SerializeableEdge {
-    return {
-      type: this.type,
-      indexOrName: this.indexOrName
-    };
   }
 }
 
@@ -393,7 +405,7 @@ class EdgeIterator {
 }
 
 /**
- * Node class that forms the heap graph.
+ * Node mirror.
  */
 class Node {
   public nodeIndex: NodeIndex
@@ -655,6 +667,18 @@ export class HeapGraph {
     return this.edgeTypes.length;
   }
 
+  public getGlobalRootIndices(): number[] {
+    const rv = new Array<number>();
+    const root = this.getRoot();
+    for (const it = root.children; it.hasNext(); it.next()) {
+      const subroot = it.item().to;
+      if (subroot.type !== SnapshotNodeType.Synthetic) {
+        rv.push(subroot.nodeIndex);
+      }
+    }
+    return rv;
+  }
+
   public getUserRootIndices(): number[] {
     const rv = new Array<number>();
     const root = this.getRoot();
@@ -752,13 +776,17 @@ export class HeapGraph {
     bfsVisitor(this, this.getUserRootIndices(), visitor, filter);
   }
 
-  public visitUserEdges(visitor: (e: Edge, getPath: () => Edge[]) => void, filter: (n: Node, e: Edge) => boolean = nonWeakFilter): void {
+  public visitGlobalRoots(visitor: (n: Node) => void, filter: (n: Node, e: Edge) => boolean = nonWeakFilter) {
+    bfsVisitor(this, this.getGlobalRootIndices(), visitor, filter);
+  }
+
+  public visitGlobalEdges(visitor: (e: Edge, getPath: () => Edge[]) => void, filter: (n: Node, e: Edge) => boolean = nonWeakFilter): void {
     let initial = new Array<number>();
     const root = this.getRoot();
     for (const it = root.children; it.hasNext(); it.next()) {
       const edge = it.item();
       const subroot = edge.to;
-      if (subroot.type !== SnapshotNodeType.Synthetic || subroot.name === "(Document DOM trees)") {
+      if (subroot.type !== SnapshotNodeType.Synthetic) {
         initial.push(edge.edgeIndex);
       }
     }

@@ -2,7 +2,7 @@ import {Server as HTTPServer} from 'http';
 import createHTTPServer from './util/http_server';
 import {equal as assertEqual} from 'assert';
 import {SourceFile} from '../src/common/interfaces';
-import ChromeRemoteDebuggingDriver from '../src/webdriver/chrome_remote_debugging_driver';
+import ChromeDriver from '../src/lib/chrome_driver';
 
 const HTTP_PORT = 8888;
 
@@ -42,11 +42,11 @@ const FILES: {[name: string]: TestFile} = {
 
 describe('Proxy', function() {
   this.timeout(30000);
-  let proxy: ChromeRemoteDebuggingDriver;
+  let proxy: ChromeDriver;
   let httpServer: HTTPServer;
   before(async function() {
     httpServer = await createHTTPServer(FILES, HTTP_PORT);
-    proxy = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
+    proxy = await ChromeDriver.Launch(<any> process.stdout);
   });
 
   async function requestFile(path: string, expected: Buffer): Promise<void> {
@@ -69,7 +69,9 @@ describe('Proxy', function() {
   it("Properly rewrites text files", async function() {
     const MAGIC_STRING = Buffer.from("HELLO THERE", 'utf8');
     function transform(f: SourceFile): SourceFile {
-      f.contents = MAGIC_STRING;
+      if (f.mimetype === "text/html" || f.mimetype === "text/javascript") {
+        f.contents = MAGIC_STRING;
+      }
       return f;
     }
     proxy.onRequest(transform);

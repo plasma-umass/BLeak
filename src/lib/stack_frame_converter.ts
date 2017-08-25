@@ -1,8 +1,8 @@
 import {SourceMapConsumer} from 'source-map';
 import {StackFrame, parse as ErrorStackParser} from 'error-stack-parser';
-import {IProxy} from '../common/interfaces';
-import {DEFAULT_AGENT_URL} from './transformations';
+import {DEFAULT_AGENT_URL} from '../common/util';
 import {resolve as resolveURL} from 'url';
+import ChromeDriver from './chrome_driver';
 
 const magicString = '//# sourceMappingURL=data:application/json;base64,';
 
@@ -13,11 +13,11 @@ const magicString = '//# sourceMappingURL=data:application/json;base64,';
 export default class StackFrameConverter {
   private _maps = new Map<string, SourceMapConsumer>();
 
-  public static ConvertGrowthStacks(proxy: IProxy, pageUrl: string, stacks: {[p: number]: string[]}, agentUrl: string = DEFAULT_AGENT_URL): Promise<{[p: string]: StackFrame[][]}> {
-    return new StackFrameConverter().convertGrowthStacks(proxy, pageUrl, stacks, agentUrl);
+  public static ConvertGrowthStacks(driver: ChromeDriver, pageUrl: string, traces: GrowingStackTraces, agentUrl: string = DEFAULT_AGENT_URL): Promise<{[id: number]: StackFrame[][]}> {
+    return new StackFrameConverter().convertGrowthStacks(driver, pageUrl, traces, agentUrl);
   }
 
-  private async _fetchMap(proxy: IProxy, url: string): Promise<void> {
+  private async _fetchMap(driver: ChromeDriver, url: string): Promise<void> {
     if (typeof(url) !== "string") {
       return;
     }
@@ -25,7 +25,7 @@ export default class StackFrameConverter {
     if (!map) {
       try {
         console.log(url);
-        const file = await proxy.httpGet(url, undefined, undefined, true);
+        const file = await driver.httpGet(url, undefined, undefined, true);
         const source = file.data.toString('utf8');
         let sourceMapOffset = source.lastIndexOf(magicString)
         if (sourceMapOffset > -1) {
@@ -44,34 +44,54 @@ export default class StackFrameConverter {
     }
   }
 
-  public async convertGrowthStacks(proxy: IProxy, pageUrl: string, stacks: {[p: number]: string[]}, agentUrl: string): Promise<{[p: string]: StackFrame[][]}> {
+  public async convertGrowthStacks(driver: ChromeDriver, pageUrl: string, traces: GrowingStackTraces, agentUrl: string): Promise<{[id: number]: StackFrame[][]}> {
     // First pass: Get all unique URLs and their source maps.
     const urls = new Set<string>();
-    const convertedStacks: {[p: string]: StackFrame[][]} = {};
-    Object.keys(stacks).forEach((path) => {
-      const pathStacks = stacks[parseInt(path, 10)];
-      convertedStacks[path] = pathStacks.map((stack) => {
-        const frames = ErrorStackParser(<any> {stack: stack})
-          .filter((f) => f.fileName ? f.fileName.indexOf(agentUrl) === -1 : true)
-          .filter((f) => f.functionName ? f.functionName.indexOf("eval") === -1 || f.functionName.indexOf(agentUrl) === -1 : true);
-        frames.forEach((frame) => {
-          // Canonicalize URLs.
-          if (frame.fileName && !frame.fileName.toLowerCase().startsWith("http")) {
-            frame.fileName = resolveURL(pageUrl, frame.fileName);
-          }
-          urls.add(frame.fileName);
-        });
-        return frames;
-      });
+    const rawStacks = new Map<string, StackFrame[]>();
+
+    function frameFilter(f: StackFrame): boolean {
+      return (!f.fileName || f.fileName.indexOf(agentUrl) === -1) && (!f.functionName || (f.functionName.indexOf("eval") === -1 && f.functionName.indexOf(agentUrl) === -1));
+    }
+
+    function processFrame(f: StackFrame) {
+      if (f.fileName && !f.fileName.toLowerCase().startsWith("http")) {
+        f.fileName = resolveURL(pageUrl, f.fileName);
+      }
+      urls.add(f.fileName);
+    }
+
+    function processStack(s: string): void {
+      if (!rawStacks.has(s)) {
+        const frames = ErrorStackParser(<any> {stack: s}).filter(frameFilter);
+        frames.forEach(processFrame);
+        rawStacks.set(s, frames);
+      }
+    }
+
+    // Step 1: Collect all URLs.
+    Object.keys(traces).forEach((stringId) => {
+      const id = parseInt(stringId, 10);
+      traces[id].forEach(processStack);
     });
     const urlArray: string[] = [];
     urls.forEach((url) => urlArray.push(url));
-    await Promise.all(urlArray.map((url) => this._fetchMap(proxy, url)));
-    Object.keys(convertedStacks).forEach((path) => {
-      const stacks = convertedStacks[path];
-      convertedStacks[path] = stacks.map((stack) => this._convertStack(stack));
+    // Step 2: Download all URLs, parse source maps.
+    await Promise.all(urlArray.map((url) => this._fetchMap(driver, url)));
+    // Step 3: Convert stacks.
+    const convertedStacks = new Map<string, StackFrame[]>();
+    rawStacks.forEach((stack, k) => {
+      convertedStacks.set(k, this._convertStack(stack));
     });
-    return convertedStacks;
+    // Step 4: Return data!
+    function mapStack(s: string): StackFrame[] {
+      return convertedStacks.get(s);
+    }
+    const rv: {[id: number]: StackFrame[][]} = {};
+    Object.keys(traces).forEach((stringId) => {
+      const id = parseInt(stringId, 10);
+      rv[id] = traces[id].map(mapStack);
+    });
+    return rv;
   }
 
   private _convertStack(stack: StackFrame[]): StackFrame[] {

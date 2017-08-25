@@ -1,5 +1,5 @@
-import ChromeRemoteDebuggingDriver from '../webdriver/chrome_remote_debugging_driver';
-import {proxyRewriteFunction, evalRewriteFunction} from '../lib/transformations';
+import ChromeDriver from '../lib/chrome_driver';
+import {configureProxy} from '../common/util';
 
 
 const url = process.argv[2];
@@ -14,11 +14,8 @@ if (!url) {
 }
 
 async function main() {
-  const driver = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
-  driver.onRequest(proxyRewriteFunction(diagnose !== -1, "", fixes))
-  if (diagnose !== -1) {
-    driver.onEval(evalRewriteFunction);
-  }
+  const driver = await ChromeDriver.Launch(<any> process.stdout);
+  await configureProxy(driver, diagnose !== -1, fixes);
   await driver.navigateTo(url);
   await driver.debugLoop();
   await driver.shutdown();

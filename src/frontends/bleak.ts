@@ -1,10 +1,9 @@
 import {readFileSync, openSync, writeSync, closeSync, writeFileSync} from 'fs';
 import {extname} from 'path';
 import BLeak from '../lib/bleak';
-import ChromeRemoteDebuggingDriver from '../webdriver/chrome_remote_debugging_driver';
+import ChromeDriver from '../lib/chrome_driver';
 import {Leak} from '../common/interfaces';
-import {path2string} from '../common/util';
-import {ToSerializeableGCPath} from '../lib/growth_graph';
+import {pathToString} from '../lib/growth_graph';
 
 const configFileName = process.argv[2];
 const outFileName = process.argv[3];
@@ -26,7 +25,7 @@ function LOG(str: string): void {
  * @param rank
  */
 function printLeak(l: Leak, metric: "retainedSize" | "adjustedRetainedSize" | "transitiveClosureSize", rank: number): void {
-  const paths = l.paths.map((p) => ToSerializeableGCPath(p)).map((p) => path2string(p, true));
+  const paths = l.paths.map(pathToString);
   LOG(`## Object ${rank} [Score: ${l[metric]}]`);
   LOG(``);
   LOG(`### GC Paths`);
@@ -52,8 +51,8 @@ function printLeak(l: Leak, metric: "retainedSize" | "adjustedRetainedSize" | "t
 
 async function main() {
   const configFileSource = readFileSync(configFileName).toString();
-  let chromeDriver = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
-  const leaks = await BLeak.FindLeaks(configFileSource, chromeDriver, chromeDriver);/*, (ss) => {
+  let chromeDriver = await ChromeDriver.Launch(<any> process.stdout);
+  const leaks = await BLeak.FindLeaks(configFileSource, chromeDriver);/*, (ss) => {
         const p = `${base}${i}.heapsnapshot`;
         console.log(`Writing ${p}...`);
         writeFileSync(p, Buffer.from(JSON.stringify(ss), 'utf8'));

@@ -1,15 +1,12 @@
 import {Server as HTTPServer} from 'http';
-// import ChromeDriver from '../src/webdriver/chrome_driver';
 import BLeak from '../src/lib/bleak';
 import createHTTPServer from './util/http_server';
-// import Proxy from '../src/proxy/proxy';
-import ChromeRemoteDebuggingDriver from '../src/webdriver/chrome_remote_debugging_driver';
-//import {readFileSync} from 'fs';
-import {readFileSync, writeFileSync} from 'fs';
+import ChromeDriver from '../src/lib/chrome_driver';
+import {readFileSync} from 'fs';
 import {equal as assertEqual} from 'assert';
-import {IProxy} from '../src/common/interfaces';
 
 const HTTP_PORT = 8875;
+const DEBUG = false;
 
 interface TestFile {
   mimeType: string;
@@ -51,6 +48,25 @@ const FILES: {[name: string]: TestFile} = {
       var obj = {};
       var i = 0;
       var power = 2;
+      window.objfcn = function() {
+        var top = Math.pow(2, power);
+        power++;
+        for (var j = 0; j < top; j++) {
+          obj[Math.random()] = Math.random();
+        }
+      };
+    })();
+    document.getElementById('btn').addEventListener('click', function() {
+      window.objfcn();
+    });`)
+  },
+  '/closure_test_dom.html': getHTMLConfig('closure_test_dom'),
+  '/closure_test_dom.js': {
+    mimeType: 'text/javascript',
+    data: Buffer.from(`(function() {
+      var obj = {};
+      var i = 0;
+      var power = 2;
       document.getElementById('btn').addEventListener('click', function() {
         var top = Math.pow(2, power);
         power++;
@@ -61,8 +77,8 @@ const FILES: {[name: string]: TestFile} = {
     })();
     `, 'utf8')
   },
-  '/closure_test_on_property.html': getHTMLConfig('closure_test_on_property'),
-  '/closure_test_on_property.js': {
+  '/closure_test_dom_on_property.html': getHTMLConfig('closure_test_dom_on_property'),
+  '/closure_test_dom_on_property.js': {
     mimeType: 'text/javascript',
     data: Buffer.from(`(function() {
       var obj = {};
@@ -251,13 +267,11 @@ const FILES: {[name: string]: TestFile} = {
 describe('End-to-end Tests', function() {
   // 10 minute timeout.
   this.timeout(600000);
-  let proxy: IProxy;
   let httpServer: HTTPServer;
-  let driver: ChromeRemoteDebuggingDriver;
+  let driver: ChromeDriver;
   before(async function() {
     httpServer = await createHTTPServer(FILES, HTTP_PORT);
-    driver = await ChromeRemoteDebuggingDriver.Launch(<any> process.stdout);
-    proxy = driver;
+    driver = await ChromeDriver.Launch(<any> process.stdout);
   });
 
   function createStandardLeakTest(description: string, rootFilename: string, expected_line: number): void {
@@ -277,7 +291,7 @@ describe('End-to-end Tests', function() {
           }
         ];
         exports.timeout = 30000;
-      `, proxy, driver, (ss) => {
+      `, driver, (ss) => {
         // writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
         // i++;
         return Promise.resolve();
@@ -299,7 +313,8 @@ describe('End-to-end Tests', function() {
 
   createStandardLeakTest('Catches leaks', 'test', 8);
   createStandardLeakTest('Catches leaks in closures', 'closure_test', 9);
-  createStandardLeakTest('Catches leaks in closures when event listener is assigned on a property', 'closure_test_on_property', 9);
+  createStandardLeakTest('Catches leaks in closures on dom', 'closure_test_dom', 9);
+  createStandardLeakTest('Catches leaks in closures when event listener is assigned on a property', 'closure_test_dom_on_property', 9);
   createStandardLeakTest('Catches leaks in closures, even with irrelevant DOM objects', 'closure_test_irrelevant_dom', 9);
   createStandardLeakTest('Catches leaks in closures, even with disconnected DOM fragments', 'closure_test_disconnected_dom', 10);
   // Not supported.
@@ -314,15 +329,18 @@ describe('End-to-end Tests', function() {
   after(function(done) {
     //setTimeout(function() {
     // Shutdown both HTTP server and proxy.
-    httpServer.close((e: any) => {
-      if (e) {
-        done(e);
-      } else {
-        driver.shutdown().then(() => {
-          done();
-        }).catch(done);
-      }
-    });
+    function finish() {
+      httpServer.close((e: any) => {
+        if (e) {
+          done(e);
+        } else {
+          driver.shutdown().then(() => {
+            done();
+          }).catch(done);
+        }
+      });
+    }
+    DEBUG ? setTimeout(finish, 99999999) : finish();
     //}, 99999999);
   });
 });

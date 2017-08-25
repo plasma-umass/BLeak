@@ -1,5 +1,5 @@
 import {equal as assertEqual, notEqual as assertNotEqual} from 'assert';
-import {injectIntoHead, exposeClosureState, parseHTML, evalRewriteFunction} from '../src/lib/transformations';
+import {exposeClosureState, evalRewriteFunction, injectIntoHead, parseHTML} from '../src/lib/transformations';
 import {readFileSync} from 'fs';
 
 const AGENT_SOURCE = readFileSync(require.resolve('../src/lib/bleak_agent'), "utf8");
@@ -327,13 +327,10 @@ describe('Transformations', function() {
       const a = module.obj();
       (<Window> <any> global).$$$INSTRUMENT_PATHS$$$([{
         id: 1,
-        paths: [{
-          root: { type: RootType.GLOBAL},
-          path: [{
-            type: EdgeType.NAMED,
-            indexOrName: "a"
-          }]
-        }]
+        isGrowing: true,
+        indexOrName: "a",
+        type: EdgeType.NAMED,
+        children: []
       }]);
       assertNotEqual(module.obj(), a, `Proxy for global variable 'a' is properly installed`);
       assertEqual(module.cmp(a), true, `a === Proxy(a)`);
@@ -418,6 +415,14 @@ describe('Transformations', function() {
 
     // instrument a global variable and get stack traces
     // with() with undefined / null / zeroish values.
+
+    // growing paths: set up such that it has two separate custom setters!
+
+    // growing window?
+
+    // cycle of growing objects??
+
+    // getters/setters
   });
   // NEED A SWITCH CASE VERSION where it's not within a block!!!
 });

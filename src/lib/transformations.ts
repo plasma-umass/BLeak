@@ -1,8 +1,9 @@
 import {SourceFile} from '../common/interfaces';
 import {parse as parseURL} from 'url';
-import {readFileSync} from 'fs';
-import {Parser as HTMLParser, DomHandler, DomUtils} from 'htmlparser2';
 import {exposeClosureState} from './closure_state_transform';
+import {DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH} from '../common/util';
+import {Parser as HTMLParser, DomHandler, DomUtils} from 'htmlparser2';
+import {readFileSync} from 'fs';
 
 export {exposeClosureState} from './closure_state_transform';
 
@@ -105,37 +106,31 @@ export function injectIntoHead(filename: string, source: string, injection: HTML
   }
   parsedHTML.forEach(search);
 
-  if (!headNode && !htmlNode) {
-    // Might be an angular template.
-    return source;
-  } else {
+  if (headNode || htmlNode) {
     const injectionTarget = headNode ? headNode : htmlNode;
     if (!injectionTarget.children) {
       injectionTarget.children = [];
     }
     injectionTarget.children = injection.concat(injectionTarget.children);
-
-    inlineScripts.forEach((n, i) => {
-      if (!n.children || n.children.length !== 1) {
-        console.log(`Weird! Found JS node with the following children: ${JSON.stringify(n.children)}`);
-      }
-      n.children[0].data = jsTransform(`${filename}-inline${i}.js`, n.children[0].data);
-    });
-    return DomUtils.getOuterHTML(parsedHTML);
   }
+  inlineScripts.forEach((n, i) => {
+    if (!n.children || n.children.length !== 1) {
+      console.log(`Weird! Found JS node with the following children: ${JSON.stringify(n.children)}`);
+    }
+    n.children[0].data = jsTransform(`${filename}-inline${i}.js`, n.children[0].data);
+  });
+  return DomUtils.getOuterHTML(parsedHTML);
 }
 
-export const DEFAULT_AGENT_LOCATION = require.resolve('./bleak_agent');
-export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
-export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixes: number[] = [], agentURL = DEFAULT_AGENT_URL, agentLocation = DEFAULT_AGENT_LOCATION): (f: SourceFile) => SourceFile {
-  const agentData = readFileSync(agentLocation);
-  const parsedInjection = parseHTML(`<script type="text/javascript" src="${agentURL}"></script>
-  <script type="text/javascript">
-    ${JSON.stringify(fixes)}.forEach(function(num) {
-      $$$SHOULDFIX$$$(num, true);
-    });
-    ${config}
-  </script>`);
+export function proxyRewriteFunction(rewrite: boolean, config = "", fixes: number[] = []): (f: SourceFile) => SourceFile {
+  const parsedInjection = parseHTML(`<script type="text/javascript" src="${DEFAULT_AGENT_URL}"></script>
+    <script type="text/javascript">
+      ${JSON.stringify(fixes)}.forEach(function(num) {
+        $$$SHOULDFIX$$$(num, true);
+      });
+      ${config}
+    </script>`);
+  const agentData = readFileSync(DEFAULT_AGENT_PATH);
   return (f: SourceFile): SourceFile => {
     let mime = f.mimetype.toLowerCase();
     if (mime.indexOf(";") !== -1) {
@@ -143,7 +138,7 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
     }
     console.log(`[${f.status}] ${f.url}: ${mime}`);
     const url = parseURL(f.url);
-    if (url.path.toLowerCase() === agentURL) {
+    if (url.path.toLowerCase() === DEFAULT_AGENT_URL) {
       f.status = 200;
       f.contents = agentData;
       // Note: mimetype may not be javascript.
@@ -170,17 +165,17 @@ export function proxyRewriteFunction(rewrite: boolean, config: string = "", fixe
     }*/
     switch (mime) {
       case 'text/html':
-        //if (f.status === 200) {
-          f.contents = Buffer.from(injectIntoHead(url.path, f.contents.toString("utf8"), parsedInjection, rewrite ? exposeClosureState : identJSTransform), 'utf8');
-        //}
-        break;
+      //if (f.status === 200) {
+        f.contents = Buffer.from(injectIntoHead(url.path, f.contents.toString("utf8"), parsedInjection, rewrite ? exposeClosureState : identJSTransform), 'utf8');
+      //}
+      break;
       case 'text/javascript':
       case 'application/javascript':
       case 'text/x-javascript':
       case 'application/x-javascript':
         if (f.status === 200 && rewrite) {
           console.log(`Rewriting ${f.url}...`);
-          f.contents = Buffer.from(exposeClosureState(url.path, f.contents.toString("utf8"), agentURL), 'utf8');
+          f.contents = Buffer.from(exposeClosureState(url.path, f.contents.toString("utf8"), DEFAULT_AGENT_URL), 'utf8');
         }
         break;
     }
