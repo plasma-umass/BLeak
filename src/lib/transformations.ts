@@ -1,9 +1,4 @@
-import {SourceFile} from '../common/interfaces';
-import {parse as parseURL} from 'url';
-import {exposeClosureState} from './closure_state_transform';
-import {DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH} from '../common/util';
 import {Parser as HTMLParser, DomHandler, DomUtils} from 'htmlparser2';
-import {readFileSync} from 'fs';
 
 export {exposeClosureState} from './closure_state_transform';
 
@@ -112,6 +107,9 @@ export function injectIntoHead(filename: string, source: string, injection: HTML
       injectionTarget.children = [];
     }
     injectionTarget.children = injection.concat(injectionTarget.children);
+  } else {
+    // AngularJS??
+    return source;
   }
   inlineScripts.forEach((n, i) => {
     if (!n.children || n.children.length !== 1) {
@@ -122,7 +120,7 @@ export function injectIntoHead(filename: string, source: string, injection: HTML
   return DomUtils.getOuterHTML(parsedHTML);
 }
 
-export function proxyRewriteFunction(rewrite: boolean, config = "", fixes: number[] = []): (f: SourceFile) => SourceFile {
+/*export function proxyRewriteFunction(rewrite: boolean, config = "", fixes: number[] = []): (f: SourceFile) => SourceFile {
   const parsedInjection = parseHTML(`<script type="text/javascript" src="${DEFAULT_AGENT_URL}"></script>
     <script type="text/javascript">
       ${JSON.stringify(fixes)}.forEach(function(num) {
@@ -138,7 +136,8 @@ export function proxyRewriteFunction(rewrite: boolean, config = "", fixes: numbe
     }
     console.log(`[${f.status}] ${f.url}: ${mime}`);
     const url = parseURL(f.url);
-    if (url.path.toLowerCase() === DEFAULT_AGENT_URL) {
+    // NOTE: Use `pathname`, as it cuts out query variables that may have been tacked on.
+    if (url.pathname.toLowerCase() === DEFAULT_AGENT_URL) {
       f.status = 200;
       f.contents = agentData;
       // Note: mimetype may not be javascript.
@@ -163,11 +162,11 @@ export function proxyRewriteFunction(rewrite: boolean, config = "", fixes: numbe
       const newC = c.slice(0, i) + `if (!window["$$HAS_SUBSCRIBED$$"]) window["$$HAS_SUBSCRIBED$$"] = true && EventLog.subscribe(".mail_source"` + c.slice(i + magic.length);
       f.contents = Buffer.from(newC, "utf8");
     }*/
-    switch (mime) {
+    /*switch (mime) {
       case 'text/html':
       //if (f.status === 200) {
-        f.contents = Buffer.from(injectIntoHead(url.path, f.contents.toString("utf8"), parsedInjection, rewrite ? exposeClosureState : identJSTransform), 'utf8');
-      //}
+        f.contents = Buffer.from(injectIntoHead(url.pathname, f.contents.toString("utf8"), parsedInjection, rewrite ? exposeClosureState : identJSTransform), 'utf8');
+        //}
       break;
       case 'text/javascript':
       case 'application/javascript':
@@ -175,7 +174,7 @@ export function proxyRewriteFunction(rewrite: boolean, config = "", fixes: numbe
       case 'application/x-javascript':
         if (f.status === 200 && rewrite) {
           console.log(`Rewriting ${f.url}...`);
-          f.contents = Buffer.from(exposeClosureState(url.path, f.contents.toString("utf8"), DEFAULT_AGENT_URL), 'utf8');
+          f.contents = Buffer.from(exposeClosureState(url.pathname, f.contents.toString("utf8"), DEFAULT_AGENT_URL), 'utf8');
         }
         break;
     }
@@ -190,3 +189,4 @@ export function evalRewriteFunction(scope: string, source: string): string {
 export function evalNopFunction(scope: string, source: string): string {
   return source;
 }
+*/

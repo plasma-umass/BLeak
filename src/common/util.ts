@@ -1,14 +1,11 @@
-import ChromeDriver from '../lib/chrome_driver';
-import {proxyRewriteFunction, evalRewriteFunction} from '../lib/transformations';
+import {default as MITMProxy, getInterceptor} from '../lib/mitmproxy';
+import {createConnection, Socket} from 'net';
 
 export const DEFAULT_AGENT_PATH = require.resolve('../lib/bleak_agent');
 export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
 
-export async function configureProxy(driver: ChromeDriver, diagnose: boolean, fixes: number[] = [], config = ""): Promise<void> {
-  driver.onRequest(proxyRewriteFunction(diagnose, config, fixes));
-  if (diagnose) {
-    driver.onEval(evalRewriteFunction);
-  }
+export function configureProxy(proxy: MITMProxy, diagnose: boolean, fixes: number[] = [], config = ""): void {
+  proxy.cb = getInterceptor(DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH, diagnose, config, fixes);
 }
 
 export function time<T>(n: string, action: () => T, log?: (s: string) => void): T {
@@ -113,4 +110,46 @@ export class FourBitArray {
     const offset = i - (index << 1);
     return offset === 1 ? (this._bits[index] >> 4) : this._bits[index] & 0xF;
   }
+}
+
+export function waitForPort(port: number, retries: number = 10, interval: number = 500): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let retriesRemaining = retries;
+    let retryInterval = interval;
+    let timer: NodeJS.Timer = null;
+    let socket: Socket = null;
+
+    function clearTimerAndDestroySocket() {
+      clearTimeout(timer);
+      timer = null;
+      if (socket) socket.destroy();
+      socket = null;
+    }
+
+    function retry() {
+      tryToConnect();
+    }
+
+    function tryToConnect() {
+      clearTimerAndDestroySocket();
+
+      if (--retriesRemaining < 0) {
+        reject(new Error('out of retries'));
+      }
+
+      socket = createConnection(port, "localhost", function() {
+        clearTimerAndDestroySocket();
+        if (retriesRemaining >= 0) resolve();
+      });
+
+      timer = setTimeout(function() { retry(); }, retryInterval);
+
+      socket.on('error', function(err) {
+        clearTimerAndDestroySocket();
+        setTimeout(retry, retryInterval);
+      });
+    }
+
+    tryToConnect();
+  });
 }

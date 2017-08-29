@@ -2,22 +2,6 @@ import {StackFrame} from 'error-stack-parser';
 import {GrowthObject} from '../lib/growth_graph';
 
 /**
- * Contains information on a source file.
- */
-export interface SourceFile {
-  status: number;
-  url: string;
-  mimetype: string;
-  contents: Buffer;
-}
-
-export interface IHTTPResponse {
-  statusCode: number;
-  headers: any;
-  data: Buffer;
-}
-
-/**
  * A BLeak configuration file.
  */
 export interface ConfigurationFile {

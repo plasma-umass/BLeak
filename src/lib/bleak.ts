@@ -55,7 +55,6 @@ export class BLeakDetector {
    */
   public static async FindLeaks(configSource: string, driver: ChromeDriver, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<Leak[]> {
     const detector = new BLeakDetector(driver, configSource, snapshotCb);
-    await detector.configureProxy(false, []);
     return detector.findLeaks();
   }
 
@@ -71,7 +70,6 @@ export class BLeakDetector {
    */
   public static async EvaluateLeakFixes(configSource: string, driver: ChromeDriver, iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<void> {
     const detector = new BLeakDetector(driver, configSource, snapshotCb);
-    await detector.configureProxy(false, []);
     return detector.evaluateLeakFixes(iterations, iterationsPerSnapshot, log);
   }
 
@@ -88,10 +86,11 @@ export class BLeakDetector {
     this._config = getConfigFromSource(configSource);
     this._snapshotCb = snapshotCb;
     this._configInject = getConfigBrowserInjection(configSource);
+    this.configureProxy(false, []);
   }
 
-  public async configureProxy(rewriteJavaScript: boolean, fixes: number[]): Promise<void> {
-    return configureProxy(this._driver, rewriteJavaScript, fixes, this._configInject);
+  public configureProxy(rewriteJavaScript: boolean, fixes: number[]): void {
+    return configureProxy(this._driver.mitmProxy, rewriteJavaScript, fixes, this._configInject);
   }
 
   public takeSnapshot(): HeapSnapshotParser {
@@ -242,7 +241,7 @@ export class BLeakDetector {
    */
   private async _getGrowthStacks(): Promise<{[id: number]: StackFrame[][]}> {
     const traces = await this._driver.runCode<GrowingStackTraces>(`window.$$$GET_STACK_TRACES$$$()`);
-    return StackFrameConverter.ConvertGrowthStacks(this._driver, this._config.url, traces);
+    return StackFrameConverter.ConvertGrowthStacks(this._driver.mitmProxy, this._config.url, traces);
   }
 }
 

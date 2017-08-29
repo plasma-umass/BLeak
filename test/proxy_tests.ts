@@ -1,14 +1,15 @@
 import {Server as HTTPServer} from 'http';
 import createHTTPServer from './util/http_server';
 import {equal as assertEqual} from 'assert';
-import {SourceFile} from '../src/common/interfaces';
-import ChromeDriver from '../src/lib/chrome_driver';
+import {gzipSync, gunzipSync} from 'zlib';
+import {default as MITMProxy, InterceptedHTTPMessage, nopInterceptor} from '../src/lib/mitmproxy';
 
 const HTTP_PORT = 8888;
 
 interface TestFile {
   mimeType: string;
   data: Buffer;
+  headers?: {[name: string]: string}
 }
 
 // 'Files' present in the test HTTP server
@@ -20,6 +21,13 @@ const FILES: {[name: string]: TestFile} = {
   '/test.js': {
     mimeType: 'text/javascript',
     data: Buffer.from('window.SHENANIGANS = true;', 'utf8')
+  },
+  '/test.js.gz': {
+    mimeType: 'text/javascript',
+    data: gzipSync(Buffer.from('window.SHENANIGANS = true;', 'utf8')),
+    headers: {
+      'content-encoding': 'gzip'
+    }
   },
   '/test.jpg': {
     mimeType: 'image/jpeg',
@@ -42,23 +50,24 @@ const FILES: {[name: string]: TestFile} = {
 
 describe('Proxy', function() {
   this.timeout(30000);
-  let proxy: ChromeDriver;
+  let proxy: MITMProxy;
   let httpServer: HTTPServer;
   before(async function() {
     httpServer = await createHTTPServer(FILES, HTTP_PORT);
-    proxy = await ChromeDriver.Launch(<any> process.stdout);
+    proxy = await MITMProxy.Create();
   });
 
   async function requestFile(path: string, expected: Buffer): Promise<void> {
-    const response = await proxy.httpGet(`http://localhost:${HTTP_PORT}${path}`);
-    assertEqual(response.data.equals(expected), true);
+    const response = await proxy.proxyGet(`http://localhost:${HTTP_PORT}${path}`);
+    if (!response.body.equals(expected)) {
+      console.log(`${response.body.length} actual, ${expected.length} expected`);
+      console.log(`${response.body[10]}, ${expected[10]}`);
+    }
+    assertEqual(response.body.equals(expected), true);
   }
 
   it("Properly proxies text files", async function() {
-    function nop(f: SourceFile): SourceFile {
-      return f;
-    }
-    proxy.onRequest(nop);
+    proxy.cb = nopInterceptor;
     const promises = ['/test.html', '/test.js'].map((filename) => {
       return requestFile(filename, FILES[filename].data);
     });
@@ -66,15 +75,20 @@ describe('Proxy', function() {
     return Promise.all(promises);
   });
 
+  it("Properly handles compressed data", async function() {
+    proxy.cb = nopInterceptor;
+    await requestFile('/test.js.gz', gunzipSync(FILES['/test.js.gz'].data));
+  });
+
   it("Properly rewrites text files", async function() {
     const MAGIC_STRING = Buffer.from("HELLO THERE", 'utf8');
-    function transform(f: SourceFile): SourceFile {
-      if (f.mimetype === "text/html" || f.mimetype === "text/javascript") {
-        f.contents = MAGIC_STRING;
+    function transform(m: InterceptedHTTPMessage): void {
+      const mimeType = m.response.getHeader('content-type').toLowerCase();
+      if (mimeType === "text/html" || mimeType === "text/javascript") {
+        m.setResponseBody(MAGIC_STRING);
       }
-      return f;
     }
-    proxy.onRequest(transform);
+    proxy.cb = transform;
     const promises = ['/test.html', '/test.js'].map((filename) => {
       return requestFile(filename, MAGIC_STRING);
     });
@@ -83,17 +97,16 @@ describe('Proxy', function() {
   });
 
   it("Properly proxies huge binary files", async function() {
-    proxy.onRequest((f) => f);
+    proxy.cb = nopInterceptor;
     return requestFile('/huge.jpg', FILES['/huge.jpg'].data);
   });
 
   it("Properly proxies huge text files", async function() {
     const raw = FILES['/huge.html'].data;
     const expected = Buffer.alloc(raw.length, 98);
-    proxy.onRequest((f) => {
-      f.contents = Buffer.from(f.contents.toString().replace(/a/g, 'b'), 'utf8');
-      return f;
-    });
+    proxy.cb = (f: InterceptedHTTPMessage): void => {
+      f.setResponseBody(Buffer.from(f.responseBody.toString().replace(/a/g, 'b'), 'utf8'));
+    };
     return requestFile('/huge.html', expected);
   });
 

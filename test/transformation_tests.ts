@@ -1,5 +1,6 @@
 import {equal as assertEqual, notEqual as assertNotEqual} from 'assert';
-import {exposeClosureState, evalRewriteFunction, injectIntoHead, parseHTML} from '../src/lib/transformations';
+import {exposeClosureState, injectIntoHead, parseHTML} from '../src/lib/transformations';
+import {DEFAULT_AGENT_URL} from '../src/common/util';
 import {readFileSync} from 'fs';
 
 const AGENT_SOURCE = readFileSync(require.resolve('../src/lib/bleak_agent'), "utf8");
@@ -10,7 +11,7 @@ class XHRShim {
   public setRequestHeader() {}
   public send(data: string) {
     const d: { scope: string, source: string } = JSON.parse(data);
-    this.responseText = evalRewriteFunction(d.scope, d.source);
+    this.responseText = exposeClosureState(`eval-${Math.random()}.js`, d.source, DEFAULT_AGENT_URL, d.scope);
     // console.log(`Eval:\n${this.responseText}`);
   }
 }

@@ -95,7 +95,7 @@ export interface GrowthObject {
   transitiveClosureSize: number;
 }
 
-function shouldTraverse(edge: Edge): boolean {
+function shouldTraverse(edge: Edge, wantDom: boolean): boolean {
   // HACK: Ignore <symbol> properties. There may be multiple properties
   // with the name <symbol> in a heap snapshot. There does not appear to
   // be an easy way to disambiguate them.
@@ -111,9 +111,7 @@ function shouldTraverse(edge: Edge): boolean {
       case "context":
         return true;
       default:
-        return false;
-      //default:
-      //  return edge.to.name.startsWith("Document DOM");
+        return wantDom && edge.to.name.startsWith("Document DOM");
     }
   } else if (edge.to.type === SnapshotNodeType.Synthetic) {
     return edge.to.name === "(Document DOM trees)";
@@ -188,7 +186,7 @@ function mergeGraphs(oldG: HeapGraph, oldGrowth: TwoBitArray, newG: HeapGraph, n
         const oldEdge = oldEdges.get(hash(newNode, newChildEdge));
         oldEdgeTmp.edgeIndex = oldEdge;
         if (oldEdge !== undefined && !visitBits.get(newChildEdge.toIndex) &&
-            shouldTraverse(oldEdgeTmp) && shouldTraverse(newChildEdge)) {
+            shouldTraverse(oldEdgeTmp, false) && shouldTraverse(newChildEdge, false)) {
           visitBits.set(newChildEdge.toIndex, true);
           enqueue(oldEdgeTmp.toIndex, newChildEdge.toIndex);
         }
@@ -239,16 +237,20 @@ export class HeapGrowthTracker {
       paths.push(e);
     }
 
-    function filter(n: Node, e: Edge) {
-      return nonWeakFilter(n, e) && shouldTraverse(e);
+    function filterNoDom(n: Node, e: Edge) {
+      return nonWeakFilter(n, e) && shouldTraverse(e, false);
     }
 
-    // Get the growing paths.
+    function filterIncludeDom(n: Node, e: Edge) {
+      return nonWeakFilter(n, e) && shouldTraverse(e, true);
+    }
+
+    // Get the growing paths. Ignore paths through the DOM.
     this._heap.visitGlobalEdges((e, getPath) => {
       if (this._growthStatus.get(e.toIndex) === GrowthStatus.GROWING) {
         addPath(getPath());
       }
-    }, filter);
+    }, filterNoDom);
 
     // Calculate growth metrics.
 
@@ -258,12 +260,13 @@ export class HeapGrowthTracker {
       nonleakVisitBits.set(n.nodeIndex, true);
     }, (n, e) => {
       // Filter out edges to growing objects.
-      return filter(n, e) && !growthPaths.has(e.toIndex);
+      // Traverse the DOM this time.
+      return filterIncludeDom(n, e) && !growthPaths.has(e.toIndex);
     });
 
     function nonLeakFilter(n: Node, e: Edge): boolean {
       // Filter out items that are reachable from non-leaks.
-      return filter(n, e) && !nonleakVisitBits.get(e.toIndex);
+      return filterIncludeDom(n, e) && !nonleakVisitBits.get(e.toIndex);
     }
 
     // Increment visit counter for each heap item reachable from a leak.
@@ -292,7 +295,7 @@ export class HeapGrowthTracker {
       // Remove if bad.
       bfsVisitor(this._heap, [growthNodeIndex], (n) => {
         transitiveClosureSize += n.size;
-      }, filter);
+      }, filterIncludeDom);
 
       rv.push({ node: new Node(growthNodeIndex, this._heap), paths, retainedSize, adjustedRetainedSize, transitiveClosureSize });
     });

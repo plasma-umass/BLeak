@@ -22,6 +22,10 @@ declare function importScripts(s: string): void;
   const IS_WINDOW = typeof(window) !== "undefined";
   const IS_WORKER = typeof(importScripts) !== "undefined";
   const ROOT = <Window> (IS_WINDOW ? window : IS_WORKER ? self : global);
+  // Avoid installing self twice.
+  if (ROOT.$$$INSTRUMENT_PATHS$$$) {
+    return;
+  }
   ROOT.$$$INSTRUMENT_PATHS$$$ = $$$INSTRUMENT_PATHS$$$;
   ROOT.$$$GET_STACK_TRACES$$$ = $$$GET_STACK_TRACES$$$;
   ROOT.$$$CREATE_SCOPE_OBJECT$$$ = $$$CREATE_SCOPE_OBJECT$$$;
@@ -447,17 +451,17 @@ declare function importScripts(s: string): void;
 
   function instrumentPath(rootAccessString: string, accessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
     let setProxy: AssignmentProxy;
-    console.log(`Instrumenting ${accessString} at ${rootAccessString}`);
+    //console.log(`Instrumenting ${accessString} at ${rootAccessString}`);
     const prop = Object.getOwnPropertyDescriptor(root, tree.indexOrName);
     if (prop && prop.set && Array.isArray((<any> prop.set)['$$trees'])) {
-      console.log(`It's already instrumented!`);
+      //console.log(`It's already instrumented!`);
       setProxy = <any> prop.set;
     } else {
-      console.log(`New instrumentation.`);
+      //console.log(`New instrumentation.`);
       let hiddenValue = root[tree.indexOrName];
       const isGrowing = tree.isGrowing;
       if (isGrowing) {
-        console.log(`Converting the hidden value into a proxy.`)
+        //console.log(`Converting the hidden value into a proxy.`)
         hiddenValue = getProxy(accessString, hiddenValue);
         if (stackTrace !== null && getProxyStatus(hiddenValue) === ProxyStatus.IS_PROXY) {
           const map: GrowthObjectStackTraces = getProxyStackTraces(hiddenValue);
@@ -527,10 +531,10 @@ declare function importScripts(s: string): void;
 
   function instrumentTree(rootAccessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
     const accessString = rootAccessString + `[${safeString(`${tree.indexOrName}`)}]`;
-    console.log(`access string: ${accessString}`);
+    //console.log(`access string: ${accessString}`);
     // Ignore roots that are not proxyable.
     if (!isProxyable(root)) {
-      console.log(`Not a proxyable root.`);
+      //console.log(`Not a proxyable root.`);
       return;
     }
     const obj = root[tree.indexOrName];

@@ -1,15 +1,27 @@
-import {SourceFile, IHTTPResponse} from '../common/interfaces';
 import HeapSnapshotParser from '../lib/heap_snapshot_parser';
 import {createSession} from 'chrome-debugging-client';
 import {ISession as ChromeSession, IAPIClient as ChromeAPIClient, IBrowserProcess as ChromeProcess, IDebuggingProtocolClient as ChromeDebuggingProtocolClient} from 'chrome-debugging-client/dist/lib/types';
 import {HeapProfiler as ChromeHeapProfiler, Network as ChromeNetwork, Console as ChromeConsole, Page as ChromePage, Runtime as ChromeRuntime, DOM as ChromeDOM} from "chrome-debugging-client/dist/protocol/tot";
 import {WriteStream} from 'fs';
-import {request as HTTPRequest, STATUS_CODES} from 'http';
-import {request as HTTPSRequest} from 'https';
-import {parse as parseURL} from 'url';
 import * as repl from 'repl';
 import {parse as parseJavaScript} from 'esprima';
-import {gunzipSync} from 'zlib';
+import * as childProcess from 'child_process';
+import {default as MITMProxy} from './mitmproxy';
+
+// HACK: Patch spawn to work around chrome-debugging-client limitation
+// https://github.com/krisselden/chrome-debugging-client/issues/10
+const originalSpawn = childProcess.spawn;
+(<any> childProcess).spawn = function(command: string, args?: string[], options?: childProcess.SpawnOptions): childProcess.ChildProcess {
+  if (args && Array.isArray(args)) {
+    const index = args.indexOf("--no-proxy-server");
+    if (index !== -1) {
+      args.splice(index, 1);
+    }
+  }
+  return originalSpawn.call(this, command, args, options);
+}
+
+//const PROXY_PORT = 8033;
 
 export interface DOMNode extends ChromeDOM.Node {
   eventListenerCounts: {[name: string]: number};
@@ -25,93 +37,16 @@ function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
   return `${e.url}:${e.lineNumber}:${e.columnNumber} Uncaught ${e.exception ? e.exception.className : "exception"}: ${e.text}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.map((f) => `${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`;
 }
 
-/**
- * Makes an HTTP / HTTPS request on behalf of the browser.
- * @param req
- */
-async function makeHttpRequest(urlString: string, method: string, headers: any, postData?: string): Promise<IHTTPResponse> {
-  // console.log(req);
-  const url = parseURL(urlString, false);
-  const makeRequest = url.protocol === "https:" ? HTTPSRequest : HTTPRequest;
-  // Prune out keep-alive.
-  delete headers['connection'];
-  return new Promise<IHTTPResponse>((resolve, reject) => {
-    const nodeReq = makeRequest({
-      protocol: url.protocol,
-      host: url.hostname,
-      port: +url.port,
-      method: method,
-      path: url.path,
-      headers: headers
-    }, (res) => {
-      const rv: IHTTPResponse = {
-        statusCode: res.statusCode,
-        headers: res.headers,
-        data: null
-      };
-      let data: Buffer[] = [];
-      res.on('data', (chunk: Buffer) => {
-        data.push(chunk);
-      });
-      res.on('end', () => {
-        rv.data = Buffer.concat(data);
-        resolve(rv);
-      });
-      res.on('error', reject);
-    });
-    nodeReq.on('error', reject);
-    if (postData) {
-      nodeReq.write(postData);
-    }
-    nodeReq.end();
-  });
-}
-
-// Strip these headers from requests and responses.
-const BAD_HEADERS = [
-  "if-none-match",
-  "if-modified-since",
-  "content-security-policy",
-  "x-webkit-csp",
-  "x-content-security-policy",
-  "accept-encoding",
-  "content-encoding"
-];
-
-function lowerCase(s: string): string {
-  return s.toLowerCase();
-}
-
-function stripHeaders(headers: any): void {
-  const keys = Object.keys(headers);
-  const lowerKeys = keys.map(lowerCase);
-  const badHeaderIndices = BAD_HEADERS.map((h) => lowerKeys.indexOf(h));
-  for (const badIndex of badHeaderIndices) {
-    if (badIndex !== -1) {
-      delete headers[keys[badIndex]];
-    }
-  }
-}
-
-/**
- * Converts the response into a base64 encoded raw response,
- * including HTTP status line and headers etc.
- */
-function makeRawResponse(res: IHTTPResponse): string {
-  const headers = Buffer.from(`HTTP/1.1 ${res.statusCode} ${STATUS_CODES[res.statusCode]}\r\n` +
-                   `${Object.keys(res.headers).map((k) => `${k}: ${res.headers[k]}`).join("\r\n")}\r\n\r\n`, 'ascii');
-  const response = Buffer.concat([headers, res.data]);
-  return response.toString('base64');
-}
-
 export default class ChromeDriver {
   public static async Launch(log: WriteStream): Promise<ChromeDriver> {
+    const mitmProxy = await MITMProxy.Create();
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
     // spawns a chrome instance with a tmp user data
     // and the debugger open to an ephemeral port
     const process = await session.spawnBrowser("canary", {
       // additionalArguments: ['--headless'],
-      windowSize: { width: 1920, height: 1080 }
+      windowSize: { width: 1920, height: 1080 },
+      additionalArguments: [`--proxy-server=127.0.0.1:8080`]
     });
     // open the REST API for tabs
     const client = session.createAPIClient("localhost", process.remoteDebuggingPort);
@@ -129,15 +64,20 @@ export default class ChromeDriver {
     const runtime = new ChromeRuntime(debugClient);
     const dom = new ChromeDOM(debugClient);
     await Promise.all([heapProfiler.enable(), network.enable({}),  console.enable(), page.enable(), runtime.enable(), dom.enable()]);
-    await Promise.all([
-      network.setRequestInterceptionEnabled({ enabled: true }),
-      network.setCacheDisabled({ cacheDisabled: true }),
-      network.setBypassServiceWorker({ bypass: true })]);
+    // Intercept network requests.
+    // await network.setRequestInterceptionEnabled({ enabled: true });
+    // Disable cache
+    await network.setCacheDisabled({ cacheDisabled: true });
+    // Disable service workers
+    await network.setBypassServiceWorker({ bypass: true });
 
-    return new ChromeDriver(log, session, process, client, debugClient, page, runtime, heapProfiler, network, console, dom);
+    const driver = new ChromeDriver(log, mitmProxy, session, process, client, debugClient, page, runtime, heapProfiler, network, console, dom);
+    //driver._proxy = await createProxyServer(driver, PROXY_PORT);
+    return driver;
   }
 
   private _log: WriteStream;
+  public readonly mitmProxy: MITMProxy;
   private _session: ChromeSession;
   private _process: ChromeProcess;
   private _client: ChromeAPIClient;
@@ -149,13 +89,10 @@ export default class ChromeDriver {
   private _console: ChromeConsole;
   private _dom: ChromeDOM;
   private _loadedFrames = new Set<string>();
-  private _onRequest: (f: SourceFile) => SourceFile = (f) => f;
-  private _onEval: (scope: string, source: string) => string = (sc, so) => so;
-  // URL => contents
-  private _cache = new Map<string, IHTTPResponse>();
 
-  private constructor(log: WriteStream, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole, dom: ChromeDOM) {
+  private constructor(log: WriteStream, mitmProxy: MITMProxy, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole, dom: ChromeDOM) {
     this._log = log;
+    this.mitmProxy = mitmProxy;
     this._session = session;
     this._process = process;
     this._client = client;
@@ -177,98 +114,9 @@ export default class ChromeDriver {
       log.write(exceptionDetailsToString(e));
     };
 
-    this._network.requestIntercepted = async (evt) => {
-      if (evt.request.method.toLowerCase() === "post" && parseURL(evt.request.url).path === "/eval") {
-        // BLeak-initiated /eval request.
-        const body: { scope: string, source: string } = JSON.parse(evt.request.postData);
-        const rewrite = Buffer.from(this._onEval(body.scope, body.source), 'utf8');
-        this._network.continueInterceptedRequest({
-          interceptionId: evt.interceptionId,
-          rawResponse: makeRawResponse({
-            statusCode: 200,
-            headers: {
-              'Content-Length': rewrite.byteLength,
-              'Content-Type': 'text/javascript'
-            },
-            data: rewrite
-          })
-        });
-      } else if (evt.redirectHeaders || evt.redirectUrl || evt.request.method.toLowerCase() !== "get") {
-        // Allow with no modifications
-        this._network.continueInterceptedRequest({
-          interceptionId: evt.interceptionId
-        });
-      } else {
-        // It's a GET request that's not redirected.
-        // Attempt to fetch, pass to callback.
-        try {
-          const response = await this.httpGet(evt.request.url, evt.request.headers, evt.request.postData);
-          // Send back to client.
-          this._network.continueInterceptedRequest({
-            interceptionId: evt.interceptionId,
-            rawResponse: makeRawResponse(response)
-          });
-        } catch (e) {
-          global.console.log(`Failed to rewrite file ${evt.request.url}!`);
-          global.console.log(e);
-        }
-      }
-    };
-
     this._page.frameStoppedLoading = (e) => {
       this._loadedFrames.add(e.frameId);
     };
-  }
-
-  public async addScriptToEvaluateOnNewDocument(source: string): Promise<string> {
-    const response = await this._page.addScriptToEvaluateOnNewDocument({ source });
-    return response.identifier;
-  }
-
-  public removeScriptToEvaluateOnNewDocument(identifier: string): Promise<void> {
-    return this._page.removeScriptToEvaluateOnNewDocument({ identifier });
-  }
-
-  public async httpGet(url: string, headers: any = { "Host": parseURL(url).host }, body?: string, fromCache = false): Promise<IHTTPResponse> {
-    if (fromCache && this._cache.has(url)) {
-      return this._cache.get(url);
-    }
-
-    // Remove problematic caching headers, CSP, etc.
-    stripHeaders(headers);
-    const response = await makeHttpRequest(url, 'get', headers, body);
-    if (response.headers['content-encoding']) {
-      // Sometimes, web servers don't respect our wishes and send us gzip.
-      if (response.headers['content-encoding'] === "gzip") {
-        response.data = gunzipSync(response.data);
-      } else {
-        console.warn(`Weird encoding: ${response.headers['content-encoding']}`);
-      }
-
-    }
-    stripHeaders(response.headers);
-    let mimeType = response.headers['content-type'] as string;
-    let statusCode = response.statusCode;
-    mimeType = mimeType ? mimeType.toLowerCase() : "";
-    const newFile = this._onRequest({
-      status: statusCode,
-      mimetype: mimeType,
-      url: url,
-      contents: response.data
-    });
-    response.data = newFile.contents;
-    response.headers['content-type'] = newFile.mimetype;
-    response.statusCode = newFile.status;
-    if (response.headers['content-length']) {
-      response.headers['content-length'] = response.data.length;
-    }
-    // Disable caching.
-    // From: https://stackoverflow.com/questions/9884513/avoid-caching-of-the-http-responses
-    response.headers['expires'] = 'Tue, 03 Jul 2001 06:00:00 GMT';
-    response.headers['last-modified'] = `${(new Date()).toUTCString()}`;
-    response.headers['cache-control'] = 'max-age=0, no-cache, must-revalidate, proxy-revalidate';
-    this._cache.set(url, response);
-    return response;
   }
 
   public async navigateTo(url: string): Promise<any> {
@@ -318,14 +166,7 @@ export default class ChromeDriver {
       r.on('exit', resolve);
     });
   }
-  public onRequest(cb: (f: SourceFile) => SourceFile): void {
-    this._onRequest = cb;
+  public async shutdown(): Promise<void> {
+    await Promise.all([this._process.dispose(), this.mitmProxy.shutdown()]);
   }
-  public onEval(cb: (scope: string, source: string) => string) {
-    this._onEval = cb;
-  }
-  public shutdown(): Promise<void> {
-    return this._process.dispose();
-  }
-
 }

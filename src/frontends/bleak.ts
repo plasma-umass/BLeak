@@ -38,7 +38,7 @@ function printLeak(l: Leak, metric: "retainedSize" | "adjustedRetainedSize" | "t
     LOG(``);
     stack.forEach((f, j) => {
       if (j < 10) {
-        LOG(`        [${j}] ${f.fileName}:${f.lineNumber}:${f.columnNumber}`);
+        LOG(`        [${j}] ${f.functionName} ${f.fileName}:${f.lineNumber}:${f.columnNumber}`);
       }
     });
     if (stack.length > 10) {

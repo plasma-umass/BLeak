@@ -3,11 +3,17 @@ import {createServer as createHTTPServer, Server as HTTPServer, ServerResponse} 
 export interface TestFile {
   mimeType: string;
   data: Buffer;
+  headers?: {[name: string]: string};
 }
 
 function sendResponse(res: ServerResponse, testFile: TestFile): void {
   res.statusCode = 200;
   res.setHeader('content-type', testFile.mimeType);
+  if (testFile.headers) {
+    Object.keys(testFile.headers).forEach((k) => {
+      res.setHeader(k, testFile.headers[k]);
+    });
+  }
   res.write(testFile.data);
   res.end();
 }
