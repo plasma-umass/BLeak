@@ -1,7 +1,7 @@
 import {Server as WebSocketServer} from 'ws';
 import {spawn, ChildProcess} from 'child_process';
 import {resolve} from 'path';
-import {parseHTML, exposeClosureState, injectIntoHead} from './transformations';
+import {parseHTML, exposeClosureState, injectIntoHead, ensureES5} from './transformations';
 import {readFileSync} from 'fs';
 import {parse as parseURL, Url} from 'url';
 import {waitForPort} from '../common/util';
@@ -99,6 +99,10 @@ export class InterceptedHTTPResponse extends AbstractHTTPHeaders {
     this.removeHeader('transfer-encoding');
     // MITMProxy decodes the data for us.
     this.removeHeader('content-encoding');
+    // CSP is bad!
+    this.removeHeader('content-security-policy');
+    this.removeHeader('x-webkit-csp');
+    this.removeHeader('x-content-security-policy');
   }
 
   public toJSON(): HTTPResponseMetadata {
@@ -184,7 +188,7 @@ export class InterceptedHTTPMessage {
  * Class that launches MITM proxy and talks to it via WebSockets.
  */
 export default class MITMProxy {
-  private static _cleanup: ChildProcess[] = [];
+  private static _activeProcesses: ChildProcess[] = [];
 
   public static async Create(cb: Interceptor = nopInterceptor): Promise<MITMProxy> {
     // Construct WebSocket server, and wait for it to begin listening.
@@ -214,12 +218,9 @@ export default class MITMProxy {
       const mitmProcess = spawn("mitmdump", ["--anticache", "-s", resolve(__dirname, "../../../scripts/proxy.py")], {
         stdio: 'inherit'
       });
-      if (MITMProxy._cleanup.push(mitmProcess) === 1) {
-        process.on('SIGINT', () => {
-          MITMProxy._cleanup.forEach((p) => {
-            p.kill('SIGKILL');
-          });
-        });
+      if (MITMProxy._activeProcesses.push(mitmProcess) === 1) {
+        process.on('SIGINT', MITMProxy._cleanup);
+        process.on('exit', MITMProxy._cleanup);
       }
       mp._initializeMITMProxy(mitmProcess);
       // Wait for port 8080 to come online.
@@ -228,6 +229,17 @@ export default class MITMProxy {
     await proxyConnected;
 
     return mp;
+  }
+
+  private static _cleanupCalled = false;
+  private static _cleanup(): void {
+    if (MITMProxy._cleanupCalled) {
+      return;
+    }
+    MITMProxy._cleanupCalled = true;
+    MITMProxy._activeProcesses.forEach((p) => {
+      p.kill('SIGKILL');
+    });
   }
 
   private _mitmProcess: ChildProcess = null;
@@ -256,9 +268,9 @@ export default class MITMProxy {
   private _initializeMITMProxy(mitmProxy: ChildProcess): void {
     this._mitmProcess = mitmProxy;
     this._mitmProcess.on('exit', (code, signal) => {
-      const index = MITMProxy._cleanup.indexOf(this._mitmProcess);
+      const index = MITMProxy._activeProcesses.indexOf(this._mitmProcess);
       if (index !== -1) {
-        MITMProxy._cleanup.splice(index, 1);
+        MITMProxy._activeProcesses.splice(index, 1);
       }
       if (code !== null) {
         if (code !== 0) {
@@ -281,6 +293,10 @@ export default class MITMProxy {
    */
   public getFromCache(url: string): Buffer {
     return this._cache.get(url);
+  }
+
+  public forEachCacheItem(cb: (value: Buffer, url: string) => void): void {
+    this._cache.forEach(cb);
   }
 
   /**
@@ -352,16 +368,23 @@ function identJSTransform(f: string, s: string) {
  * @param rewrite
  * @param config
  * @param fixes
+ * @param disableAllRewrites
  */
-export function getInterceptor(agentUrl: string, agentPath: string, rewrite: boolean, config = "", fixes: number[] = []): Interceptor {
+export function getInterceptor(agentUrl: string, agentPath: string, polyfillUrl: string, polyfillPath: string, rewrite: boolean, config = "", fixes: number[] = [], disableAllRewrites: boolean): Interceptor {
   const parsedInjection = parseHTML(`<script type="text/javascript" src="${agentUrl}"></script>
     <script type="text/javascript">
       ${JSON.stringify(fixes)}.forEach(function(num) {
         $$$SHOULDFIX$$$(num, true);
       });
       ${config}
-    </script>`);
+    </script>
+    ${disableAllRewrites ? '' : `<script type="text/javascript" src="${polyfillUrl}"></script>
+    <script type="text/javascript">
+      // Babel defines a 'global' variable that trips up some applications' environment detection.
+      if (typeof(global) !== "undefined") { delete window['global']; }
+    </script>`}`);
   const agentData = readFileSync(agentPath);
+  const polyfillData = readFileSync(polyfillPath);
   return (f: InterceptedHTTPMessage): void => {
     const response = f.response;
     const request = f.request;
@@ -375,7 +398,9 @@ export function getInterceptor(agentUrl: string, agentPath: string, rewrite: boo
         response.clearHeaders();
         const body: { scope: string, source: string } = JSON.parse(f.requestBody.toString());
         if (rewrite) {
-          f.setResponseBody(Buffer.from(exposeClosureState(`eval-${Math.random()}.js`, body.source, agentUrl, body.scope), 'utf8'));
+          f.setResponseBody(Buffer.from(exposeClosureState(`eval-${Math.random()}.js`, body.source, agentUrl, polyfillUrl, body.scope), 'utf8'));
+        } else if (!disableAllRewrites) {
+          f.setResponseBody(Buffer.from(ensureES5(`eval-${Math.random()}.js`, body.source, agentUrl, polyfillUrl, body.scope), 'utf8'));
         } else {
           f.setResponseBody(Buffer.from(body.source, 'utf8'));
         }
@@ -389,14 +414,21 @@ export function getInterceptor(agentUrl: string, agentPath: string, rewrite: boo
     if (mime.indexOf(";") !== -1) {
       mime = mime.slice(0, mime.indexOf(";"));
     }
-    console.log(`[${response.statusCode}] ${request.rawUrl}: ${mime}`);
+    // console.log(`[${response.statusCode}] ${request.rawUrl}: ${mime}`);
     // NOTE: Use `pathname`, as it cuts out query variables that may have been tacked on.
-    if (url.pathname.toLowerCase() === agentUrl) {
-      response.statusCode = 200;
-      response.clearHeaders();
-      f.setResponseBody(agentData);
-      response.setHeader('content-type', 'text/javascript');
-      return;
+    switch (url.pathname.toLowerCase()) {
+      case agentUrl:
+        response.statusCode = 200;
+        response.clearHeaders();
+        f.setResponseBody(agentData);
+        response.setHeader('content-type', 'text/javascript');
+        return;
+      case polyfillUrl:
+        response.statusCode = 200;
+        response.clearHeaders();
+        f.setResponseBody(polyfillData);
+        response.setHeader('content-type', 'text/javascript');
+        return;
     }
     /*if (url.path.indexOf('libraries') !== -1) {
       // XXXX hot fix for mailpile
@@ -426,9 +458,14 @@ export function getInterceptor(agentUrl: string, agentPath: string, rewrite: boo
       case 'application/javascript':
       case 'text/x-javascript':
       case 'application/x-javascript':
-        if (response.statusCode === 200 && rewrite) {
-          console.log(`Rewriting ${request.rawUrl}...`);
-          f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, Buffer.from(f.responseBody).toString("utf8"), agentUrl), 'utf8'));
+        if (response.statusCode === 200) {
+          if (rewrite) {
+            console.log(`Rewriting ${request.rawUrl}...`);
+            f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, Buffer.from(f.responseBody).toString("utf8"), agentUrl, polyfillUrl), 'utf8'));
+          } else if (!disableAllRewrites) {
+            console.log(`ES5ing ${request.rawUrl}...`)
+            f.setResponseBody(Buffer.from(ensureES5(url.pathname, Buffer.from(f.responseBody).toString("utf8"), agentUrl, polyfillUrl), 'utf8'));
+          }
         }
         break;
     }

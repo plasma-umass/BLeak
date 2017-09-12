@@ -424,6 +424,16 @@ describe('Transformations', function() {
     // cycle of growing objects??
 
     // getters/setters
+
+    // template literal
+
+    // arrow functions, with `this` as the leaking object. arrow has only ref.
+    // multiple object patterns that reference each other, e.g.:
+    // var {a, b, c} = foo, {d=a} = bar;
+
+    // a leak in a getter, e.g. { get foo() { var a;  return function() { } }}
+    // or actually more like { get foo() { bar[random] = 3; }}
+    // ==> Shows up as `get foo`!! Instrument both `foo` and `get foo`.
   });
   // NEED A SWITCH CASE VERSION where it's not within a block!!!
 });

@@ -193,3 +193,21 @@ export function SnapshotNodeTypeToString(sn: SnapshotNodeType): string {
       return "(Unknown)";
   }
 }
+
+export interface LeakJSON {
+  leaks: {
+    paths: string[];
+    scores: {
+      transitive_closure: number;
+      leak_growth: number;
+      retained_size: number;
+    },
+    stacks: {
+      columnNumber: number;
+      lineNumber: number;
+      fileName: string;
+      functionName: string;
+      source: string;
+    }[][];
+  }[];
+}

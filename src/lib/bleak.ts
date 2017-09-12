@@ -5,6 +5,7 @@ import {StackFrame} from 'error-stack-parser';
 import StackFrameConverter from './stack_frame_converter';
 import ChromeDriver from './chrome_driver';
 import {configureProxy} from '../common/util';
+import {writeFileSync} from 'fs';
 
 const DEFAULT_CONFIG: ConfigurationFile = {
   name: "unknown",
@@ -89,8 +90,8 @@ export class BLeakDetector {
     this.configureProxy(false, []);
   }
 
-  public configureProxy(rewriteJavaScript: boolean, fixes: number[]): void {
-    return configureProxy(this._driver.mitmProxy, rewriteJavaScript, fixes, this._configInject);
+  public configureProxy(rewriteJavaScript: boolean, fixes: number[], disableAllRewrites: boolean = false): void {
+    return configureProxy(this._driver.mitmProxy, rewriteJavaScript, fixes, this._configInject, disableAllRewrites);
   }
 
   public takeSnapshot(): HeapSnapshotParser {
@@ -118,27 +119,34 @@ export class BLeakDetector {
     }
     await this._runLoop(false, 'setup', false);
     if (takeSnapshots !== undefined && snapshotOnFirst) {
-      await this._driver.takeDOMSnapshot();
+      // Wait for page to load.
+      await await this._waitUntilTrue(0, 'loop');
       await takeSnapshots(this.takeSnapshot());
     }
     for (let i = 0; i < iterations; i++) {
       const snapshotRun = takeSnapshots !== undefined && (((i + 1) % iterationsPerSnapshot) === 0);
       const sn = await this._runLoop(<true> snapshotRun, 'loop', true);
       if (snapshotRun) {
-        // console.log(`Waiting 100 seconds before snapshot.`);
-        // await wait(100000);
+        console.log(`Waiting 5 seconds before snapshot.`);
+        await wait(5000);
         await takeSnapshots(sn);
       }
     }
   }
 
   public async findLeaks(): Promise<Leak[]> {
+    this.configureProxy(false, this._config.fixedLeaks);
     await this._execute(this._config.iterations, true, (sn) => this._growthTracker.addSnapshot(sn));
     const growthObjects = this._growthObjects = this._growthTracker.getGrowingPaths();
+    return this.findLeaksGivenObjects(growthObjects);
+  }
+
+  public async findLeaksGivenObjects(growthObjects: GrowthObject[]): Promise<Leak[]> {
     console.log(`Growing paths:\n${JSON.stringify(toSerializeableGrowingPaths(growthObjects))}`);
     // We now have all needed closure modifications ready.
     // Run once.
     if (growthObjects.length > 0) {
+      writeFileSync('paths.json', JSON.stringify(toSerializeableGrowingPaths(growthObjects)));
       console.log("Going to diagnose now...");
       // Flip on JS instrumentation.
       this.configureProxy(true, []);
@@ -183,9 +191,9 @@ export class BLeakDetector {
       iterationCount++;
     }
     // Disable fixes for base case.
-    this.configureProxy(false, []);
+    this.configureProxy(false, [], true);
     for (leaksFixed = 0; leaksFixed <= this._config.fixedLeaks.length; leaksFixed++) {
-      this.configureProxy(false, this._config.fixedLeaks.slice(0, leaksFixed));
+      this.configureProxy(false, this._config.fixedLeaks.slice(0, leaksFixed), true);
       iterationCount = 0;
       await this._execute(iterations, leaksFixed === 0, snapshotReport, iterationsPerSnapshot, true);
     }
@@ -193,10 +201,10 @@ export class BLeakDetector {
 
   private async _waitUntilTrue(i: number, prop: string): Promise<void> {
     while (true) {
-      const success = await this._driver.runCode(`BLeakConfig.${prop}[${i}].check()`);
+      const success = await this._driver.runCode<boolean>(`BLeakConfig.${prop}[${i}].check()`);
       if (success) {
         // Delay before returning to give browser time to "catch up".
-        await wait(500);
+        await wait(5000);
         return;
       }
       await wait(1000);
@@ -222,7 +230,6 @@ export class BLeakDetector {
         await this._waitUntilTrue(0, prop);
       }
       if (snapshotAtEnd) {
-        await this._driver.takeDOMSnapshot();
         return this.takeSnapshot();
       }
     }

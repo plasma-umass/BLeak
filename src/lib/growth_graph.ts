@@ -45,7 +45,10 @@ export function toSerializeableGrowingPaths(objs: GrowthObject[]): Serializeable
     }
     const e = p[index];
     const indexOrName = e.indexOrName;
-    const matches = children.filter((c) => c.indexOrName === indexOrName);
+    const snapshotType = e.snapshotType;
+    const matches = snapshotType === SnapshotEdgeType.Internal ?
+      children.filter((c) => c.indexOrName === "__scope__") :
+      children.filter((c) => c.indexOrName === indexOrName);
     let recur: SerializeableGrowingPathTree;
     if (matches.length > 0) {
       recur = matches[0];
@@ -58,7 +61,7 @@ export function toSerializeableGrowingPaths(objs: GrowthObject[]): Serializeable
         children: []
       };
       // Convert 'context' references to our '__scope__' variable.
-      if (e.snapshotType === SnapshotEdgeType.Internal) {
+      if (snapshotType === SnapshotEdgeType.Internal) {
         recur.indexOrName = "__scope__";
       }
       children.push(recur);
@@ -838,6 +841,10 @@ function bfsEdgeVisitor(g: HeapGraph, initial: number[], visitor: (e: Edge, getP
     visitBits.set(i, true);
   });
 
+  function indexToEdge(index: number): Edge {
+    return new Edge(index as EdgeIndex, g);
+  }
+
   let currentEntryIndex = index;
   function getPath(): Edge[] {
     let pIndex = currentEntryIndex;
@@ -846,7 +853,7 @@ function bfsEdgeVisitor(g: HeapGraph, initial: number[], visitor: (e: Edge, getP
       path.push(edgesToVisit[pIndex + 1]);
       pIndex = edgesToVisit[pIndex];
     }
-    return path.reverse().map((index) => new Edge(index as EdgeIndex, g));
+    return path.reverse().map(indexToEdge);
   }
 
   const node = new Node(0 as NodeIndex, g);

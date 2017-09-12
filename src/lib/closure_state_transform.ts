@@ -1,7 +1,9 @@
 import {Node, BaseStatement, Statement, Program, EmptyStatement, BlockStatement, ExpressionStatement, IfStatement, LabeledStatement, BreakStatement, ContinueStatement, WithStatement, SwitchStatement, ReturnStatement, ThrowStatement, TryStatement, WhileStatement, DoWhileStatement, ForStatement, ForInStatement, DebuggerStatement, ForOfStatement, FunctionDeclaration, VariableDeclaration, VariableDeclarator, ThisExpression, ArrayExpression, ObjectExpression, Property, FunctionExpression, SequenceExpression, UnaryExpression, BinaryExpression, AssignmentExpression, UpdateExpression, LogicalExpression, ConditionalExpression, NewExpression, CallExpression, MemberExpression, SwitchCase, CatchClause, Identifier, Literal, Super, SpreadElement, ArrowFunctionExpression, YieldExpression, TemplateElement, TemplateLiteral, TaggedTemplateExpression, ObjectPattern, ArrayPattern, RestElement, AssignmentPattern, ClassBody, ClassDeclaration, ClassExpression, MethodDefinition, MetaProperty, ImportDeclaration, ImportDefaultSpecifier, ImportNamespaceSpecifier, ImportSpecifier, ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration, ExportSpecifier, AwaitExpression} from 'estree';
 import {parse as parseJavaScript} from 'esprima';
 import {generate as generateJavaScript} from 'astring';
-import {SourceMapGenerator} from 'source-map';
+import {SourceMapGenerator, SourceMapConsumer, RawSourceMap} from 'source-map';
+import {transform as buble} from 'buble';
+import {transform as babel} from 'babel-core';
 
 /**
  * Fake AST node that contains multiple statements that must be
@@ -27,7 +29,50 @@ const enum VarType {
   UNKNOWN
 }
 
-function getProgramPrelude(agentUrl: string): IfStatement {
+function getPolyfillInsertion(url: string): IfStatement {
+  return {
+    type: "IfStatement",
+    test: {
+      type: "BinaryExpression",
+      operator: "===",
+      left: {
+        type: "UnaryExpression",
+        operator: "typeof",
+        argument: {
+          type: "Identifier",
+          name: "regeneratorRuntime"
+        },
+        prefix: true
+      },
+      right: {
+        type: "Literal",
+        value: "undefined",
+        raw: "\"undefined\""
+      }
+    },
+    consequent: {
+      type: "BlockStatement",
+      body: [{
+        type: "ExpressionStatement",
+        expression: {
+          type: "CallExpression",
+          callee: {
+            type: "Identifier",
+            name: "loadScript"
+          },
+          arguments: [{
+            type: "Literal",
+            value: url,
+            raw: `"${url}"`
+          }]
+        }
+      }]
+    },
+    alternate: null
+  };
+}
+
+function getAgentInsertion(url: string): IfStatement {
   return {
     type: "IfStatement",
     test: {
@@ -51,183 +96,241 @@ function getProgramPrelude(agentUrl: string): IfStatement {
     consequent: {
       type: "BlockStatement",
       body: [{
-        type: "IfStatement",
-        test: {
-          type: "BinaryExpression",
-          operator: "!==",
-          left: {
-            type: "UnaryExpression",
-            operator: "typeof",
-            argument: {
-              type: "Identifier",
-              name: "XMLHttpRequest"
-            },
-            prefix: true
+        type: "ExpressionStatement",
+        expression: {
+          type: "CallExpression",
+          callee: {
+            type: "Identifier",
+            name: "loadScript"
           },
-          right: {
+          arguments: [{
             type: "Literal",
-            value: "undefined",
-            raw: "\"undefined\""
-          }
-        },
-        consequent: {
-          type: "BlockStatement",
-          body: [{
-            type: "VariableDeclaration",
-            declarations: [{
-              type: "VariableDeclarator",
-              id: {
-                  type: "Identifier",
-                  name: "xhr"
-              },
-              init: {
-                  type: "NewExpression",
-                  callee: {
-                      type: "Identifier",
-                      name: "XMLHttpRequest"
-                  },
-                  arguments: []
-              }
-            }],
-            kind: "const"
-          }, {
-            type: "ExpressionStatement",
-            expression: {
-              type: "CallExpression",
-              callee: {
-                type: "MemberExpression",
-                computed: false,
-                object: {
-                  type: "Identifier",
-                  name: "xhr"
-                },
-                property: {
-                  type: "Identifier",
-                  name: "open"
-                }
-              },
-              arguments: [{
-                  type: "Literal",
-                  value: "GET",
-                  raw: "'GET'"
-                },
-                {
-                  type: "Literal",
-                  value: agentUrl,
-                  raw: JSON.stringify(agentUrl)
-                },
-                {
-                  type: "Literal",
-                  value: false,
-                  raw: "false"
-                }
-              ]
-            }
-          }, {
-            type: "ExpressionStatement",
-            expression: {
-              type: "CallExpression",
-              callee: {
-                type: "MemberExpression",
-                computed: false,
-                object: {
-                  type: "Identifier",
-                  name: "xhr"
-                },
-                property: {
-                  type: "Identifier",
-                  name: "send"
-                }
-              },
-              arguments: []
-            }
-          }, {
-            type: "ExpressionStatement",
-            expression: {
-              type: "CallExpression",
-              callee: {
-                type: "NewExpression",
-                callee: {
-                  type: "Identifier",
-                  name: "Function"
-                },
-                arguments: [{
-                  type: "MemberExpression",
-                  computed: false,
-                  object: {
-                    type: "Identifier",
-                    name: "xhr"
-                  },
-                  property: {
-                    type: "Identifier",
-                    name: "responseText"
-                  }
-                }]
-              },
-              arguments: []
-            }
+            value: url,
+            raw: `"${url}"`
           }]
-        },
-        alternate: {
-          type: "IfStatement",
-          test: {
-            type: "BinaryExpression",
-            operator: "!==",
-            left: {
-              type: "UnaryExpression",
-              operator: "typeof",
-              argument: {
-                type: "Identifier",
-                name: "importScripts"
-              },
-              prefix: true
-            },
-            right: {
-              type: "Literal",
-              value: "undefined",
-              raw: "\"undefined\""
-            }
-          },
-          consequent: {
-            type: "BlockStatement",
-            body: [{
-              type: "ExpressionStatement",
-              expression: {
-                type: "CallExpression",
-                callee: {
-                  type: "Identifier",
-                  name: "importScripts"
-                },
-                arguments: [{
-                  type: "Literal",
-                  value: agentUrl,
-                  raw: JSON.stringify(agentUrl)
-                }]
-              }
-            }]
-          },
-          alternate: {
-            type: "BlockStatement",
-            body: [{
-              type: "ThrowStatement",
-              argument: {
-                type: "NewExpression",
-                callee: {
-                  type: "Identifier",
-                  name: "Error"
-                },
-                arguments: [{
-                  type: "Literal",
-                  value: "Unable to load BLeak agent.",
-                  raw: "\"Unable to load BLeak agent.\""
-                }]
-              }
-            }]
-          }
         }
       }]
     },
     alternate: null
+  };
+}
+
+function getProgramPrelude(statements: IfStatement[]): ExpressionStatement {
+  return {
+    type: "ExpressionStatement",
+    expression: {
+      type: "CallExpression",
+      callee: {
+        type: "FunctionExpression",
+        id: null,
+        params: [],
+        body: {
+          type: "BlockStatement",
+          body: (<Statement[]> [{
+            type: "FunctionDeclaration",
+            id: {
+              type: "Identifier",
+              name: "loadScript"
+            },
+            params: [{
+              type: "Identifier",
+              name: "url"
+            }],
+            body: {
+              type: "BlockStatement",
+              body: [{
+                type: "IfStatement",
+                test: {
+                  type: "BinaryExpression",
+                  operator: "!==",
+                  left: {
+                    type: "UnaryExpression",
+                    operator: "typeof",
+                    argument: {
+                      type: "Identifier",
+                      name: "XMLHttpRequest"
+                    },
+                    prefix: true
+                  },
+                  right: {
+                    type: "Literal",
+                    value: "undefined",
+                    raw: "\"undefined\""
+                  }
+                },
+                consequent: {
+                  type: "BlockStatement",
+                  body: [{
+                    type: "VariableDeclaration",
+                    declarations: [{
+                      type: "VariableDeclarator",
+                      id: {
+                          type: "Identifier",
+                          name: "xhr"
+                      },
+                      init: {
+                          type: "NewExpression",
+                          callee: {
+                              type: "Identifier",
+                              name: "XMLHttpRequest"
+                          },
+                          arguments: []
+                      }
+                    }],
+                    kind: "var"
+                  }, {
+                    type: "ExpressionStatement",
+                    expression: {
+                      type: "CallExpression",
+                      callee: {
+                        type: "MemberExpression",
+                        computed: false,
+                        object: {
+                          type: "Identifier",
+                          name: "xhr"
+                        },
+                        property: {
+                          type: "Identifier",
+                          name: "open"
+                        }
+                      },
+                      arguments: [{
+                        type: "Literal",
+                        value: "GET",
+                        raw: "'GET'"
+                      },
+                      {
+                        type: "Identifier",
+                        name: "url"
+                      },
+                      {
+                        type: "Literal",
+                        value: false,
+                        raw: "false"
+                      }]
+                    }
+                  }, {
+                    type: "ExpressionStatement",
+                    expression: {
+                      type: "CallExpression",
+                      callee: {
+                        type: "MemberExpression",
+                        computed: false,
+                        object: {
+                          type: "Identifier",
+                          name: "xhr"
+                        },
+                        property: {
+                          type: "Identifier",
+                          name: "send"
+                        }
+                      },
+                      arguments: []
+                    }
+                  }, {
+                    type: "ExpressionStatement",
+                    expression: {
+                      type: "CallExpression",
+                      callee: {
+                        type: "NewExpression",
+                        callee: {
+                          type: "Identifier",
+                          name: "Function"
+                        },
+                        arguments: [{
+                          type: "MemberExpression",
+                          computed: false,
+                          object: {
+                              type: "Identifier",
+                              name: "xhr"
+                          },
+                          property: {
+                              type: "Identifier",
+                              name: "responseText"
+                          }
+                        }]
+                      },
+                      arguments: []
+                    }
+                  }]
+                },
+                alternate: {
+                  type: "IfStatement",
+                  test: {
+                    type: "BinaryExpression",
+                    operator: "!==",
+                    left: {
+                      type: "UnaryExpression",
+                      operator: "typeof",
+                      argument: {
+                        type: "Identifier",
+                        name: "importScripts"
+                      },
+                      prefix: true
+                    },
+                    right: {
+                      type: "Literal",
+                      value: "undefined",
+                      raw: "\"undefined\""
+                    }
+                  },
+                  consequent: {
+                    type: "BlockStatement",
+                    body: [{
+                      type: "ExpressionStatement",
+                      expression: {
+                        type: "CallExpression",
+                        callee: {
+                          type: "Identifier",
+                          name: "importScripts"
+                        },
+                        arguments: [{
+                          type: "Identifier",
+                          name: "url"
+                        }]
+                      }
+                    }]
+                  },
+                  alternate: {
+                    type: "BlockStatement",
+                    body: [{
+                      type: "ThrowStatement",
+                      argument: {
+                        type: "NewExpression",
+                        callee: {
+                          type: "Identifier",
+                          name: "Error"
+                        },
+                        arguments: [{
+                          type: "BinaryExpression",
+                          operator: "+",
+                          left: {
+                            type: "Literal",
+                            value: "Unable to load script ",
+                            raw: "\"Unable to load script \""
+                          },
+                          right: {
+                            type: "Identifier",
+                            name: "url"
+                          }
+                        }]
+                      }
+                    }]
+                  }
+                }
+              }]
+            },
+            generator: false,
+            expression: false,
+            async: false
+          }]).concat(statements)
+        },
+        generator: false,
+        expression: false,
+        async: false
+      },
+      arguments: []
+    }
   };
 }
 
@@ -241,6 +344,20 @@ function getExpressionTransform(originalFunction: FunctionExpression, scopeVarNa
     },
     arguments: [originalFunction, { type: "Identifier", name: scopeVarName}],
     loc: originalFunction.loc
+  };
+  return ce;
+}
+
+function getObjectExpressionTransform(original: ObjectExpression, scopeVarName: string): CallExpression {
+  const ce: CallExpression = {
+    type: "CallExpression",
+    callee: {
+      type: "Identifier",
+      name: "$$$OBJECT_EXPRESSION$$$",
+      loc: original.loc
+    },
+    arguments: [original, { type: "Identifier", name: scopeVarName}],
+    loc: original.loc
   };
   return ce;
 }
@@ -810,10 +927,40 @@ abstract class Visitor {
     return is;
   }
 
-  public LabeledStatement(ls: LabeledStatement): LabeledStatement {
+  public LabeledStatement(ls: LabeledStatement): LabeledStatement | MultipleStatements {
     const body = ls.body;
-    ls.body = (<any> this[body.type])(body);
-    return ls;
+    const newBody = (<any> this[body.type])(body);
+    if (newBody.type === "MultipleStatements") {
+      const ms: MultipleStatements = newBody;
+      // Apply label to first applicable statement.
+      const stmts = ms.body;
+      let found = false;
+      forLoop:
+      for (let i = 0; i < stmts.length; i++) {
+        const stmt = stmts[i];
+        switch (stmt.type) {
+          case "DoWhileStatement":
+          case "WhileStatement":
+          case "ForStatement":
+          case "ForOfStatement":
+          case "ForInStatement":
+          case "SwitchStatement":
+            ls.body = stmt;
+            stmts[i] = ls;
+            found = true;
+            break forLoop;
+        }
+      }
+      if (!found) {
+        console.warn(`Unable to find loop to re-attach label to. Attaching to last statement.`);
+        ls.body = stmts[stmts.length - 1];
+        stmts[stmts.length - 1] = ls;
+      }
+      return ms;
+    } else {
+      ls.body = newBody;
+      return ls;
+    }
   }
 
   public BreakStatement(bs: BreakStatement): BreakStatement {
@@ -986,7 +1133,7 @@ abstract class Visitor {
     return n;
   }
 
-  public ObjectExpression(n: ObjectExpression): ObjectExpression {
+  public ObjectExpression(n: ObjectExpression): ObjectExpression | CallExpression {
     const props = n.properties;
     const len = props.length;
     for (let i = 0; i < len; i++) {
@@ -1003,9 +1150,15 @@ abstract class Visitor {
         n.value = (<any> this[val.type])(val);
         return n;
       }
-      case "get":
       case "set":
-        // TODO: Special functions with no scope???
+      case "get": {
+        const body = n.value;
+        if (body.type !== "FunctionExpression") {
+          throw new Error(`Unexpected getter/setter body of type ${body.type}!`);
+        }
+        n.value = this.FunctionExpression(body);
+        return n;
+      }
       default:
         throw new Error(`Property of kind ${n.kind} not yet supported.`);
     }
@@ -1217,6 +1370,26 @@ abstract class Visitor {
 
   public AwaitExpression(n: AwaitExpression): AwaitExpression {
     throw new Error(`AwaitExpression is not yet supported.`);
+  }
+}
+
+/**
+ * Checks that the given code is ES5 compatible. Throws an exception if not.
+ */
+class ES5CheckingVisitor extends Visitor {
+  private _polyfillUrl: string | null;
+
+  constructor(polyfillUrl: string | null) {
+    super();
+    this._polyfillUrl = polyfillUrl;
+  }
+
+  public Program(p: Program): Program {
+    const rv = super.Program(p);
+    if (this._polyfillUrl !== null) {
+      rv.body.unshift(getProgramPrelude([getPolyfillInsertion(this._polyfillUrl)]));
+    }
+    return rv;
   }
 }
 
@@ -1531,18 +1704,22 @@ class ScopeScanningVisitor extends Visitor {
 }
 
 /**
- * Creates scope objects where needed, moves closed-over variables into them, and
- * assigns __scope__ on function objects.
+ * Creates scope objects where needed, moves closed-over variables into them,
+ * assigns __scope__ on function objects, and rewrites equality statements to use
+ * $$$EQ$$$ / $$$SEQ$$$.
  */
 class ScopeCreationVisitor extends Visitor {
-  public static Visit(ast: Program, scopeMap: Map<Program | BlockStatement, IScope>, symbols: Set<string>, agentUrl: string): Program {
-    const visitor = new ScopeCreationVisitor(scopeMap, symbols, agentUrl);
+  public static Visit(ast: Program, scopeMap: Map<Program | BlockStatement, IScope>, symbols: Set<string>, agentUrl: string, polyfillUrl: string): Program {
+    const visitor = new ScopeCreationVisitor(scopeMap, symbols, agentUrl, polyfillUrl);
     return visitor.Program(ast);
   }
 
   protected _scopeMap: Map<Program | BlockStatement, IScope>;
   protected _scope: IScope = null;
   protected _agentUrl: string;
+  protected _polyfillUrl: string;
+  protected _nextFunctionExpressionIsGetterOrSetter = false;
+  protected _getterOrSetterVisited = false;
   protected _symbols: Set<string>;
   private _nextScope = 0;
   private _getNextScope = () => {
@@ -1553,17 +1730,22 @@ class ScopeCreationVisitor extends Visitor {
     this._symbols.add(name);
     return name;
   };
-  private constructor(scopeMap: Map<Program | BlockStatement, IScope>, symbols: Set<string>, agentUrl: string) {
+  private constructor(scopeMap: Map<Program | BlockStatement, IScope>, symbols: Set<string>, agentUrl: string, polyfillUrl: string) {
     super();
     this._scopeMap = scopeMap;
     this._symbols = symbols;
     this._agentUrl = agentUrl;
+    this._polyfillUrl = polyfillUrl;
   }
 
   protected _insertScopeCreationAndFunctionScopeAssignments(n: Node[], isProgram: boolean): Node[] {
     let mods: Node[] = this._scope instanceof BlockScope && this._scope.hasClosedOverVariables ? [this._scope.getScopeCreationStatement()] : [];
     if (isProgram) {
-      mods = (<Node[]> [getProgramPrelude(this._agentUrl)]).concat(mods);
+      const insertions = [getAgentInsertion(this._agentUrl)];
+      if (this._polyfillUrl !== null) {
+        insertions.push(getPolyfillInsertion(this._polyfillUrl));
+      }
+      mods = (<Node[]> [getProgramPrelude(insertions)]).concat(mods);
     }
     mods = mods.concat(this._scope.getScopeAssignments());
     if (mods.length === 0) {
@@ -1756,10 +1938,17 @@ class ScopeCreationVisitor extends Visitor {
     return rv;
   }
 
-  public FunctionExpression(fe: FunctionExpression): CallExpression {
+  public FunctionExpression(fe: FunctionExpression): CallExpression | FunctionExpression {
+    const isGetterOrSetter = this._nextFunctionExpressionIsGetterOrSetter;
+    this._nextFunctionExpressionIsGetterOrSetter = false;
     const rv = <FunctionExpression> super.FunctionExpression(fe);
-    // Scope assignment.
-    return getExpressionTransform(rv, this._scope.scopeIdentifier);
+    if (isGetterOrSetter) {
+      // Transformation is not applicable.
+      return rv;
+    } else {
+      // Scope assignment.
+      return getExpressionTransform(rv, this._scope.scopeIdentifier);
+    }
   }
 
   /*public UpdateExpression(ue: UpdateExpression): UpdateExpression | SequenceExpression {
@@ -1844,16 +2033,37 @@ class ScopeCreationVisitor extends Visitor {
     return rv;
   }
 
+  public Property(p: Property): Property {
+    switch (p.kind) {
+      case "get":
+      case "set":
+        this._nextFunctionExpressionIsGetterOrSetter = true;
+        break;
+      case "init":
+        break;
+      default:
+        throw new Error(`Unrecognized property kind: ${p.kind}`);
+    }
+    return super.Property(p);
+  }
+
+  public ObjectExpression(n: ObjectExpression): ObjectExpression | CallExpression {
+    const oldGetterSetter = this._getterOrSetterVisited;
+    this._getterOrSetterVisited = false;
+    const rv = super.ObjectExpression(n);
+    const hasGetterSetter = this._getterOrSetterVisited;
+    this._getterOrSetterVisited = oldGetterSetter;
+    if (hasGetterSetter) {
+      return getObjectExpressionTransform(n, this._scope.scopeIdentifier);
+    } else {
+      return rv;
+    }
+  }
+
   // Shortcomings: ++ to arguments.
 }
 
-/**
- * Given a JavaScript source file, modifies all function declarations and expressions to expose
- * their closure state on the function object.
- *
- * @param source Source of the JavaScript file.
- */
-export function exposeClosureState(filename: string, source: string, agentUrl="bleak_agent.js", evalScopeName?: string): string {
+function exposeClosureStateInternal(filename: string, source: string, sourceMap: SourceMapGenerator, agentUrl: string, polyfillUrl: string, evalScopeName?: string): string {
   let ast = parseJavaScript(source, { loc: true });
   {
     const firstStatement = ast.body[0];
@@ -1867,13 +2077,119 @@ export function exposeClosureState(filename: string, source: string, agentUrl="b
 
   const map = new Map<Program | BlockStatement, BlockScope>();
   const symbols = new Set<string>();
-  ast = ScopeCreationVisitor.Visit(ScopeScanningVisitor.Visit(ast, map, symbols, evalScopeName ? new BlockScope(new ProxyScope(evalScopeName), true) : undefined), map, symbols, agentUrl);
-  const sourceMap = new SourceMapGenerator({
-    file: filename
+  ast = ScopeCreationVisitor.Visit(ScopeScanningVisitor.Visit(ast, map, symbols, evalScopeName ? new BlockScope(new ProxyScope(evalScopeName), true) : undefined), map, symbols, agentUrl, polyfillUrl);
+  return generateJavaScript(ast, { sourceMap });
+}
+
+function embedSourceMap(source: string, sourceMap: string): string {
+  return `${source}//# sourceMappingURL=data:application/json;base64,${new Buffer(sourceMap, "utf8").toString("base64")}`;
+}
+
+function mergeMaps(file: string, source: string, rawMap1: RawSourceMap, rawMap2: RawSourceMap): string {
+  const map1 = new SourceMapConsumer(rawMap1);
+  const map2 = new SourceMapConsumer(rawMap2);
+  const out = new SourceMapGenerator({ file });
+
+  map2.eachMapping((map) => {
+    const og = map1.originalPositionFor({
+      line: map.originalLine,
+      column: map.originalColumn
+    });
+    if (og && og.line !== null && og.column !== null) {
+      // generated original source name
+      out.addMapping({
+        generated: {
+          line: map.generatedLine,
+          column: map.generatedColumn
+        },
+        original: og,
+        name: map.name,
+        source: map.source
+      });
+    }
   });
-  sourceMap.setSourceContent(filename, source);
-  const converted = generateJavaScript(ast, { sourceMap });
-  // Embed sourcemap into code.
-  const convertedCode = `${converted}//# sourceMappingURL=data:application/json;base64,${new Buffer(sourceMap.toString(), "utf8").toString("base64")}`;
-  return convertedCode;
+  out.setSourceContent(file, source);
+  return out.toString();
+}
+
+function tryJSTransform(filename: string, source: string, transform: (filename: string, source: string, sourceMap: SourceMapGenerator, needsBabel: boolean) => string): string {
+  try {
+    const sourceMap = new SourceMapGenerator({
+      file: filename
+    });
+    const converted = transform(filename, source, sourceMap, false);
+    sourceMap.setSourceContent(filename, source);
+    return embedSourceMap(converted, sourceMap.toString());
+  } catch (e) {
+    try {
+      // Might be ES2015. Try to transform with buble first; it's significantly faster than babel.
+      const transformed = buble(source, { source: filename });
+      const conversionSourceMap = new SourceMapGenerator({
+        file: filename
+      });
+      const converted = transform(filename, transformed.code, conversionSourceMap, false);
+      return embedSourceMap(converted, mergeMaps(filename, source, transformed.map, conversionSourceMap.toJSON()));
+    } catch (e) {
+      try {
+        // Might be even crazier ES2015! Use Babel (SLOWEST PATH)
+        const transformed = babel(source, {
+          sourceMapTarget: filename,
+          sourceFileName: filename,
+          compact: true,
+          sourceMaps: true,
+          // Disable modules to disable global "use strict"; declaration
+          // https://stackoverflow.com/a/39225403
+          presets: [["es2015", { "modules": false }]]
+        });
+        const conversionSourceMap = new SourceMapGenerator({
+          file: filename
+        });
+        const converted = transform(filename, transformed.code, conversionSourceMap, true);
+        return embedSourceMap(converted, mergeMaps(filename, source, <any> transformed.map, conversionSourceMap.toJSON()));
+      } catch (e) {
+        console.error(`Unable to transform ${filename} - going to proceed with untransformed JavaScript!\nError:`);
+        console.error(e);
+        return source;
+      }
+    }
+  }
+}
+
+/**
+ * Ensures that the given JavaScript source file is ES5 compatible.
+ * @param filename
+ * @param source
+ * @param agentUrl
+ * @param polyfillUrl
+ * @param evalScopeName
+ */
+export function ensureES5(filename: string, source: string, agentUrl="bleak_agent.js", polyfillUrl="bleak_polyfill.js", evalScopeName?: string): string {
+  return tryJSTransform(filename, source, (filename, source, sourceMap, needsBabel) => {
+    const visitor = new ES5CheckingVisitor(needsBabel ? polyfillUrl : null);
+    let ast = parseJavaScript(source, { loc: true });
+    {
+      const firstStatement = ast.body[0];
+      if (firstStatement && firstStatement.type === "ExpressionStatement") {
+        // Esprima feature.
+        if ((<any> firstStatement).directive === "no transform") {
+          return source;
+        }
+      }
+    }
+
+    ast = visitor.Program(ast);
+    return generateJavaScript(ast, { sourceMap });
+  });
+}
+
+/**
+ * Given a JavaScript source file, modifies all function declarations and expressions to expose
+ * their closure state on the function object.
+ *
+ * @param source Source of the JavaScript file.
+ */
+export function exposeClosureState(filename: string, source: string, agentUrl="bleak_agent.js", polyfillUrl="bleak_polyfill.js", evalScopeName?: string): string {
+  return tryJSTransform(filename, source, (filename, source, sourceMap, needsBabel) => {
+    return exposeClosureStateInternal(filename, source, sourceMap, agentUrl, needsBabel ? polyfillUrl : null, evalScopeName)
+  });
 }

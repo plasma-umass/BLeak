@@ -1,18 +1,49 @@
-import {readFileSync, openSync, writeSync, closeSync, writeFileSync} from 'fs';
-import {extname} from 'path';
+import {readFileSync, openSync, writeSync, closeSync, mkdirSync, existsSync, createWriteStream, writeFileSync} from 'fs';
+import {join} from 'path';
 import BLeak from '../lib/bleak';
 import ChromeDriver from '../lib/chrome_driver';
-import {Leak} from '../common/interfaces';
+import {Leak, LeakJSON} from '../common/interfaces';
 import {pathToString} from '../lib/growth_graph';
+import * as yargs from 'yargs';
+import {createGzip} from 'zlib';
+import {parse as parseURL} from 'url';
 
-const configFileName = process.argv[2];
-const outFileName = process.argv[3];
-if (!configFileName || !outFileName) {
-  console.log(`Usage: ${process.argv[0]} ${process.argv[1]} config.js outfile.log`);
-  process.exit(0);
+interface CommandLineArgs {
+  out: string;
+  config: string;
+  snapshot: boolean;
 }
 
-const outFile = openSync(outFileName, "w");
+function makeNameSafe(name: string): string {
+  return name.replace(/[\/:]/g, '_');
+}
+
+const args: CommandLineArgs = <any> yargs.number('proxy-port')
+  .usage("$0 --out [directory] --config [config.js]")
+  .string('out')
+  .describe('out', `Directory to output leaks and source code to`)
+  .demand('out')
+  .string('config')
+  .describe('config', `Configuration file to use with BLeak`)
+  .demand('config')
+  .boolean('snapshot')
+  .default('snapshot', false)
+  .describe('snapshot', `Save snapshots into output folder`)
+  .help('help')
+  .parse(process.argv);
+
+if (!existsSync(args.out)) {
+  mkdirSync(args.out);
+}
+if (args.snapshot) {
+  if (!existsSync(join(args.out, 'snapshots'))) {
+    mkdirSync(join(args.out, 'snapshots'));
+  }
+  mkdirSync(join(args.out, 'snapshots', 'leak_detection'));
+}
+mkdirSync(join(args.out, 'source'));
+
+const outFile = openSync(join(args.out, 'leaks.log'), "w");
 function LOG(str: string): void {
   console.log(str);
   writeSync(outFile, str + "\n");
@@ -50,18 +81,25 @@ function printLeak(l: Leak, metric: "retainedSize" | "adjustedRetainedSize" | "t
 }
 
 async function main() {
-  const configFileSource = readFileSync(configFileName).toString();
+  const configFileSource = readFileSync(args.config).toString();
+  writeFileSync(join(args.out, 'config.js'), configFileSource);
   let chromeDriver = await ChromeDriver.Launch(<any> process.stdout);
-  const leaks = await BLeak.FindLeaks(configFileSource, chromeDriver);/*, (ss) => {
-        const p = `${base}${i}.heapsnapshot`;
-        console.log(`Writing ${p}...`);
-        writeFileSync(p, Buffer.from(JSON.stringify(ss), 'utf8'));
-        i++;
-      });*/
-    //.then((leaks) => Promise.all([proxyGlobal.shutdown(), driverGlobal.close()]).then(() => {
-    //  clearInterval(interval);
-    //  return leaks;
-    //}))
+  let i = 0;
+  const leaks = await BLeak.FindLeaks(configFileSource, chromeDriver, (sn) => {
+    if (args.snapshot) {
+      const str = createWriteStream(join(args.out, 'snapshots', 'leak_detection', `snapshot_${i}.heapsnapshot.gz`));
+      i++;
+      const gz = createGzip();
+      gz.pipe(str);
+      sn.onSnapshotChunk = function(chunk, end) {
+        gz.write(chunk);
+        if (end) {
+          gz.end();
+        }
+      };
+    }
+    return Promise.resolve();
+  });
   if (leaks.length === 0) {
     LOG(`No leaks found.`);
   } else {
@@ -83,9 +121,44 @@ async function main() {
       printLeak(l, "transitiveClosureSize", i);
     });
     LOG(``);
+
+    const leakJson: LeakJSON = {
+      leaks: leaks.map((l) => {
+        return {
+          paths: l.paths.map(pathToString),
+          scores: {
+            transitive_closure: l.transitiveClosureSize,
+            leak_growth: l.adjustedRetainedSize,
+            retained_size: l.retainedSize
+          },
+          stacks: l.stacks.map((stack) => {
+            return stack.map((frame) => {
+              return {
+                columnNumber: frame.columnNumber,
+                lineNumber: frame.lineNumber,
+                fileName: frame.fileName,
+                functionName: frame.functionName,
+                source: frame.source
+              };
+            });
+          })
+        };
+      })
+    };
+    writeFileSync(join(args.out, 'leaks.json'), JSON.stringify(leakJson, undefined, '  '));
+
+    chromeDriver.mitmProxy.forEachCacheItem((data, url) => {
+      const u = parseURL(url);
+      try {
+        writeFileSync(join(args.out, 'source', makeNameSafe(u.pathname)), data);
+      } catch (e) {
+        console.warn(`Failed to write ${url}`);
+        console.warn(e);
+      }
+    });
   }
   closeSync(outFile);
-  console.log(`Leaks written to ${outFileName}`);
+  console.log(`Results can be found in ${args.out}`);
 }
 
 main();

@@ -35,10 +35,17 @@ declare function importScripts(s: string): void;
   ROOT.$$$GLOBAL$$$ = ROOT;
   ROOT.$$$REWRITE_EVAL$$$ = $$$REWRITE_EVAL$$$;
   ROOT.$$$FUNCTION_EXPRESSION$$$ = $$$FUNCTION_EXPRESSION$$$;
+  ROOT.$$$OBJECT_EXPRESSION$$$ = $$$OBJECT_EXPRESSION$$$;
   ROOT.$$$CREATE_WITH_SCOPE$$$ = $$$CREATE_WITH_SCOPE$$$;
   ROOT.$$$SERIALIZE_DOM$$$ = $$$SERIALIZE_DOM$$$;
 
   const r = /'/g;
+  // Some websites overwrite logToConsole.
+  const console = window.console;
+  const consoleLog = logToConsole;
+  function logToConsole(s: string) {
+    consoleLog.call(console, s);
+  }
 
   /**
    * Get a stack trace.
@@ -236,6 +243,24 @@ declare function importScripts(s: string): void;
   }
 
   /**
+   * Assigns the given scope to getter/setter properties.
+   * @param obj
+   * @param scope
+   */
+  function $$$OBJECT_EXPRESSION$$$(obj: object, scope: Scope): object {
+    const props = Object.getOwnPropertyDescriptors(obj);
+    for (const prop of props) {
+      if (prop.get) {
+        $$$FUNCTION_EXPRESSION$$$(prop.get, scope);
+      }
+      if (prop.set) {
+        $$$FUNCTION_EXPRESSION$$$(prop.set, scope);
+      }
+    }
+    return obj;
+  }
+
+  /**
    * Converts the node's tree structure into a JavaScript-visible tree structure.
    * TODO: Mutate to include any other Node properties that could be the source of leaks!
    * @param n
@@ -383,7 +408,7 @@ declare function importScripts(s: string): void;
    */
   function getProxy(accessStr: string, obj: any, stackTrace: string = null): any {
     if (!isProxyable(obj)) {
-      // console.log(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
+      // logToConsole(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
       return obj;
     } else if (!obj.hasOwnProperty('$$$PROXY$$$')) {
       const map = new Map<string | number | symbol, Set<string>>();
@@ -402,12 +427,16 @@ declare function importScripts(s: string): void;
         enumerable: false,
         configurable: false
       });
+      function LOG(s: string) {
+        // logToConsole(`${accessStr}: ${s}`);
+      }
       obj.$$$PROXY$$$ = new Proxy(obj, {
         defineProperty: function(target, property, descriptor): boolean {
           if (!disableProxies) {
             // Capture a stack trace.
             _addStackTrace(getProxyStackTraces(target), property);
           }
+          LOG(`defineProperty`);
           return Reflect.defineProperty(target, property, descriptor);
         },
         set: function(target, property, value, receiver): boolean {
@@ -415,16 +444,19 @@ declare function importScripts(s: string): void;
             // Capture a stack trace.
             _addStackTrace(getProxyStackTraces(target), property);
           }
+          LOG(`set`);
           return Reflect.set(target, property, value, target);
         },
-        get: function(target, property, receiver): any {
+        /*get: function(target, property, receiver): any {
+          LOG(`get`);
           return Reflect.get(target, property, target);
-        },
+        },*/
         deleteProperty: function(target, property): boolean {
           if (!disableProxies) {
             // Remove stack traces that set this property.
             _removeStacks(getProxyStackTraces(target), property);
           }
+          LOG(`deleteProperty`);
           return Reflect.deleteProperty(target, property);
         }
       });
@@ -451,17 +483,17 @@ declare function importScripts(s: string): void;
 
   function instrumentPath(rootAccessString: string, accessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
     let setProxy: AssignmentProxy;
-    //console.log(`Instrumenting ${accessString} at ${rootAccessString}`);
+    //logToConsole(`Instrumenting ${accessString} at ${rootAccessString}`);
     const prop = Object.getOwnPropertyDescriptor(root, tree.indexOrName);
     if (prop && prop.set && Array.isArray((<any> prop.set)['$$trees'])) {
-      //console.log(`It's already instrumented!`);
+      //logToConsole(`It's already instrumented!`);
       setProxy = <any> prop.set;
     } else {
-      //console.log(`New instrumentation.`);
+      //logToConsole(`New instrumentation.`);
       let hiddenValue = root[tree.indexOrName];
       const isGrowing = tree.isGrowing;
       if (isGrowing) {
-        //console.log(`Converting the hidden value into a proxy.`)
+        //logToConsole(`Converting the hidden value into a proxy.`)
         hiddenValue = getProxy(accessString, hiddenValue);
         if (stackTrace !== null && getProxyStatus(hiddenValue) === ProxyStatus.IS_PROXY) {
           const map: GrowthObjectStackTraces = getProxyStackTraces(hiddenValue);
@@ -472,6 +504,7 @@ declare function importScripts(s: string): void;
         const trace = _getStackTrace();
         hiddenValue = isGrowing ? getProxy(accessString, v, trace) : v;
         setProxy.$$update(trace);
+        // logToConsole(`${rootAccessString}: Assignment`);
         return true;
       };
       setProxy.$$rootAccessString = rootAccessString;
@@ -531,10 +564,10 @@ declare function importScripts(s: string): void;
 
   function instrumentTree(rootAccessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
     const accessString = rootAccessString + `[${safeString(`${tree.indexOrName}`)}]`;
-    //console.log(`access string: ${accessString}`);
+    //logToConsole(`access string: ${accessString}`);
     // Ignore roots that are not proxyable.
     if (!isProxyable(root)) {
-      //console.log(`Not a proxyable root.`);
+      //logToConsole(`Not a proxyable root.`);
       return;
     }
     const obj = root[tree.indexOrName];
@@ -640,6 +673,17 @@ declare function importScripts(s: string): void;
 
   if (IS_WINDOW || IS_WORKER) {
     // Disable these in NodeJS.
+
+    /*const documentWrite = Document.prototype.write;
+    Document.prototype.write = function(this: Document, str: string): void {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/evalHtml', false);
+      xhr.send(str);
+      return documentWrite.call(this, xhr.responseText);
+    };
+    Document.prototype.writeln = function(this: Document, str: string): void {
+      return this.write(str);
+    };*/
 
     const addEventListener = EventTarget.prototype.addEventListener;
     const removeEventListener = EventTarget.prototype.removeEventListener;
@@ -829,6 +873,31 @@ declare function importScripts(s: string): void;
       };
     })(Array.prototype.splice);
 
+    // Make indexOf use $$$SEQ$$$
+    Array.prototype.indexOf = function(this: Array<any>, searchElement, fromIndexArg?: number): any {
+      let fromIndex = fromIndexArg || 0;
+      // If the provided index value is a negative number, it is taken as the offset from the end of the array.
+      // The array is still searched from front to back.
+      if (fromIndex < 0) {
+        fromIndex = this.length + fromIndex;
+      }
+      // If the calculated index is less than 0, then the whole array will be searched.
+      if (fromIndex < 0) {
+        fromIndex = 0;
+      }
+      // If the index is greater than or equal to the array's length, -1 is returned, which means the array will not be searched.
+      if (fromIndex >= this.length) {
+        return -1;
+      }
+
+      for (; fromIndex < this.length; fromIndex++) {
+        if ($$$SEQ$$$(this[fromIndex], searchElement)) {
+          return fromIndex;
+        }
+      }
+      return -1;
+    };
+
     // TODO: Sort, reverse, ...
 
     // Deterministic Math.random(), so jQuery variable is deterministic.
@@ -886,7 +955,7 @@ declare function importScripts(s: string): void;
         });
         countMap.set(key, count);
       } catch (e) {
-        console.log(`Unable to instrument ${key}`);
+        logToConsole(`Unable to instrument ${key}`);
       }
     }*/
 
@@ -923,7 +992,7 @@ declare function importScripts(s: string): void;
           configurable: true
         });
       } catch (e) {
-        console.log(`Unable to instrument ${key}`);
+        logToConsole(`Unable to instrument ${key}`);
       }
     }
 
@@ -968,10 +1037,10 @@ declare function importScripts(s: string): void;
 
 
     /*(<any> root)['$$PRINTCOUNTS$$'] = function(): void {
-      console.log(`API,GetCount,InvokedCount,SetCount`);
+      logToConsole(`API,GetCount,InvokedCount,SetCount`);
       countMap.forEach((v, k) => {
         if (v.get + v.set + v.invoked > 0) {
-          console.log(`${k},${v.get},${v.invoked},${v.set}`);
+          logToConsole(`${k},${v.get},${v.invoked},${v.set}`);
         }
       });
     };*/

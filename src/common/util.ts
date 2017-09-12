@@ -3,9 +3,11 @@ import {createConnection, Socket} from 'net';
 
 export const DEFAULT_AGENT_PATH = require.resolve('../lib/bleak_agent');
 export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
+export const DEFAULT_BABEL_POLYFILL_URL = `/bleak_polyfill.js`;
+export const DEFAULT_BABEL_POLYFILL_PATH = require.resolve('babel-polyfill/dist/polyfill');
 
-export function configureProxy(proxy: MITMProxy, diagnose: boolean, fixes: number[] = [], config = ""): void {
-  proxy.cb = getInterceptor(DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH, diagnose, config, fixes);
+export function configureProxy(proxy: MITMProxy, diagnose: boolean, fixes: number[] = [], config = "", disableAllRewrites: boolean): void {
+  proxy.cb = getInterceptor(DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_BABEL_POLYFILL_PATH, diagnose, config, fixes, disableAllRewrites);
 }
 
 export function time<T>(n: string, action: () => T, log?: (s: string) => void): T {

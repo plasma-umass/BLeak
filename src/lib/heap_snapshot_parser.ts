@@ -41,6 +41,10 @@ interface StringsEvent {
 
 const SNAPSHOT_PROP_NAME = `{"snapshot":`;
 
+function onSnapshotChunk() {
+
+}
+
 /**
  * Streaming parser for heap snapshots.
  *
@@ -78,6 +82,11 @@ export default class HeapSnapshotParser {
   private _pendingReads: { resolve: (e: ParserEvent) => void, reject: (e: Error) => void }[] = [];
   private _buffer: string = "";
 
+  private _onSnapshotChunk: (chunk: string, end: boolean) => void = onSnapshotChunk;
+  public set onSnapshotChunk(v: (chunk: string, end: boolean) => void) {
+    this._onSnapshotChunk = v;
+  }
+
   /**
    * Adds another snapshot chunk to parse.
    * @param chunk
@@ -85,6 +94,7 @@ export default class HeapSnapshotParser {
   public addSnapshotChunk(chunk: string): void {
     this._buffer += chunk;
     this._parse();
+    this._onSnapshotChunk(chunk, this._state === ParserState.END);
   }
 
   private _parse(): void {

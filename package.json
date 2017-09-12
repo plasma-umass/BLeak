@@ -27,6 +27,7 @@
   "license": "MIT",
   "homepage": "https://bitbucket.org/jvilk/deuterium-oxide#readme",
   "devDependencies": {
+    "@types/babel-core": "^6.25.1",
     "@types/benchmark": "^1.0.30",
     "@types/body-parser": "^1.16.5",
     "@types/error-stack-parser": "^1.3.18",
@@ -40,6 +41,7 @@
     "@types/node": "^7.0.12",
     "@types/source-map": "^0.5.1",
     "@types/ws": "^3.0.2",
+    "@types/yargs": "^8.0.2",
     "benchmark": "^2.1.4",
     "mocha": "^3.2.0",
     "npm-run-all": "^4.0.2",
@@ -48,10 +50,14 @@
   },
   "dependencies": {
     "astring": "^1.0.5",
+    "babel-core": "^6.26.0",
+    "babel-polyfill": "^6.26.0",
+    "babel-preset-es2015": "^6.24.1",
     "body-parser": "^1.17.2",
+    "buble": "^0.15.2",
     "chrome-debugging-client": "^0.4.2",
     "error-stack-parser": "^2.0.1",
-    "esprima": "^3.1.3",
+    "esprima": "^4.0.0",
     "express": "^4.15.4",
     "extract-zip": "^1.6.0",
     "glob": "^7.1.1",
@@ -61,7 +67,8 @@
     "locate-java-home": "^0.1.6",
     "microtime": "^2.1.6",
     "source-map": "^0.5.6",
-    "ws": "^3.1.0"
+    "ws": "^3.1.0",
+    "yargs": "^8.0.2"
   },
   "optionalDependencies": {
     "bufferutil": "^3.0.2",

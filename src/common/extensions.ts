@@ -25,9 +25,14 @@ interface Window {
   $$$GLOBAL$$$: Window;
   $$$REWRITE_EVAL$$$(scope: any, source: string): any;
   $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function;
+  $$$OBJECT_EXPRESSION$$$(obj: object, scope: Scope): object;
   $$$CREATE_WITH_SCOPE$$$(withObj: Object, scope: Scope): Scope;
   $$$SERIALIZE_DOM$$$(): void;
   $$$DOM$$$: MirrorNode;
+}
+
+interface Object {
+  getOwnPropertyDescriptors(obj: any): PropertyDescriptor[];
 }
 
 /**

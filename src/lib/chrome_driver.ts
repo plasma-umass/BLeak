@@ -141,10 +141,13 @@ export default class ChromeDriver {
     this._heapProfiler.addHeapSnapshotChunk = (evt) => {
       parser.addSnapshotChunk(evt.chunk);
     };
-    this._heapProfiler.takeHeapSnapshot({ reportProgress: false });
+    // Always take a DOM snapshot before taking a real snapshot.
+    this._takeDOMSnapshot().then(() => {
+      this._heapProfiler.takeHeapSnapshot({ reportProgress: false });
+    });
     return parser;
   }
-  public async takeDOMSnapshot(): Promise<void> {
+  private async _takeDOMSnapshot(): Promise<void> {
     const response = await this._runtime.evaluate({
       expression: "$$$SERIALIZE_DOM$$$()", returnByValue: true
     });
