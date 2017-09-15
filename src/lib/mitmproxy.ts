@@ -361,6 +361,10 @@ function identJSTransform(f: string, s: string) {
   return s;
 }
 
+function defaultRewrite(url: string, type: string, data: Buffer): Buffer {
+  return data;
+}
+
 /**
  * Retrieve a standard BLeak interceptor.
  * @param agentUrl
@@ -370,8 +374,11 @@ function identJSTransform(f: string, s: string) {
  * @param fixes
  * @param disableAllRewrites
  */
-export function getInterceptor(agentUrl: string, agentPath: string, polyfillUrl: string, polyfillPath: string, rewrite: boolean, config = "", fixes: number[] = [], disableAllRewrites: boolean): Interceptor {
+export function getInterceptor(agentUrl: string, agentPath: string, polyfillUrl: string, polyfillPath: string, rewrite: boolean, config = "", fixes: number[] = [], disableAllRewrites: boolean, fixRewriteFunction: (url: string, type: string, data: Buffer, fixes: number[]) => Buffer = defaultRewrite): Interceptor {
+  const agentTransformURL = `${agentUrl.slice(0, -3)}_transform.js`;
+  const agentTransformPath = `${agentPath.slice(0, -3)}_transform.js`;
   const parsedInjection = parseHTML(`<script type="text/javascript" src="${agentUrl}"></script>
+  <script type="text/javascript" src="${agentTransformURL}"></script>
     <script type="text/javascript">
       ${JSON.stringify(fixes)}.forEach(function(num) {
         $$$SHOULDFIX$$$(num, true);
@@ -384,6 +391,7 @@ export function getInterceptor(agentUrl: string, agentPath: string, polyfillUrl:
       if (typeof(global) !== "undefined") { delete window['global']; }
     </script>`}`);
   const agentData = readFileSync(agentPath);
+  const agentTransformData = readFileSync(agentTransformPath);
   const polyfillData = readFileSync(polyfillPath);
   return (f: InterceptedHTTPMessage): void => {
     const response = f.response;
@@ -423,12 +431,27 @@ export function getInterceptor(agentUrl: string, agentPath: string, polyfillUrl:
         f.setResponseBody(agentData);
         response.setHeader('content-type', 'text/javascript');
         return;
+      case agentTransformURL:
+        response.statusCode = 200;
+        response.clearHeaders();
+        if (rewrite) {
+          f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, agentTransformData.toString("utf8"), agentUrl, polyfillUrl), 'utf8'));
+        } else {
+          f.setResponseBody(agentTransformData);
+        }
+        response.setHeader('content-type', 'text/javascript');
+        return;
       case polyfillUrl:
         response.statusCode = 200;
         response.clearHeaders();
         f.setResponseBody(polyfillData);
         response.setHeader('content-type', 'text/javascript');
         return;
+    }
+
+    if (response.statusCode === 200) {
+      // Rewrite before anything else happens.
+      f.setResponseBody(fixRewriteFunction(request.rawUrl, mime, f.responseBody, fixes));
     }
     /*if (url.path.indexOf('libraries') !== -1) {
       // XXXX hot fix for mailpile
@@ -451,7 +474,7 @@ export function getInterceptor(agentUrl: string, agentPath: string, polyfillUrl:
     switch (mime) {
       case 'text/html':
       //if (f.status === 200) {
-        f.setResponseBody(Buffer.from(injectIntoHead(url.pathname, Buffer.from(f.responseBody).toString("utf8"), parsedInjection, rewrite ? exposeClosureState : identJSTransform), 'utf8'));
+        f.setResponseBody(Buffer.from(injectIntoHead(url.pathname, f.responseBody.toString("utf8"), parsedInjection, rewrite ? exposeClosureState : identJSTransform), 'utf8'));
         //}
       break;
       case 'text/javascript':
@@ -461,10 +484,10 @@ export function getInterceptor(agentUrl: string, agentPath: string, polyfillUrl:
         if (response.statusCode === 200) {
           if (rewrite) {
             console.log(`Rewriting ${request.rawUrl}...`);
-            f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, Buffer.from(f.responseBody).toString("utf8"), agentUrl, polyfillUrl), 'utf8'));
+            f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, f.responseBody.toString("utf8"), agentUrl, polyfillUrl), 'utf8'));
           } else if (!disableAllRewrites) {
             console.log(`ES5ing ${request.rawUrl}...`)
-            f.setResponseBody(Buffer.from(ensureES5(url.pathname, Buffer.from(f.responseBody).toString("utf8"), agentUrl, polyfillUrl), 'utf8'));
+            f.setResponseBody(Buffer.from(ensureES5(url.pathname, f.responseBody.toString("utf8"), agentUrl, polyfillUrl), 'utf8'));
           }
         }
         break;

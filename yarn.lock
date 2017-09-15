@@ -102,6 +102,10 @@
   version "7.0.39"
   resolved "https://registry.yarnpkg.com/@types/node/-/node-7.0.39.tgz#8aced4196387038113f6f9aa4014ab4c51edab3c"
 
+"@types/papaparse@^4.1.30":
+  version "4.1.30"
+  resolved "https://registry.yarnpkg.com/@types/papaparse/-/papaparse-4.1.30.tgz#00ea0f21ded31cecb5e0b21bd149361930e102b9"
+
 "@types/rimraf@^0.0.28":
   version "0.0.28"
   resolved "https://registry.yarnpkg.com/@types/rimraf/-/rimraf-0.0.28.tgz#5562519bc7963caca8abf7f128cae3b594d41d06"
@@ -2042,6 +2046,10 @@ p-locate@^2.0.0:
   resolved "https://registry.yarnpkg.com/p-locate/-/p-locate-2.0.0.tgz#20a0103b222a70c8fd39cc2e580680f3dde5ec43"
   dependencies:
     p-limit "^1.1.0"
+
+papaparse@^4.3.6:
+  version "4.3.6"
+  resolved "https://registry.yarnpkg.com/papaparse/-/papaparse-4.3.6.tgz#9566eda0ecab13afcb740a62381c699f486cb145"
 
 parse-glob@^3.0.4:
   version "3.0.4"

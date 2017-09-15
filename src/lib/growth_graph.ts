@@ -241,7 +241,7 @@ export class HeapGrowthTracker {
     }
 
     function filterNoDom(n: Node, e: Edge) {
-      return nonWeakFilter(n, e) && shouldTraverse(e, false);
+      return isNotHidden(e) && nonWeakFilter(n, e) && shouldTraverse(e, false);
     }
 
     function filterIncludeDom(n: Node, e: Edge) {
@@ -294,8 +294,7 @@ export class HeapGrowthTracker {
         adjustedRetainedSize += n.size / refCount;
       }, nonLeakFilter);
 
-      // Transitive closure size.
-      // Remove if bad.
+      // Transitive closure size, for comparison to related work.
       bfsVisitor(this._heap, [growthNodeIndex], (n) => {
         transitiveClosureSize += n.size;
       }, filterIncludeDom);

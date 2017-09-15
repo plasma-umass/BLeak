@@ -1,20 +1,30 @@
 import {HeapGrowthTracker, pathToString} from '../lib/growth_graph';
-import {readFileSync} from 'fs';
+import {createReadStream} from 'fs';
 import * as readline from 'readline';
 import {SnapshotNodeTypeToString, SnapshotEdgeTypeToString, SnapshotNodeType} from '../common/interfaces';
 import {time} from '../common/util';
 import HeapSnapshotParser from '../lib/heap_snapshot_parser';
+import {createGunzip} from 'zlib';
+
+function getHeapSnapshotParser(file: string): HeapSnapshotParser {
+  const parser = new HeapSnapshotParser();
+  const stream = createReadStream(file).pipe(createGunzip());
+  stream.on('data', function(d) {
+    parser.addSnapshotChunk(d.toString());
+  });
+  return parser;
+}
 
 async function main() {
   const t = new HeapGrowthTracker();
   const files = process.argv.slice(2);
   if (files.length === 0) {
-    console.log(`Usage: ${process.argv[0]} ${process.argv[1]} snap1.heapsnapshot snap2.heapsnapshot [more *.heapsnapshots in order...]\n\nPrints out growing paths in the heap over several snapshots.`);
+    console.log(`Usage: ${process.argv[0]} ${process.argv[1]} snap1.heapsnapshot.gz snap2.heapsnapshot.gz [more *.heapsnapshots.gz in order...]\n\nPrints out growing paths in the heap over several snapshots.`);
     process.exit();
   }
   for (const file of files) {
     console.log(`Processing ${file}...`);
-    await t.addSnapshot(HeapSnapshotParser.FromString(readFileSync(file, 'utf8')));
+    await t.addSnapshot(getHeapSnapshotParser(file));
   }
 
   const growth = time('Get Growing Objects', () => t.getGrowingPaths());

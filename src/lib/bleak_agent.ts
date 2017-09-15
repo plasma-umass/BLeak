@@ -1,6 +1,6 @@
 "no transform";
 interface ListenerInfo {
-  useCapture: boolean;
+  useCapture: boolean | object;
   listener: EventListenerOrEventListenerObject;
 }
 
@@ -41,8 +41,8 @@ declare function importScripts(s: string): void;
 
   const r = /'/g;
   // Some websites overwrite logToConsole.
-  const console = window.console;
-  const consoleLog = logToConsole;
+  const console = ROOT.console ? ROOT.console : { log: () => {} };
+  const consoleLog = console.log;
   function logToConsole(s: string) {
     consoleLog.call(console, s);
   }
@@ -279,7 +279,7 @@ declare function importScripts(s: string): void;
    * Serializes the DOM into a JavaScript-visible tree structure.
    */
   function $$$SERIALIZE_DOM$$$(n: Node = document): void {
-    window.$$$DOM$$$ = makeMirrorNode(document);
+    ROOT.$$$DOM$$$ = makeMirrorNode(document);
   }
 
   /**
@@ -481,6 +481,25 @@ declare function importScripts(s: string): void;
     }
   }
 
+  function hiddenPropertyName(n: string | number): string {
+    return `_____$${n}`;
+  }
+
+  function setHiddenValue(thisObj: any, n: string | number, value: any): void {
+    const propName = hiddenPropertyName(n);
+    if (!thisObj.hasOwnProperty(propName)) {
+      Object.defineProperty(thisObj, propName, {
+        value: null,
+        writable: true
+      });
+    }
+    thisObj[propName] = value;
+  }
+
+  function getHiddenValue(thisObj: any, n: string | number): any {
+    return thisObj[hiddenPropertyName(n)];
+  }
+
   function instrumentPath(rootAccessString: string, accessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
     let setProxy: AssignmentProxy;
     //logToConsole(`Instrumenting ${accessString} at ${rootAccessString}`);
@@ -490,19 +509,22 @@ declare function importScripts(s: string): void;
       setProxy = <any> prop.set;
     } else {
       //logToConsole(`New instrumentation.`);
-      let hiddenValue = root[tree.indexOrName];
+      // let hiddenValue = root[tree.indexOrName];
       const isGrowing = tree.isGrowing;
+      const indexOrName = tree.indexOrName;
+      setHiddenValue(root, indexOrName, root[indexOrName]);
       if (isGrowing) {
         //logToConsole(`Converting the hidden value into a proxy.`)
-        hiddenValue = getProxy(accessString, hiddenValue);
-        if (stackTrace !== null && getProxyStatus(hiddenValue) === ProxyStatus.IS_PROXY) {
-          const map: GrowthObjectStackTraces = getProxyStackTraces(hiddenValue);
-          _initializeMap(hiddenValue, map, stackTrace);
+        const proxy = getProxy(accessString, getHiddenValue(root, indexOrName));
+        setHiddenValue(root, indexOrName, proxy);
+        if (stackTrace !== null && getProxyStatus(proxy) === ProxyStatus.IS_PROXY) {
+          const map: GrowthObjectStackTraces = getProxyStackTraces(proxy);
+          _initializeMap(proxy, map, stackTrace);
         }
       }
       setProxy = <any> function(this: any, v: any): boolean {
         const trace = _getStackTrace();
-        hiddenValue = isGrowing ? getProxy(accessString, v, trace) : v;
+        setHiddenValue(this, indexOrName, isGrowing ? getProxy(accessString, v, trace) : v);
         setProxy.$$update(trace);
         // logToConsole(`${rootAccessString}: Assignment`);
         return true;
@@ -512,8 +534,10 @@ declare function importScripts(s: string): void;
       setProxy.$$update = updateAssignmentProxy;
       setProxy.$$root = root;
 
-      Object.defineProperty(root, tree.indexOrName, {
-        get: () => hiddenValue,
+      Object.defineProperty(root, indexOrName, {
+        get: function(this: any) {
+          return getHiddenValue(this, indexOrName);
+        },
         set: setProxy
       });
     }
@@ -697,7 +721,7 @@ declare function importScripts(s: string): void;
         listeners = this.$$listeners[type] = [];
       }
       for (const listenerInfo of listeners) {
-        if (listenerInfo.listener === listener && listenerInfo.useCapture === useCapture) {
+        if (listenerInfo.listener === listener && (typeof(listenerInfo.useCapture) === 'boolean' ? listenerInfo.useCapture === useCapture : true)) {
           return;
         }
       }
@@ -707,14 +731,14 @@ declare function importScripts(s: string): void;
       });
     };
 
-    EventTarget.prototype.removeEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
+    EventTarget.prototype.removeEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean | object = false) {
       removeEventListener.apply(unwrapIfProxy(this), arguments);
       if (this.$$listeners) {
         const listeners = this.$$listeners[type];
         if (listeners) {
           for (let i = 0; i < listeners.length; i++) {
             const lInfo = listeners[i];
-            if (lInfo.listener === listener && lInfo.useCapture === useCapture) {
+            if (lInfo.listener === listener && (typeof(lInfo.useCapture) === 'boolean' ? lInfo.useCapture === useCapture : true)) {
               listeners.splice(i, 1);
               if (listeners.length === 0) {
                 delete this.$$listeners[type];

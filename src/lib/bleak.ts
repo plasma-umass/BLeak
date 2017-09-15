@@ -16,7 +16,8 @@ const DEFAULT_CONFIG: ConfigurationFile = {
   login: [],
   setup: [],
   loop: [],
-  timeout: 999999999
+  timeout: 999999999,
+  rewrite: (url, type, data, fixes) => data
 };
 const DEFAULT_CONFIG_STRING = JSON.stringify(DEFAULT_CONFIG);
 
@@ -69,9 +70,9 @@ export class BLeakDetector {
    * @param log Log function. Used to write a report. Assumes each call to `log` appends a newline.
    * @param snapshotCb (Optional) Snapshot callback.
    */
-  public static async EvaluateLeakFixes(configSource: string, driver: ChromeDriver, iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<void> {
+  public static async EvaluateLeakFixes(configSource: string, driver: ChromeDriver, iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb, startAt = 0): Promise<void> {
     const detector = new BLeakDetector(driver, configSource, snapshotCb);
-    return detector.evaluateLeakFixes(iterations, iterationsPerSnapshot, log);
+    return detector.evaluateLeakFixes(iterations, iterationsPerSnapshot, log, startAt);
   }
 
   private readonly _driver: ChromeDriver;
@@ -90,8 +91,8 @@ export class BLeakDetector {
     this.configureProxy(false, []);
   }
 
-  public configureProxy(rewriteJavaScript: boolean, fixes: number[], disableAllRewrites: boolean = false): void {
-    return configureProxy(this._driver.mitmProxy, rewriteJavaScript, fixes, this._configInject, disableAllRewrites);
+  public configureProxy(rewriteJavaScript: boolean, fixes: number[], disableAllRewrites: boolean = false, useConfigRewrite: boolean = false): void {
+    return configureProxy(this._driver.mitmProxy, rewriteJavaScript, fixes, this._configInject, disableAllRewrites, useConfigRewrite ? this._config.rewrite : undefined);
   }
 
   public takeSnapshot(): HeapSnapshotParser {
@@ -116,11 +117,13 @@ export class BLeakDetector {
     await this._driver.navigateTo(this._config.url);
     if (login) {
       await this._runLoop(false, 'login', false);
+      await wait(1000);
+      await this._driver.navigateTo(this._config.url);
     }
     await this._runLoop(false, 'setup', false);
     if (takeSnapshots !== undefined && snapshotOnFirst) {
       // Wait for page to load.
-      await await this._waitUntilTrue(0, 'loop');
+      await this._waitUntilTrue(0, 'loop');
       await takeSnapshots(this.takeSnapshot());
     }
     for (let i = 0; i < iterations; i++) {
@@ -135,7 +138,7 @@ export class BLeakDetector {
   }
 
   public async findLeaks(): Promise<Leak[]> {
-    this.configureProxy(false, this._config.fixedLeaks);
+    this.configureProxy(false, this._config.fixedLeaks, undefined, true);
     await this._execute(this._config.iterations, true, (sn) => this._growthTracker.addSnapshot(sn));
     const growthObjects = this._growthObjects = this._growthTracker.getGrowingPaths();
     return this.findLeaksGivenObjects(growthObjects);
@@ -143,13 +146,14 @@ export class BLeakDetector {
 
   public async findLeaksGivenObjects(growthObjects: GrowthObject[]): Promise<Leak[]> {
     console.log(`Growing paths:\n${JSON.stringify(toSerializeableGrowingPaths(growthObjects))}`);
+    writeFileSync('leaks.json', Buffer.from(JSON.stringify(toSerializeableGrowingPaths(growthObjects)), 'utf8'));
     // We now have all needed closure modifications ready.
     // Run once.
     if (growthObjects.length > 0) {
       writeFileSync('paths.json', JSON.stringify(toSerializeableGrowingPaths(growthObjects)));
       console.log("Going to diagnose now...");
       // Flip on JS instrumentation.
-      this.configureProxy(true, []);
+      this.configureProxy(true, this._config.fixedLeaks, undefined, true);
       await this._execute(1, false)
       console.log("Instrumenting growth paths...");
       // Instrument objects to push information to global array.
@@ -174,10 +178,10 @@ export class BLeakDetector {
     }
   }
 
-  public async evaluateLeakFixes(iterations: number, iterationsPerSnapshot: number, log: (s: string) => void): Promise<void> {
-    let headerPrinted = false;
+  public async evaluateLeakFixes(iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, startAt: number): Promise<void> {
+    let headerPrinted = startAt > 0;
     let iterationCount = 0;
-    let leaksFixed = 0;
+    let leaksFixed = startAt;
     async function snapshotReport(sn: HeapSnapshotParser): Promise<void> {
       const g = await HeapGraph.Construct(sn);
       const size = g.calculateSize();
@@ -191,12 +195,15 @@ export class BLeakDetector {
       iterationCount++;
     }
     // Disable fixes for base case.
-    this.configureProxy(false, [], true);
-    for (leaksFixed = 0; leaksFixed <= this._config.fixedLeaks.length; leaksFixed++) {
-      this.configureProxy(false, this._config.fixedLeaks.slice(0, leaksFixed), true);
+    this.configureProxy(false, [], true, true);
+    // Login + warmup run. Has impact on heap. No snapshots.
+    // await this._execute(iterations, true);
+
+    //for (leaksFixed = startAt; leaksFixed <= this._config.fixedLeaks.length; leaksFixed++) {
+      this.configureProxy(false, this._config.fixedLeaks.slice(0, leaksFixed), true, true);
       iterationCount = 0;
-      await this._execute(iterations, leaksFixed === 0, snapshotReport, iterationsPerSnapshot, true);
-    }
+      await this._execute(iterations, true, snapshotReport, iterationsPerSnapshot, true);
+    //}
   }
 
   private async _waitUntilTrue(i: number, prop: string): Promise<void> {

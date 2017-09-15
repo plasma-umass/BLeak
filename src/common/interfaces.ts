@@ -22,6 +22,7 @@ export interface ConfigurationFile {
   loop: Step[];
   // (Optional) How long to wait for a step transition to finish before declaring an error.
   timeout?: number;
+  rewrite?: (url: string, type: string, source: Buffer, fixes: number[]) => Buffer;
 }
 
 /**

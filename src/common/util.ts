@@ -6,8 +6,8 @@ export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
 export const DEFAULT_BABEL_POLYFILL_URL = `/bleak_polyfill.js`;
 export const DEFAULT_BABEL_POLYFILL_PATH = require.resolve('babel-polyfill/dist/polyfill');
 
-export function configureProxy(proxy: MITMProxy, diagnose: boolean, fixes: number[] = [], config = "", disableAllRewrites: boolean): void {
-  proxy.cb = getInterceptor(DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_BABEL_POLYFILL_PATH, diagnose, config, fixes, disableAllRewrites);
+export function configureProxy(proxy: MITMProxy, diagnose: boolean, fixes: number[] = [], config = "", disableAllRewrites: boolean, rewriteFunction?: (url: string, type: string, data: Buffer, fixes: number[]) => Buffer): void {
+  proxy.cb = getInterceptor(DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_BABEL_POLYFILL_PATH, diagnose, config, fixes, disableAllRewrites, rewriteFunction);
 }
 
 export function time<T>(n: string, action: () => T, log?: (s: string) => void): T {

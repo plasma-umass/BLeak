@@ -39,6 +39,7 @@
     "@types/htmlparser2": "^3.7.29",
     "@types/mocha": "^2.2.40",
     "@types/node": "^7.0.12",
+    "@types/papaparse": "^4.1.30",
     "@types/source-map": "^0.5.1",
     "@types/ws": "^3.0.2",
     "@types/yargs": "^8.0.2",
@@ -66,6 +67,7 @@
     "http-mitm-proxy": "^0.5.2",
     "locate-java-home": "^0.1.6",
     "microtime": "^2.1.6",
+    "papaparse": "^4.3.6",
     "source-map": "^0.5.6",
     "ws": "^3.1.0",
     "yargs": "^8.0.2"

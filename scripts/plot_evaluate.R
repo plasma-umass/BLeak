@@ -10,6 +10,7 @@ name <- args[2]
 outputfile <- args[3]
 
 data <- read.csv(args[1])
+data <- subset(data, iterationCount > 0)
 data$iterationCount <- factor(data$iterationCount)
 data$totalSizeMb <- data$totalSize / (1024 * 1024)
 data$leaksFixed <- factor(data$leaksFixed)
