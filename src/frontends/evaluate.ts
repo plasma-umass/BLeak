@@ -12,6 +12,7 @@ interface CommandLineArgs {
   iterations: number;
   'iterations-per-snapshot': number;
   resume: number;
+  'no-shutdown': boolean;
 }
 
 const args: CommandLineArgs = <any> yargs.number('proxy-port')
@@ -34,6 +35,9 @@ const args: CommandLineArgs = <any> yargs.number('proxy-port')
   .number('resume')
   .describe('resume', 'Fix number to resume at.')
   .default('resume', 0)
+  .boolean('no-shutdown')
+  .describe('no-shutdown', 'Do not shut down the browser after evaluation completes')
+  .default('no-shutdown', false)
   .help('help')
   .parse(process.argv);
 
@@ -82,7 +86,9 @@ async function main() {
     }
     return Promise.resolve();
   }, args.resume);
-  await chromeDriver.shutdown();
+  if (args['no-shutdown']) {
+    await chromeDriver.shutdown();
+  }
 }
 
 main();
