@@ -136,6 +136,7 @@ function hash(parent: Node, edge: Edge): string | number {
 }
 
 function mergeGraphs(oldG: HeapGraph, oldGrowth: TwoBitArray, newG: HeapGraph, newGrowth: TwoBitArray): void {
+  // getGlobalRootIndices
   const numNewNodes = newG.nodeCount;
   let index = 0;
   // We visit each new node at most once.
@@ -157,8 +158,40 @@ function mergeGraphs(oldG: HeapGraph, oldGrowth: TwoBitArray, newG: HeapGraph, n
   const newNode = new Node(0 as NodeIndex, newG);
   const oldEdgeTmp = new Edge(0 as EdgeIndex, oldG);
 
-  enqueue(oldG.rootNodeIndex, newG.rootNodeIndex);
-  visitBits.set(newG.rootNodeIndex, true);
+  {
+    // Visit global roots by *node name*, not *edge name* as edges are arbitrarily numbered.
+    const newUserRoots = newG.getGlobalRootIndices();
+    const oldUserRoots = oldG.getGlobalRootIndices();
+    const m = new Map<string, {o: number[], n: number[]}>();
+    for (let i = 0; i < newUserRoots.length; i++) {
+      newNode.nodeIndex = <any> newUserRoots[i];
+      const name = newNode.name;
+      let a = m.get(name);
+      if (!a) {
+        a = {o: [], n: []};
+        m.set(name, a);
+      }
+      a.n.push(newUserRoots[i]);
+    }
+    for (let i = 0; i < oldUserRoots.length; i++) {
+      oldNode.nodeIndex = <any> oldUserRoots[i];
+      const name = oldNode.name;
+      let a = m.get(name);
+      if (a) {
+        a.o.push(oldUserRoots[i]);
+      }
+    }
+
+    m.forEach((v) => {
+      let num = Math.min(v.o.length, v.n.length);
+      for (let i = 0; i < num; i++) {
+        enqueue(<any> v.o[i], <any> v.n[i]);
+        visitBits.set(v.n[i], true);
+      }
+    });
+  }
+  // enqueue(oldG.rootNodeIndex, newG.rootNodeIndex);
+  // visitBits.set(newG.rootNodeIndex, true);
   while (index < queueLength) {
     const oldIndex = dequeue();
     const newIndex = dequeue();

@@ -163,14 +163,15 @@ export class BLeakDetector {
       // Fetch array as string.
       const growthStacks = await this._getGrowthStacks();
       const rv: Leak[] = [];
-      const lookup = new Map<number, GrowthObject>();
-      this._growthObjects.forEach((gl) => lookup.set(gl.node.nodeIndex, gl));
-      for (const p in growthStacks) {
-        const obj = lookup.get(parseInt(p, 10));
+
+      this._growthObjects.forEach((gl) => {
+        const index = gl.node.nodeIndex;
+        const stacks = growthStacks[index] || [];
         rv.push(Object.assign({
-          stacks: growthStacks[p]
-        }, obj));
-      }
+          stacks
+        }, gl));
+      });
+
       return rv;
     } else {
       console.log(`No growth objects found!`);

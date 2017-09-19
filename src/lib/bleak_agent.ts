@@ -10,6 +10,20 @@ interface EventTarget {
   $$id?: string;
 }
 
+interface NodeList {
+  $$$TREE$$$: SerializeableGrowingPathTree;
+  $$$ACCESS_STRING$$$: string;
+  $$$STACKTRACES$$$: GrowthObjectStackTraces;
+  $$$REINSTRUMENT$$$(): void;
+}
+
+interface Node {
+  $$$TREE$$$: SerializeableGrowingPathTree;
+  $$$ACCESS_STRING$$$: string;
+  $$$STACKTRACES$$$: GrowthObjectStackTraces;
+  $$$REINSTRUMENT$$$(): void;
+}
+
 type GrowthObjectStackTraces = Map<string | number | symbol, Set<string>>;
 
 declare function importScripts(s: string): void;
@@ -260,6 +274,11 @@ declare function importScripts(s: string): void;
     return obj;
   }
 
+
+
+  // Used to store child nodes as properties on an object rather than in an array to facilitate
+  // leak detection.
+  const NODE_PROP_PREFIX = "$$$CHILD$$$";
   /**
    * Converts the node's tree structure into a JavaScript-visible tree structure.
    * TODO: Mutate to include any other Node properties that could be the source of leaks!
@@ -267,12 +286,21 @@ declare function importScripts(s: string): void;
    */
   function makeMirrorNode(n: Node): MirrorNode {
     const childNodes = n.childNodes;
-    const numChildren = childNodes.length;
-    const m: MirrorNode = { root: n, childNodes: new Array<MirrorNode>(numChildren) };
-    for (let i = 0; i < numChildren; i++) {
-      m.childNodes[i] = makeMirrorNode(childNodes[i]);
-    }
+    const m: MirrorNode = { root: n, childNodes: makeChildNode(childNodes) };
     return m;
+  }
+
+  /**
+   * Converts the childNodes nodelist into a JS-level object.
+   * @param cn
+   */
+  function makeChildNode(cn: NodeList): ChildNodes {
+    const numChildren = cn.length;
+    let rv: ChildNodes = { length: numChildren };
+    for (let i = 0; i < numChildren; i++) {
+      rv[`${NODE_PROP_PREFIX}${i}`] = makeMirrorNode(cn[i]);
+    }
+    return rv;
   }
 
   /**
@@ -393,6 +421,22 @@ declare function importScripts(s: string): void;
   }
 
   /**
+   * Combine the stacks for 'from' with 'to' in 'to'.
+   * @param map
+   * @param from
+   * @param to
+   */
+  function _combineStacks(map: GrowthObjectStackTraces, from: string | number | symbol, to: symbol | number | string): void {
+    if (map.has(from) && map.has(to)) {
+      const fromStacks = map.get(from);
+      const toStacks = map.get(to);
+      fromStacks.forEach((s) => {
+        toStacks.add(s);
+      });
+    }
+  }
+
+  /**
    * Initialize a map to contain stack traces for all of the properties of the given object.
    */
   function _initializeMap(obj: any, map: GrowthObjectStackTraces, trace: string): GrowthObjectStackTraces {
@@ -427,16 +471,16 @@ declare function importScripts(s: string): void;
         enumerable: false,
         configurable: false
       });
-      function LOG(s: string) {
+      //function LOG(s: string) {
         // logToConsole(`${accessStr}: ${s}`);
-      }
+      //}
       obj.$$$PROXY$$$ = new Proxy(obj, {
         defineProperty: function(target, property, descriptor): boolean {
           if (!disableProxies) {
             // Capture a stack trace.
             _addStackTrace(getProxyStackTraces(target), property);
           }
-          LOG(`defineProperty`);
+          // LOG(`defineProperty`);
           return Reflect.defineProperty(target, property, descriptor);
         },
         set: function(target, property, value, receiver): boolean {
@@ -444,19 +488,15 @@ declare function importScripts(s: string): void;
             // Capture a stack trace.
             _addStackTrace(getProxyStackTraces(target), property);
           }
-          LOG(`set`);
+          // LOG(`set`);
           return Reflect.set(target, property, value, target);
         },
-        /*get: function(target, property, receiver): any {
-          LOG(`get`);
-          return Reflect.get(target, property, target);
-        },*/
         deleteProperty: function(target, property): boolean {
           if (!disableProxies) {
             // Remove stack traces that set this property.
             _removeStacks(getProxyStackTraces(target), property);
           }
-          LOG(`deleteProperty`);
+          // LOG(`deleteProperty`);
           return Reflect.deleteProperty(target, property);
         }
       });
@@ -555,6 +595,18 @@ declare function importScripts(s: string): void;
     }
   }
 
+  // Need:
+  // - DOM set proxies
+  //   -> Invalidate / refresh when changed
+  // - Fast checker of node.
+
+  // Operations can impact:
+  // - Current node
+  // - Parent node
+  // - Child nodes
+  // Update target node & all children.
+  //
+
   function instrumentDOMTree(rootAccessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
     // For now: Simply crawl to the node(s) and instrument regularly from there. Don't try to plant getters/setters.
     // $$DOM - - - - - -> root [regular subtree]
@@ -570,10 +622,39 @@ declare function importScripts(s: string): void;
         switchToRegularTree = true;
         obj = root;
         break;
-      default:
-        obj = root[tree.indexOrName];
-        accessString += `['${safeString(`${tree.indexOrName}`)}']`;
+      case 'childNodes':
+        obj = root['childNodes'];
+        accessString += `['childNodes']`;
         break;
+      default:
+        const modIndex = (<string> tree.indexOrName).slice(NODE_PROP_PREFIX.length);
+        obj = root[modIndex];
+        accessString += `[${modIndex}]`;
+        break;
+    }
+
+    if (!obj) {
+      return;
+    }
+
+    if (obj && !obj.$$$TREE$$$) {
+      Object.defineProperties(obj, {
+        $$$TREE$$$: {
+          value: null,
+          writable: true,
+          configurable: true
+        },
+        $$$ACCESS_STRING$$$: {
+          value: null,
+          writable: true,
+          configurable: true
+        }
+      });
+    }
+    obj.$$$TREE$$$ = tree;
+    obj.$$$ACCESS_STRING$$$ = accessString;
+    if (tree.isGrowing) {
+      getProxy(accessString, obj, stackTrace);
     }
 
     // Capture writes of children.
@@ -655,9 +736,24 @@ declare function importScripts(s: string): void;
         switchToRegularTree = true;
         obj = root;
         break;
-      default:
+      case 'childNodes':
         obj = root[path.indexOrName];
         break;
+      default:
+        obj = root[(<string> path.indexOrName).slice(NODE_PROP_PREFIX.length)];
+        break;
+    }
+
+    if (isProxyable(obj) && path.isGrowing) {
+      const wrappedObj = wrapIfOriginal(obj);
+      if (getProxyStatus(wrappedObj) === ProxyStatus.IS_PROXY) {
+        const map = getProxyStackTraces(wrappedObj);
+        const stackTraces = stacksMap[path.id] ? stacksMap[path.id] : new Set<string>();
+        map.forEach((v, k) => {
+          v.forEach((s) => stackTraces.add(s));
+        });
+        stacksMap[path.id] = stackTraces;
+      }
     }
 
     // Capture writes of children.
@@ -1054,8 +1150,379 @@ declare function importScripts(s: string): void;
 
       //const countMap = new Map<string, Count>();
       [[Node.prototype, "Node"], [Element.prototype, "Element"], [HTMLElement.prototype, "HTMLElement"],
-      [Document.prototype, "Document"], [HTMLCanvasElement.prototype, "HTMLCanvasElement"]]
+      [Document.prototype, "Document"], [HTMLCanvasElement.prototype, "HTMLCanvasElement"],
+      [NodeList.prototype, "NodeList"]]
         .forEach((v) => Object.keys(v[0]).forEach((k) => proxyInterposition(v[0], k, `${v[1]}.${k}`)));
+
+      // TODO: Remove instrumentation when element moved?
+
+      const $$$REINSTRUMENT$$$ = function(this: Node | NodeList): void {
+        if (this.$$$TREE$$$) {
+          instrumentDOMTree(this.$$$ACCESS_STRING$$$, this, this.$$$TREE$$$, _getStackTrace());
+        }
+      };
+      Object.defineProperty(Node.prototype, '$$$REINSTRUMENT$$$', {
+        value: $$$REINSTRUMENT$$$,
+        configurable: true
+      });
+      Object.defineProperty(NodeList.prototype, '$$$REINSTRUMENT$$$', {
+        value: $$$REINSTRUMENT$$$,
+        configurable: true
+      });
+
+      const textContent = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+      // textContent: Pass in a string. Replaces all children w/ a single text node.
+      Object.defineProperty(Node.prototype, 'textContent', {
+        get: textContent.get,
+        set: function(this: Node, v: any) {
+          const rv = textContent.set.call(this, v);
+          const cn = this.childNodes;
+          if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
+            const proxied = wrapIfOriginal(cn);
+            const traces = getProxyStackTraces(proxied);
+            traces.clear();
+            _initializeMap(proxied, traces, _getStackTrace());
+          }
+          this.childNodes.$$$REINSTRUMENT$$$();
+          return rv;
+        },
+        enumerable: true,
+        configurable: true
+      });
+
+      const appendChild = Node.prototype.appendChild;
+      Node.prototype.appendChild = function<T extends Node>(this: Node, newChild: T): T {
+        /**
+         * The Node.appendChild() method adds a node to the end of the list of children of a specified parent node.
+         * If the given child is a reference to an existing node in the document,
+         * appendChild() moves it from its current position to the new position.
+         */
+        if (newChild.parentNode !== null) {
+          newChild.parentNode.removeChild(newChild);
+        }
+
+        const cn = this.childNodes;
+        if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
+          const proxied = wrapIfOriginal(cn);
+          const traces = getProxyStackTraces(proxied);
+          _addStackTrace(traces, `${cn.length + 1}`);
+        }
+
+        const rv = appendChild.call(this, newChild);
+        cn.$$$REINSTRUMENT$$$();
+        return rv;
+      };
+
+      const insertBefore = Node.prototype.insertBefore;
+      // insertBefore: Takes Nodes. Modifies DOM.
+      Node.prototype.insertBefore = function<T extends Node>(newChild: T, refChild: Node): T {
+        /**
+         * The Node.insertBefore() method inserts the specified node before the reference
+         * node as a child of the current node.
+         *
+         * If referenceNode is null, the newNode is inserted at the end of the list of child nodes.
+         *
+         * Note that referenceNode is not an optional parameter -- you must explicitly pass a Node
+         * or null. Failing to provide it or passing invalid values may behave differently in
+         * different browser versions.
+         */
+        const cn = this.childNodes;
+        if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
+          if (refChild === null) {
+            // Avoid tracking stack traces for special case.
+            return this.appendChild(newChild);
+          } else {
+            const proxy = wrapIfOriginal(cn);
+            const stacks = getProxyStackTraces(proxy);
+            const len = cn.length;
+            let position = -1;
+            for (let i = 0; i < len; i++) {
+              if ($$$SEQ$$$(cn[i], newChild)) {
+                position = i;
+                break;
+              }
+            }
+            if (position === -1) {
+              logToConsole(`insertBefore called with invalid node!`);
+            } else {
+              for (let i = len - 1; i >= position; i--) {
+                _copyStacks(stacks, `${i}`, `${i + 1}`);
+              }
+              _removeStacks(stacks, `${position}`);
+              _addStackTrace(stacks, `${position}`);
+            }
+          }
+        }
+        const rv = insertBefore.call(this, newChild, refChild);
+        cn.$$$REINSTRUMENT$$$();
+        return rv;
+      };
+
+      const normalize = Node.prototype.normalize;
+      function normalizeInternal(n: Node): void {
+        const children = n.childNodes;
+        const len = children.length;
+        const stacks = getProxyStackTraces(wrapIfOriginal(n.childNodes));
+        let prevTextNode: Node = null;
+        let prevTextNodeI: number = -1;
+        let toRemove: number[] = [];
+        for (let i = 0; i < len; i++) {
+          const child = children[i];
+          if (child.nodeType === Node.TEXT_NODE) {
+            if (child.textContent === "") {
+              // Remove empty text nodes.
+              toRemove.push(i);
+            } else if (prevTextNode) {
+              // Merge adjacent text nodes.
+              prevTextNode.textContent += child.textContent;
+              if (stacks) {
+                _combineStacks(stacks, `${prevTextNodeI}`, `${i}`);
+              }
+              toRemove.push(i);
+            } else {
+              prevTextNode = child;
+              prevTextNodeI = i;
+            }
+          } else {
+            prevTextNode = null;
+            prevTextNodeI = -1;
+          }
+        }
+        const removeLen = toRemove.length;
+        for (let i = removeLen - 1; i >= 0; i--) {
+          n.removeChild(children[toRemove[i]]);
+        }
+        const len2 = children.length;
+        for (let i = 0; i < len2; i++) {
+          normalizeInternal(children[i]);
+        }
+      }
+      Node.prototype.normalize = function(this: Node): void {
+        /**
+         * The Node.normalize() method puts the specified node and all of its sub-tree into a
+         * "normalized" form. In a normalized sub-tree, no text nodes in the sub-tree are empty
+         * and there are no adjacent text nodes.
+         */
+        if (this.$$$TREE$$$) {
+          normalizeInternal(this);
+          this.$$$REINSTRUMENT$$$();
+        } else {
+          return normalize.call(this);
+        }
+      };
+
+      const removeChild = Node.prototype.removeChild;
+      Node.prototype.removeChild = function<T extends Node>(this: Node, child: T): T {
+        const cn = this.childNodes;
+        if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
+          const proxy = wrapIfOriginal(cn);
+          const stacks = getProxyStackTraces(proxy);
+          const children = this.childNodes;
+          const len = children.length;
+          let i = 0;
+          for (i = 0; i < len; i++) {
+            if ($$$SEQ$$$(children[i], child)) {
+              break;
+            }
+          }
+          if (i === len) {
+            logToConsole(`Invalid call to removeChild.`)
+          } else {
+            for (let j = i + 1; j < len; j++) {
+              _copyStacks(stacks, `${j}`, `${j - 1}`);
+            }
+            _removeStacks(stacks, `${len - 1}`);
+          }
+        }
+        const rv = removeChild.call(this, child);
+        cn.$$$REINSTRUMENT$$$();
+        return rv;
+      }
+
+      // replaceChild: Replaces a child.
+      const replaceChild = Node.prototype.replaceChild;
+      Node.prototype.replaceChild = function<T extends Node>(this: Node, newChild: Node, oldChild: T): T {
+        const cn = this.childNodes;
+        if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
+          const proxy = wrapIfOriginal(cn);
+          const stacks = getProxyStackTraces(proxy);
+          let i = 0;
+          const len = cn.length;
+          for (; i < len; i++) {
+            if ($$$SEQ$$$(cn[i], oldChild)) {
+              break;
+            }
+          }
+          if (i === len) {
+            logToConsole(`replaceChild called with invalid child`);
+          } else {
+            _addStackTrace(stacks, `${i}`);
+          }
+        }
+        const rv = replaceChild.call(this, newChild, oldChild);
+        cn.$$$REINSTRUMENT$$$();
+        return rv;
+      }
+
+      const innerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+      Object.defineProperty(Element.prototype, 'innerHTML', {
+        get: innerHTML.get,
+        set: function(this: Element, t: string): boolean {
+          const rv = innerHTML.set.call(this, t);
+          const cn = this.childNodes;
+          if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
+            const proxy = wrapIfOriginal(cn);
+            const stacks = getProxyStackTraces(proxy);
+            stacks.clear();
+            _initializeMap(cn, stacks, _getStackTrace());
+          }
+          cn.$$$REINSTRUMENT$$$();
+          return rv;
+        },
+        configurable: true,
+        enumerable: true
+      });
+
+      const outerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'outerHTML');
+      Object.defineProperty(Element.prototype, 'outerHTML', {
+        get: outerHTML.get,
+        set: function(this: Element, v: string): boolean {
+          const parent = this.parentNode;
+          if (parent) {
+            const parentCn = parent.childNodes;
+            if (getProxyStatus(parentCn) !== ProxyStatus.NO_PROXY) {
+              const len = parentCn.length;
+              let i = 0;
+              for (; i < len; i++) {
+                if (parentCn[i] === this) {
+                  break;
+                }
+              }
+              if (i === len) {
+                logToConsole(`Invalid call to outerHTML: Detached node?`);
+              } else {
+                const stacks = getProxyStackTraces(wrapIfOriginal(parentCn));
+                _removeStacks(stacks, `${i}`);
+                _addStackTrace(stacks, `${i}`);
+              }
+            }
+          }
+          const rv = outerHTML.set.call(this, v);
+          if (parent) {
+            parent.childNodes.$$$REINSTRUMENT$$$();
+          }
+          return rv;
+        },
+        configurable: true,
+        enumerable: true
+      });
+
+      function insertAdjacentHelper(e: Element, position: InsertPosition): void {
+        switch (position) {
+          case 'beforebegin':
+          case 'afterend': {
+            if (e.parentNode && getProxyStatus(e.parentNode.childNodes) !== ProxyStatus.NO_PROXY) {
+              const parent = e.parentNode;
+              const siblings = parent.childNodes;
+              const numSiblings = siblings.length;
+              let i = 0;
+              for (; i < numSiblings; i++) {
+                if ($$$SEQ$$$(siblings[i], e)) {
+                  break;
+                }
+              }
+              if (i !== numSiblings) {
+                // Does it shift things down before or after this element?
+                let start = position === 'beforebegin' ? i : i + 1;
+                const proxy = wrapIfOriginal(siblings);
+                const stacks = getProxyStackTraces(proxy);
+                for (i = numSiblings - 1; i >= start; i--) {
+                  _copyStacks(stacks, `${i}`, `${i + 1}`)
+                }
+                _removeStacks(stacks, `${start}`);
+                _addStackTrace(stacks, `${start}`);
+              }
+            }
+            break;
+          }
+          case 'afterbegin':
+          case 'beforeend': {
+            const cn = e.childNodes;
+            if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
+              const numChildren = cn.length;
+              const proxy = wrapIfOriginal(cn);
+              const stacks = getProxyStackTraces(proxy);
+              if (position === 'afterbegin') {
+                for (let i = numChildren - 1; i >= 0; i--) {
+                  _copyStacks(stacks, `${i}`, `${i + 1}`);
+                }
+                _removeStacks(stacks, `0`);
+                _addStackTrace(stacks, `0`);
+              } else {
+                _addStackTrace(stacks, `${numChildren}`);
+              }
+            }
+            break;
+          }
+        }
+      }
+
+      const insertAdjacentElement = Element.prototype.insertAdjacentElement;
+      Element.prototype.insertAdjacentElement = function(position: InsertPosition, insertedElement: Element): Element {
+        /**
+         * The insertAdjacentElement() method inserts a given element node at a given
+         * position relative to the element it is invoked upon.
+         */
+        insertAdjacentHelper(this, position);
+
+        const rv = insertAdjacentElement.call(this, position, insertedElement);
+        if (position === 'afterbegin' || position === 'beforeend') {
+          this.childNodes.$$$REINSTRUMENT$$$();
+        } else if (this.parentNode) {
+          this.parentNode.childNodes.$$$REINSTRUMENT$$$();
+        }
+        return rv;
+      };
+
+      const insertAdjacentHTML = Element.prototype.insertAdjacentHTML;
+      Element.prototype.insertAdjacentHTML = function(this: Element, where: InsertPosition, html: string): void {
+        insertAdjacentHelper(this, where);
+        const rv = insertAdjacentHTML.call(this, where, html);
+        if (where === 'afterbegin' || where === 'beforeend') {
+          this.childNodes.$$$REINSTRUMENT$$$();
+        } else if (this.parentNode) {
+          this.parentNode.childNodes.$$$REINSTRUMENT$$$();
+        }
+        return rv;
+      };
+
+      const insertAdjacentText = Element.prototype.insertAdjacentText;
+      Element.prototype.insertAdjacentText = function(this: Element, where: InsertPosition, text: string): void {
+        insertAdjacentHelper(this, where);
+        const rv = insertAdjacentText.call(this, where, text);
+        if (where === 'afterbegin' || where === 'beforeend') {
+          this.childNodes.$$$REINSTRUMENT$$$();
+        } else if (this.parentNode) {
+          this.parentNode.childNodes.$$$REINSTRUMENT$$$();
+        }
+        return rv;
+      }
+
+      const remove = Element.prototype.remove;
+      Element.prototype.remove = function(this: Element): void {
+        const parent = this.parentNode;
+        if (parent) {
+          parent.removeChild(this);
+        } else {
+          remove.call(this);
+        }
+      };
+      // Element:
+      // **SPECIAL**: dataset - modifies properties on DOM object through object!!!!
+      // -> throw exception if used.
+
+      // SVGElement:
+      // dataset: Throw exception if used
     }
 
 

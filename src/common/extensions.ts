@@ -12,7 +12,12 @@ interface Function {
 
 interface MirrorNode {
   root: Node;
-  childNodes: MirrorNode[];
+  childNodes: ChildNodes;
+}
+
+interface ChildNodes {
+  [p: string]: MirrorNode | number;
+  length: number;
 }
 
 interface Window {
