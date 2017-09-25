@@ -12,6 +12,7 @@ const DEFAULT_CONFIG: ConfigurationFile = {
   iterations: 4,
   url: "http://localhost:8080/",
   fixedLeaks: [],
+  leaks: {},
   blackBox: [],
   login: [],
   setup: [],
@@ -70,12 +71,12 @@ export class BLeakDetector {
    * @param log Log function. Used to write a report. Assumes each call to `log` appends a newline.
    * @param snapshotCb (Optional) Snapshot callback.
    */
-  public static async EvaluateLeakFixes(configSource: string, driver: ChromeDriver, iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb, startAt = 0): Promise<void> {
-    const detector = new BLeakDetector(driver, configSource, snapshotCb);
-    return detector.evaluateLeakFixes(iterations, iterationsPerSnapshot, log, startAt);
+  public static async EvaluateLeakFixes(configSource: string, driver: ChromeDriver, iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (sn: HeapSnapshotParser, metric: string, leaksFixed: number, iteration: number) => Promise<void> = defaultSnapshotCb, resumeAt?: [number, string]): Promise<void> {
+    const detector = new BLeakDetector(driver, configSource);
+    return detector.evaluateLeakFixes(iterations, iterationsPerSnapshot, log, snapshotCb, resumeAt);
   }
 
-  private readonly _driver: ChromeDriver;
+  private _driver: ChromeDriver;
   private readonly _configSource: string;
   private readonly _config: ConfigurationFile;
   private readonly _growthTracker = new HeapGrowthTracker();
@@ -179,41 +180,97 @@ export class BLeakDetector {
     }
   }
 
-  public async evaluateLeakFixes(iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, startAt: number): Promise<void> {
-    let headerPrinted = startAt > 0;
+  public async evaluateLeakFixes(iterations: number, iterationsPerSnapshot: number, log: (s: string) => void, snapshotCb: (ss: HeapSnapshotParser, metric: string, leaksFixed: number, iteration: number) => Promise<void>, resumeAt?: [number, string]): Promise<void> {
+    let metrics = Object.keys(this._config.leaks);
+    let headerPrinted = !!resumeAt;
     let iterationCount = 0;
-    let leaksFixed = startAt;
+    let leaksFixed = resumeAt ? resumeAt[0] : 0;
+    let metric: string;
+
+    let logBuffer = new Array<string>();
+    function stageLog(l: string): void {
+      logBuffer.push(l);
+    }
+
+    function flushLog(): void {
+      for (const msg of logBuffer) {
+        log(msg);
+      }
+      logBuffer = [];
+    }
+
+    function emptyLog(): void {
+      logBuffer = [];
+    }
+
     async function snapshotReport(sn: HeapSnapshotParser): Promise<void> {
       const g = await HeapGraph.Construct(sn);
       const size = g.calculateSize();
-      const data = Object.assign({ leaksFixed, iterationCount }, size);
+      const data = Object.assign({ metric, leaksFixed, iterationCount }, size);
       const keys = Object.keys(data).sort();
       if (!headerPrinted) {
         log(keys.join(","));
         headerPrinted = true;
       }
-      log(keys.map((k) => (<any> data)[k]).join(","));
+      stageLog(keys.map((k) => (<any> data)[k]).join(","));
       iterationCount++;
     }
+
+    const executeWrapper = async (iterations: number, login: boolean, takeSnapshots?: (sn: HeapSnapshotParser) => Promise<void>, iterationsPerSnapshot?: number, snapshotOnFirst?: boolean): Promise<void> => {
+      while (true) {
+        try {
+          iterationCount = 0;
+          await this._execute(iterations, login, takeSnapshots, iterationsPerSnapshot, snapshotOnFirst);
+          flushLog();
+          return;
+        } catch (e) {
+          console.log(e);
+          console.log(`Timed out. Trying again.`);
+          emptyLog();
+          this._driver = await this._driver.relaunch();
+        }
+      }
+    };
+
     // Disable fixes for base case.
     this.configureProxy(false, [], true, true);
     // Login + warmup run. Has impact on heap. No snapshots.
-    // await this._execute(iterations, true);
+    // await executeWrapper(iterations, true);
 
-    //for (leaksFixed = startAt; leaksFixed <= this._config.fixedLeaks.length; leaksFixed++) {
-      this.configureProxy(false, this._config.fixedLeaks.slice(0, leaksFixed), true, true);
-      iterationCount = 0;
-      await this._execute(iterations, true, snapshotReport, iterationsPerSnapshot, true);
-    //}
+    this._snapshotCb = function(ss) {
+      return snapshotCb(ss, metric, leaksFixed, iterationCount);
+    };
+
+    let hasResumed = false;
+    for (metric of metrics) {
+      if (resumeAt && !hasResumed) {
+        hasResumed = metric === resumeAt[1];
+        if (!hasResumed) {
+          continue;
+        }
+      }
+      const leaks = this._config.leaks[metric];
+      for (leaksFixed = resumeAt && metric === resumeAt[1] ? resumeAt[0] : 0; leaksFixed <= leaks.length; leaksFixed++) {
+        this.configureProxy(false, leaks.slice(0, leaksFixed), true, true);
+        await executeWrapper(iterations, true, snapshotReport, iterationsPerSnapshot, true);
+        this._driver = await this._driver.relaunch();
+      }
+    }
+    await this._driver.shutdown();
   }
 
-  private async _waitUntilTrue(i: number, prop: string): Promise<void> {
+  private async _waitUntilTrue(i: number, prop: string, timeoutDuration: number = this._config.timeout): Promise<void> {
+    let timeoutOccurred = false;
+    let timeout = setTimeout(() => timeoutOccurred = true, timeoutDuration);
     while (true) {
-      const success = await this._driver.runCode<boolean>(`BLeakConfig.${prop}[${i}].check()`);
+      const success = await this._driver.runCode<boolean>(`typeof(BLeakConfig) !== "undefined" && BLeakConfig.${prop}[${i}].check()`);
       if (success) {
+        clearTimeout(timeout);
         // Delay before returning to give browser time to "catch up".
         await wait(5000);
         return;
+      } else if (timeoutOccurred) {
+        throw new Error(`Timed out.`);
       }
       await wait(1000);
     }

@@ -1018,6 +1018,35 @@ declare function importScripts(s: string): void;
       return -1;
     };
 
+    Array.prototype.lastIndexOf = function(this: any[], searchElement: any, fromIndex = 0): number {
+      if (this === void 0 || this === null) {
+        throw new TypeError();
+      }
+
+      let t = Object(this),
+        len = t.length >>> 0;
+      if (len === 0) {
+        return -1;
+      }
+
+      let n = len - 1;
+      if (arguments.length > 1) {
+        n = Number(arguments[1]);
+        if (n != n) {
+          n = 0;
+        } else if (n != 0 && n != (1 / 0) && n != -(1 / 0)) {
+          n = (n > 0 ? 1 : -1) * Math.floor(Math.abs(n));
+        }
+      }
+
+      for (let k = n >= 0 ? Math.min(n, len - 1) : len - Math.abs(n); k >= 0; k--) {
+        if (k in t && $$$SEQ$$$(t[k], searchElement)) {
+          return k;
+        }
+      }
+      return -1;
+    };
+
     // TODO: Sort, reverse, ...
 
     // Deterministic Math.random(), so jQuery variable is deterministic.
@@ -1177,11 +1206,10 @@ declare function importScripts(s: string): void;
         set: function(this: Node, v: any) {
           const rv = textContent.set.call(this, v);
           const cn = this.childNodes;
-          if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
-            const proxied = wrapIfOriginal(cn);
-            const traces = getProxyStackTraces(proxied);
+          if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
+            const traces = getProxyStackTraces(cn);
             traces.clear();
-            _initializeMap(proxied, traces, _getStackTrace());
+            _initializeMap(cn, traces, _getStackTrace());
           }
           this.childNodes.$$$REINSTRUMENT$$$();
           return rv;
@@ -1202,10 +1230,9 @@ declare function importScripts(s: string): void;
         }
 
         const cn = this.childNodes;
-        if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
-          const proxied = wrapIfOriginal(cn);
-          const traces = getProxyStackTraces(proxied);
-          _addStackTrace(traces, `${cn.length + 1}`);
+        if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
+          const traces = getProxyStackTraces(cn);
+          _addStackTrace(traces, `${cn.length}`);
         }
 
         const rv = appendChild.call(this, newChild);
@@ -1227,17 +1254,16 @@ declare function importScripts(s: string): void;
          * different browser versions.
          */
         const cn = this.childNodes;
-        if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
+        if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
           if (refChild === null) {
             // Avoid tracking stack traces for special case.
             return this.appendChild(newChild);
           } else {
-            const proxy = wrapIfOriginal(cn);
-            const stacks = getProxyStackTraces(proxy);
+            const stacks = getProxyStackTraces(cn);
             const len = cn.length;
             let position = -1;
             for (let i = 0; i < len; i++) {
-              if ($$$SEQ$$$(cn[i], newChild)) {
+              if ($$$SEQ$$$(cn[i], refChild)) {
                 position = i;
                 break;
               }
@@ -1262,7 +1288,7 @@ declare function importScripts(s: string): void;
       function normalizeInternal(n: Node): void {
         const children = n.childNodes;
         const len = children.length;
-        const stacks = getProxyStackTraces(wrapIfOriginal(n.childNodes));
+        const stacks = getProxyStackTraces(n.childNodes);
         let prevTextNode: Node = null;
         let prevTextNodeI: number = -1;
         let toRemove: number[] = [];
@@ -1314,13 +1340,12 @@ declare function importScripts(s: string): void;
       const removeChild = Node.prototype.removeChild;
       Node.prototype.removeChild = function<T extends Node>(this: Node, child: T): T {
         const cn = this.childNodes;
-        if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
-          const proxy = wrapIfOriginal(cn);
-          const stacks = getProxyStackTraces(proxy);
+        if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
+          const stacks = getProxyStackTraces(cn);
           const children = this.childNodes;
           const len = children.length;
           let i = 0;
-          for (i = 0; i < len; i++) {
+          for (; i < len; i++) {
             if ($$$SEQ$$$(children[i], child)) {
               break;
             }
@@ -1343,9 +1368,8 @@ declare function importScripts(s: string): void;
       const replaceChild = Node.prototype.replaceChild;
       Node.prototype.replaceChild = function<T extends Node>(this: Node, newChild: Node, oldChild: T): T {
         const cn = this.childNodes;
-        if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
-          const proxy = wrapIfOriginal(cn);
-          const stacks = getProxyStackTraces(proxy);
+        if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
+          const stacks = getProxyStackTraces(cn);
           let i = 0;
           const len = cn.length;
           for (; i < len; i++) {
@@ -1370,9 +1394,8 @@ declare function importScripts(s: string): void;
         set: function(this: Element, t: string): boolean {
           const rv = innerHTML.set.call(this, t);
           const cn = this.childNodes;
-          if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
-            const proxy = wrapIfOriginal(cn);
-            const stacks = getProxyStackTraces(proxy);
+          if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
+            const stacks = getProxyStackTraces(cn);
             stacks.clear();
             _initializeMap(cn, stacks, _getStackTrace());
           }
@@ -1390,7 +1413,7 @@ declare function importScripts(s: string): void;
           const parent = this.parentNode;
           if (parent) {
             const parentCn = parent.childNodes;
-            if (getProxyStatus(parentCn) !== ProxyStatus.NO_PROXY) {
+            if (getProxyStatus(parentCn) === ProxyStatus.IS_PROXY) {
               const len = parentCn.length;
               let i = 0;
               for (; i < len; i++) {
@@ -1401,7 +1424,7 @@ declare function importScripts(s: string): void;
               if (i === len) {
                 logToConsole(`Invalid call to outerHTML: Detached node?`);
               } else {
-                const stacks = getProxyStackTraces(wrapIfOriginal(parentCn));
+                const stacks = getProxyStackTraces(parentCn);
                 _removeStacks(stacks, `${i}`);
                 _addStackTrace(stacks, `${i}`);
               }
@@ -1421,7 +1444,7 @@ declare function importScripts(s: string): void;
         switch (position) {
           case 'beforebegin':
           case 'afterend': {
-            if (e.parentNode && getProxyStatus(e.parentNode.childNodes) !== ProxyStatus.NO_PROXY) {
+            if (e.parentNode && getProxyStatus(e.parentNode.childNodes) === ProxyStatus.IS_PROXY) {
               const parent = e.parentNode;
               const siblings = parent.childNodes;
               const numSiblings = siblings.length;
@@ -1434,8 +1457,7 @@ declare function importScripts(s: string): void;
               if (i !== numSiblings) {
                 // Does it shift things down before or after this element?
                 let start = position === 'beforebegin' ? i : i + 1;
-                const proxy = wrapIfOriginal(siblings);
-                const stacks = getProxyStackTraces(proxy);
+                const stacks = getProxyStackTraces(siblings);
                 for (i = numSiblings - 1; i >= start; i--) {
                   _copyStacks(stacks, `${i}`, `${i + 1}`)
                 }
@@ -1448,10 +1470,9 @@ declare function importScripts(s: string): void;
           case 'afterbegin':
           case 'beforeend': {
             const cn = e.childNodes;
-            if (getProxyStatus(cn) !== ProxyStatus.NO_PROXY) {
+            if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
               const numChildren = cn.length;
-              const proxy = wrapIfOriginal(cn);
-              const stacks = getProxyStackTraces(proxy);
+              const stacks = getProxyStackTraces(cn);
               if (position === 'afterbegin') {
                 for (let i = numChildren - 1; i >= 0; i--) {
                   _copyStacks(stacks, `${i}`, `${i + 1}`);

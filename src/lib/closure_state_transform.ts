@@ -1604,7 +1604,6 @@ class ScopeScanningVisitor extends Visitor {
 
   public Identifier(n: Identifier): Identifier | MemberExpression {
     this._symbols.add(n.name);
-    this._scope.maybeCloseOverVariable(n.name);
     return n;
   }
 
@@ -1700,6 +1699,45 @@ class ScopeScanningVisitor extends Visitor {
     this._nextBlockIsWith = true;
 
     return super.WithStatement(ws);
+  }
+}
+
+/**
+ * Once the previous visitor has created all of the necessary scopes, this pass checks which local variables escape into function closures.
+ */
+class EscapeAnalysisVisitor extends Visitor {
+  public static Visit(ast: Program, scopeMap: Map<Program | BlockStatement, BlockScope>): Program {
+    const visitor = new EscapeAnalysisVisitor(scopeMap);
+    return visitor.Program(ast);
+  }
+
+  private _scope: IScope = null;
+  private _scopeMap: Map<Program | BlockStatement, BlockScope>;
+
+  private constructor(scopeMap: Map<Program | BlockStatement, BlockScope>) {
+    super();
+    this._scopeMap = scopeMap;
+  }
+
+  public Program(p: Program): Program {
+    const prev = this._scope;
+    this._scope = this._scopeMap.get(p);
+    const rv = super.Program(p);
+    this._scope = prev;
+    return rv;
+  }
+
+  public BlockStatement(bs: BlockStatement): BlockStatement {
+    const prev = this._scope;
+    this._scope = this._scopeMap.get(bs);
+    const rv = super.BlockStatement(bs);
+    this._scope = prev;
+    return rv;
+  }
+
+  public Identifier(n: Identifier): Identifier | MemberExpression {
+    this._scope.maybeCloseOverVariable(n.name);
+    return n;
   }
 }
 
@@ -2077,7 +2115,8 @@ function exposeClosureStateInternal(filename: string, source: string, sourceMap:
 
   const map = new Map<Program | BlockStatement, BlockScope>();
   const symbols = new Set<string>();
-  ast = ScopeCreationVisitor.Visit(ScopeScanningVisitor.Visit(ast, map, symbols, evalScopeName ? new BlockScope(new ProxyScope(evalScopeName), true) : undefined), map, symbols, agentUrl, polyfillUrl);
+  ast = ScopeCreationVisitor.Visit(
+    EscapeAnalysisVisitor.Visit(ScopeScanningVisitor.Visit(ast, map, symbols, evalScopeName ? new BlockScope(new ProxyScope(evalScopeName), true) : undefined), map), map, symbols, agentUrl, polyfillUrl);
   return generateJavaScript(ast, { sourceMap });
 }
 

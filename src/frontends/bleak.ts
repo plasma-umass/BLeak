@@ -117,7 +117,7 @@ async function main() {
     LOG(``);
     LOG(`# Ranking Metric Transitive Closure`);
     LOG(``);
-    leaks.sort((a, b) => b.retainedSize - a.retainedSize).forEach((l, i) => {
+    leaks.sort((a, b) => b.transitiveClosureSize - a.transitiveClosureSize).forEach((l, i) => {
       printLeak(l, "transitiveClosureSize", i);
     });
     LOG(``);

@@ -10,7 +10,10 @@ export interface ConfigurationFile {
   // Number of iterations to do
   iterations?: number;
   // Leaks to consider "fixed" during run.
+  // Used for BLeak script.
   fixedLeaks?: number[];
+  // Leak rank for each metric. Used for evaluation script.
+  leaks?: {[metric:string]: number[]};
   // URL to web page to check for memory leaks.
   url: string;
   // (Optional) Globs for script files that should be *black boxed* during leak detection.

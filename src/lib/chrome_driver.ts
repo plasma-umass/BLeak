@@ -119,6 +119,13 @@ export default class ChromeDriver {
     };
   }
 
+  public async relaunch(): Promise<ChromeDriver> {
+    await this.shutdown();
+    const driver = await ChromeDriver.Launch(this._log);
+    driver.mitmProxy.cb = this.mitmProxy.cb;
+    return driver;
+  }
+
   public async navigateTo(url: string): Promise<any> {
     this._loadedFrames.clear();
     const f = await this._page.navigate({ url });
@@ -127,6 +134,7 @@ export default class ChromeDriver {
       await wait(5);
     }
   }
+
   public async runCode<T>(expression: string): Promise<T> {
     const e = await this._runtime.evaluate({ expression, returnByValue: true });
     console.log(`${expression} => ${JSON.stringify(e.result.value)}`);

@@ -1,5 +1,10 @@
 exports.url = "http://localhost:3000/dashboard";
 exports.fixedLeaks = [0,1,3,4,2,5,99,13,14];
+exports.leaks = {
+  leak_share: [0,1,3,4,2,5,99,13,14],
+  retained_size: [5,0,1,3,4,2,13,14,99],
+  transitive_closure: [5,0,1,3,4,2,13,99,14]
+};
 exports.iterations = 8;
 exports.login = [
   {
