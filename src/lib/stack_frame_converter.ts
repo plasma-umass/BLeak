@@ -2,7 +2,7 @@ import {SourceMapConsumer} from 'source-map';
 import {StackFrame, parse as ErrorStackParser} from 'error-stack-parser';
 import {DEFAULT_AGENT_URL} from '../common/util';
 import {resolve as resolveURL} from 'url';
-import MITMProxy from './mitmproxy';
+import MITMProxy from 'mitmproxy-node';
 
 const magicString = '//# sourceMappingURL=data:application/json;base64,';
 

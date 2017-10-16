@@ -2,7 +2,7 @@ import {Server as HTTPServer} from 'http';
 import createHTTPServer from './util/http_server';
 import {equal as assertEqual} from 'assert';
 import {gzipSync, gunzipSync} from 'zlib';
-import {default as MITMProxy, InterceptedHTTPMessage, nopInterceptor} from '../src/lib/mitmproxy';
+import {default as MITMProxy, InterceptedHTTPMessage, nopInterceptor} from 'mitmproxy-node';
 
 const HTTP_PORT = 8888;
 

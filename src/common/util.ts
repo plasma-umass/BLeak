@@ -1,4 +1,5 @@
-import {default as MITMProxy, getInterceptor} from '../lib/mitmproxy';
+import {default as MITMProxy} from 'mitmproxy-node';
+import {getInterceptor} from '../lib/mitmproxy_interceptor';
 import {createConnection, Socket} from 'net';
 
 export const DEFAULT_AGENT_PATH = require.resolve('../lib/bleak_agent');

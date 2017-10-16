@@ -6,7 +6,7 @@ import {WriteStream} from 'fs';
 import * as repl from 'repl';
 import {parse as parseJavaScript} from 'esprima';
 import * as childProcess from 'child_process';
-import {default as MITMProxy} from './mitmproxy';
+import MITMProxy from 'mitmproxy-node';
 
 // HACK: Patch spawn to work around chrome-debugging-client limitation
 // https://github.com/krisselden/chrome-debugging-client/issues/10
@@ -40,6 +40,7 @@ function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
 export default class ChromeDriver {
   public static async Launch(log: WriteStream): Promise<ChromeDriver> {
     const mitmProxy = await MITMProxy.Create();
+    mitmProxy.cacheEnabled = true;
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
     // spawns a chrome instance with a tmp user data
     // and the debugger open to an ephemeral port
