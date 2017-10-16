@@ -198,6 +198,21 @@ declare function importScripts(s: string): void;
 
   // Reuseable eval() function. Does not have a polluted scope.
   const EVAL_FCN = new Function('scope', '$$$SRC$$$', 'return eval($$$SRC$$$);');
+  // Caches compiled eval statements from server to reduce synchronous XHRs.
+  const EVAL_CACHE = new Map<string, { e: string, ts: number }>();
+  const EVAL_CACHE_LIMIT = 100;
+
+  /**
+   * Removes the 10 items from EVAL_CACHE that were least recently used.
+   */
+  function trimEvalCache() {
+    const items: {e: string, ts: number}[] = [];
+    EVAL_CACHE.forEach((i) => items.push(i));
+    items.sort((a, b) => a.ts - b.ts);
+    items.slice(0, 10).forEach((i) => {
+      EVAL_CACHE.delete(i.e);
+    });
+  }
 
   /**
    * Sends text passed to `eval` to the server for rewriting,
@@ -206,15 +221,25 @@ declare function importScripts(s: string): void;
    * @param text The JavaScript code to eval.
    */
   function $$$REWRITE_EVAL$$$(scope: any, source: string): any {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/eval', false);
-    xhr.setRequestHeader("Content-type", "application/json");
-    xhr.send(JSON.stringify({ scope: "scope", source }));
+    let cache = EVAL_CACHE.get(source);
+    if (!cache) {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/eval', false);
+      xhr.setRequestHeader("Content-type", "application/json");
+      xhr.send(JSON.stringify({ scope: "scope", source }));
+      cache = { e: xhr.responseText, ts: 0 };
+      EVAL_CACHE.set(source, cache);
+      if (EVAL_CACHE.size > EVAL_CACHE_LIMIT) {
+        trimEvalCache();
+      }
+    }
+    // Update timestamp
+    cache.ts = Date.now();
     return EVAL_FCN(new Proxy(scope, {
       // Appropriately relay writes to first scope with the given variable name.
       // Otherwise, it'll overwrite the property on the outermost scope!
       set: applyWrite
-    }), xhr.responseText);
+    }), cache.e);
   }
 
   /**
@@ -574,12 +599,17 @@ declare function importScripts(s: string): void;
       setProxy.$$update = updateAssignmentProxy;
       setProxy.$$root = root;
 
-      Object.defineProperty(root, indexOrName, {
-        get: function(this: any) {
-          return getHiddenValue(this, indexOrName);
-        },
-        set: setProxy
-      });
+      try {
+        Object.defineProperty(root, indexOrName, {
+          get: function(this: any) {
+            return getHiddenValue(this, indexOrName);
+          },
+          set: setProxy,
+          configurable: true
+        });
+      } catch (e) {
+        logToConsole(`Unable to instrument ${rootAccessString}: ${e}`);
+      }
     }
 
     if (setProxy.$$trees.indexOf(tree) === -1) {
