@@ -1846,22 +1846,17 @@ class ScopeCreationVisitor extends Visitor {
     }
     const newId = this.Identifier(id);
     if (newId.type === "MemberExpression") {
-      if (decl.init) {
-        return {
-          type: "ExpressionStatement",
-          expression: {
-            type: "AssignmentExpression",
-            operator: "=",
-            left: newId,
-            right: decl.init,
-            loc: decl.loc
-          },
+      return {
+        type: "ExpressionStatement",
+        expression: {
+          type: "AssignmentExpression",
+          operator: "=",
+          left: newId,
+          right: decl.init ? decl.init : { type: "Identifier", name: "undefined", loc: decl.loc },
           loc: decl.loc
-        };
-      } else {
-        newId.loc = decl.loc;
-        return newId;
-      }
+        },
+        loc: decl.loc
+      };
     } else {
       return decl;
     }

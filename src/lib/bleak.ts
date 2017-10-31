@@ -132,7 +132,7 @@ export class BLeakDetector {
       const sn = await this._runLoop(<true> snapshotRun, 'loop', true);
       if (snapshotRun) {
         console.log(`Waiting 5 seconds before snapshot.`);
-        await wait(5000);
+        await wait(500); // 5000
         await takeSnapshots(sn);
       }
     }
@@ -267,12 +267,12 @@ export class BLeakDetector {
       if (success) {
         clearTimeout(timeout);
         // Delay before returning to give browser time to "catch up".
-        await wait(5000);
+        await wait(500); // 5000
         return;
       } else if (timeoutOccurred) {
         throw new Error(`Timed out.`);
       }
-      await wait(1000);
+      await wait(100); // 1000
     }
   }
 
