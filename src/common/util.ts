@@ -1,4 +1,4 @@
-import {default as MITMProxy} from 'mitmproxy-node';
+import {default as MITMProxy} from 'mitmproxy';
 import {getInterceptor} from '../lib/mitmproxy_interceptor';
 import {createConnection, Socket} from 'net';
 

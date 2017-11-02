@@ -2,7 +2,7 @@ import {SourceMapConsumer} from 'source-map';
 import {StackFrame, parse as ErrorStackParser} from 'error-stack-parser';
 import {DEFAULT_AGENT_URL} from '../common/util';
 import {resolve as resolveURL} from 'url';
-import MITMProxy from 'mitmproxy-node';
+import MITMProxy from 'mitmproxy';
 
 const magicString = '//# sourceMappingURL=data:application/json;base64,';
 
@@ -24,7 +24,7 @@ export default class StackFrameConverter {
     let map = this._maps.get(url);
     if (!map) {
       try {
-        const source = Buffer.from(proxy.getFromCache(url)).toString();
+        const source = proxy.getFromStash(url).data.toString();
         let sourceMapOffset = source.lastIndexOf(magicString)
         if (sourceMapOffset > -1) {
           sourceMapOffset += magicString.length;

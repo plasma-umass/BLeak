@@ -147,10 +147,10 @@ async function main() {
     };
     writeFileSync(join(args.out, 'leaks.json'), JSON.stringify(leakJson, undefined, '  '));
 
-    chromeDriver.mitmProxy.forEachCacheItem((data, url) => {
+    chromeDriver.mitmProxy.forEachStashItem((data, url) => {
       const u = parseURL(url);
       try {
-        writeFileSync(join(args.out, 'source', makeNameSafe(u.pathname)), data);
+        writeFileSync(join(args.out, 'source', makeNameSafe(u.pathname)), data.data);
       } catch (e) {
         console.warn(`Failed to write ${url}`);
         console.warn(e);

@@ -1,6 +1,6 @@
 import {parseHTML, exposeClosureState, injectIntoHead, ensureES5} from './transformations';
 import {readFileSync} from 'fs';
-import {Interceptor, InterceptedHTTPMessage} from 'mitmproxy-node';
+import {Interceptor, InterceptedHTTPMessage} from 'mitmproxy';
 
 function identJSTransform(f: string, s: string) {
   return s;

@@ -67,7 +67,7 @@
     "http-mitm-proxy": "^0.5.2",
     "locate-java-home": "^0.1.6",
     "microtime": "^2.1.6",
-    "mitmproxy-node": "bitbucket.org:jvilk/mitmproxy-node.git#51a2aff7e35c174ab34877170cdfc3148a693f8f",
+    "mitmproxy": "^1.0.0",
     "papaparse": "^4.3.6",
     "source-map": "^0.5.6",
     "ws": "^3.1.0",
