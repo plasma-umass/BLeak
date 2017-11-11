@@ -16,12 +16,12 @@ function getHeapSnapshotParser(file: string): HeapSnapshotParser {
 }
 
 async function main() {
-  const t = new HeapGrowthTracker();
   const files = process.argv.slice(2);
   if (files.length === 0) {
     console.log(`Usage: ${process.argv[0]} ${process.argv[1]} snap1.heapsnapshot.gz snap2.heapsnapshot.gz [more *.heapsnapshots.gz in order...]\n\nPrints out growing paths in the heap over several snapshots.`);
     process.exit();
   }
+  const t = new HeapGrowthTracker();
   for (const file of files) {
     console.log(`Processing ${file}...`);
     await t.addSnapshot(getHeapSnapshotParser(file));

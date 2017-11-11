@@ -96,6 +96,7 @@ export interface GrowthObject {
   retainedSize: number;
   adjustedRetainedSize: number;
   transitiveClosureSize: number;
+  ownedObjects: number;
 }
 
 function shouldTraverse(edge: Edge, wantDom: boolean): boolean {
@@ -319,10 +320,12 @@ export class HeapGrowthTracker {
       let retainedSize = 0;
       let adjustedRetainedSize = 0;
       let transitiveClosureSize = 0;
+      let ownedObjects = 0;
       bfsVisitor(this._heap, [growthNodeIndex], (n) => {
         const refCount = leakReferences[n.nodeIndex];
         if (refCount === 1) {
           retainedSize += n.size;
+          ownedObjects++;
         }
         adjustedRetainedSize += n.size / refCount;
       }, nonLeakFilter);
@@ -332,7 +335,7 @@ export class HeapGrowthTracker {
         transitiveClosureSize += n.size;
       }, filterIncludeDom);
 
-      rv.push({ node: new Node(growthNodeIndex, this._heap), paths, retainedSize, adjustedRetainedSize, transitiveClosureSize });
+      rv.push({ node: new Node(growthNodeIndex, this._heap), paths, retainedSize, adjustedRetainedSize, transitiveClosureSize, ownedObjects });
     });
 
     // DEBUG
@@ -682,6 +685,8 @@ export class HeapGraph {
   public readonly edgeToNodes: {[n: number]: NodeIndex} & Uint32Array; // Uint32Array
   // Index of the graph's root node.
   public readonly rootNodeIndex: NodeIndex;
+  // Lazily initialized retained size array.
+  public readonly retainedSize: Uint32Array = null;
 
   private constructor(stringMap: StringMap, nodeTypes: Uint8Array, nodeNames: Uint32Array,
     nodeSizes: Uint32Array, firstEdgeIndexes: Uint32Array, edgeTypes: Uint8Array,

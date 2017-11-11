@@ -39,6 +39,9 @@ const args: CommandLineArgs = <any> yargs.number('proxy-port')
   .help('help')
   .parse(process.argv);
 
+if (!existsSync(args.out)) {
+  mkdirSync(args.out);
+}
 if (args.snapshot) {
   if (!existsSync(join(args.out, 'snapshots'))) {
     mkdirSync(join(args.out, 'snapshots'));
