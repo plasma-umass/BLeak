@@ -18,8 +18,9 @@ BLeak is an active research project of the [PLASMA lab](https://plasma.cs.umass.
 2. **Run** `node build/src/frontends/bleak.js --config path/to/config.js --out path/to/where/you/want/output`
   * The output directory should be unique for this specific run of BLeak, otherwise it will overwrite files in the directory. It will be created if needed.
 3. **Wait.** BLeak typically runs in <10 minutes, but its speed depends on the number of states in your loop and the speed of your web application.
-4. **Examine** `path/to/where/you/want/output/leaks.log`
+4. **Examine** `path/to/where/you/want/output/leaks.log`, which contains a list of growing objects and stack traces responsible for growing it.
   * Note: leaks.log currently reports three different rankings for different ranking metrics; use the first ranking. This is an artifact from our research.
+  * Note 2: Paths with `$$$listeners$$$` correspond to a specific event listener list, paths with `$$$DOM$$$` refer to a specific DOM node (accessed via `childNodes`), and paths with `__closure__` refer to function closures. We will make these easier for humans to read soon!
 
 ## Configuration File
 
