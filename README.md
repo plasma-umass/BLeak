@@ -2,7 +2,7 @@
 
 BLeak automatically finds, ranks, and diagnoses memory leaks in the client-side of web applications.
 
-BLeak uses a short developer-provided script to drive the application in a loop through specific visual states (e.g., the inbox view and email view of a mail client) as an oracle to find memory leaks. In our experience, BLeak's precision is often **100%** (e.g., no false positives), and fixing the leaks it finds reduces heap growth by **94%**.
+BLeak uses a short developer-provided script to drive the application in a loop through specific visual states (e.g., the inbox view and email view of a mail client) as an oracle to find memory leaks. In our experience, BLeak's precision is often **100%** (e.g., no false positives), and fixing the leaks it finds reduces heap growth by **94%** on average on a corpus of real production web apps.
 
 BLeak is an active research project of the [PLASMA lab](https://plasma.cs.umass.edu/) at the University of Massachusetts Amherst, and should be considered experimental software. We appreciate pull requests and bug reports, but note that we have not polished the general software artifact for general use yet.
 
