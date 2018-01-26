@@ -11,7 +11,6 @@ exports.login = [
     // (Optional) Name for debugging purposes.
     name: "login-username",
     // Return 'true' if the program has finished loading the current state
-    // Can return a promise.
     check: function() {
       // Return 'true' if the element 'password-field' exists.
       const emailField = document.getElementsByTagName('input')[1];
