@@ -34,6 +34,8 @@ export interface ConfigurationFile {
 export interface Step  {
   // (Optional) Name for debugging purposes.
   name?: string;
+  // (Optional) Milliseconds to sleep before running check or next.
+  sleep?: number;
   // Return 'true' if the program has finished loading the current state
   check: () => boolean | Promise<boolean>;
   // Transitions to the next step.

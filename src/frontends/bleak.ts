@@ -84,6 +84,19 @@ async function main() {
   const configFileSource = readFileSync(args.config).toString();
   writeFileSync(join(args.out, 'config.js'), configFileSource);
   let chromeDriver = await ChromeDriver.Launch(<any> process.stdout);
+  // Add stack traces to Node warnings.
+  // https://stackoverflow.com/a/38482688
+  process.on('warning', (e: Error) => console.warn(e.stack));
+  let shuttingDown = false;
+  // Shut down gracefully on CTRL+C.
+  process.on('SIGINT', async function() {
+    if (shuttingDown) {
+      return;
+    }
+    console.log(`Shutting down!`);
+    shuttingDown = true;
+    await chromeDriver.shutdown();
+  });
   let i = 0;
   const leaks = await BLeak.FindLeaks(configFileSource, chromeDriver, (sn) => {
     if (args.snapshot) {

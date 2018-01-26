@@ -1095,6 +1095,12 @@ declare function importScripts(s: string): void;
       };
     }());
 
+    // Deterministic Date.now(), so YUI variable is deterministic.
+    let dateNowCount = 0;
+    Date.now = Date.prototype.getTime = function() {
+      return 1516992512425 + (dateNowCount++);
+    };
+
     // interface Count {get: number; set: number; invoked: number }
 
     /**

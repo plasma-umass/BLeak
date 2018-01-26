@@ -21,6 +21,7 @@ const DEFAULT_CONFIG: ConfigurationFile = {
   rewrite: (url, type, data, fixes) => data
 };
 const DEFAULT_CONFIG_STRING = JSON.stringify(DEFAULT_CONFIG);
+type StepType = "login" | "setup" | "loop";
 
 function wait(d: number): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -259,36 +260,50 @@ export class BLeakDetector {
     await this._driver.shutdown();
   }
 
-  private async _waitUntilTrue(i: number, prop: string, timeoutDuration: number = this._config.timeout): Promise<void> {
+  private async _waitUntilTrue(i: number, prop: StepType, timeoutDuration: number = this._config.timeout): Promise<void> {
     let timeoutOccurred = false;
     let timeout = setTimeout(() => timeoutOccurred = true, timeoutDuration);
+
+    if (this._config[prop][i].sleep) {
+      await wait(this._config[prop][i].sleep);
+    }
+
     while (true) {
-      const success = await this._driver.runCode<boolean>(`typeof(BLeakConfig) !== "undefined" && BLeakConfig.${prop}[${i}].check()`);
-      if (success) {
-        clearTimeout(timeout);
-        // Delay before returning to give browser time to "catch up".
-        await wait(500); // 5000
-        return;
-      } else if (timeoutOccurred) {
-        throw new Error(`Timed out.`);
+      try {
+        const success = await this._driver.runCode<boolean>(`typeof(BLeakConfig) !== "undefined" && BLeakConfig.${prop}[${i}].check()`);
+        if (success) {
+          clearTimeout(timeout);
+          // Delay before returning to give browser time to "catch up".
+          await wait(500); // 5000
+          return;
+        } else if (timeoutOccurred) {
+          throw new Error(`Timed out.`);
+        }
+      } catch (e) {
+        console.error(`Exception encountered when running ${prop}[${i}].check(): ${e}`);
       }
       await wait(100); // 1000
     }
   }
 
-  private async _nextStep(i: number, prop: string): Promise<void> {
+  private async _nextStep(i: number, prop: StepType): Promise<void> {
     await this._waitUntilTrue(i, prop);
     return this._driver.runCode<void>(`BLeakConfig.${prop}[${i}].next()`);
   }
 
-  private _runLoop(snapshotAtEnd: false, prop: string, isLoop: boolean): Promise<void>;
-  private _runLoop(snapshotAtEnd: true, prop: string, isLoop: boolean): Promise<HeapSnapshotParser>;
-  private async _runLoop(snapshotAtEnd: boolean, prop: string, isLoop: boolean): Promise<HeapSnapshotParser | void> {
+  private _runLoop(snapshotAtEnd: false, prop: StepType, isLoop: boolean): Promise<void>;
+  private _runLoop(snapshotAtEnd: true, prop: StepType, isLoop: boolean): Promise<HeapSnapshotParser>;
+  private async _runLoop(snapshotAtEnd: boolean, prop: StepType, isLoop: boolean): Promise<HeapSnapshotParser | void> {
     const numSteps: number = (<any> this._config)[prop].length;
     // let promise: Promise<string | void> = Promise.resolve();
     if (numSteps > 0) {
       for (let i = 0; i < numSteps; i++) {
-        await this._nextStep(i, prop);
+        try {
+          await this._nextStep(i, prop);
+        } catch (e) {
+          console.error(`Exception encountered when running ${prop}[${i}].next(): ${e}`);
+          throw e;
+        }
       }
       if (isLoop) {
         // Wait for loop to finish.

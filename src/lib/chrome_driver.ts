@@ -34,7 +34,7 @@ function wait(ms: number): Promise<void> {
 }
 
 function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
-  return `${e.url}:${e.lineNumber}:${e.columnNumber} Uncaught ${e.exception ? e.exception.className : "exception"}: ${e.text}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.map((f) => `${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`;
+  return `${e.url}:${e.lineNumber}:${e.columnNumber} ${e.text} ${e.exception ? e.exception.description : ""}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.filter((f) => f.url !== "").map((f) => `${f.functionName ? `${f.functionName} at ` : ""}${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`;
 }
 
 export default class ChromeDriver {
@@ -44,13 +44,13 @@ export default class ChromeDriver {
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
     // spawns a chrome instance with a tmp user data
     // and the debugger open to an ephemeral port
-    const process = await session.spawnBrowser("canary", {
+    const chromeProcess = await session.spawnBrowser("canary", {
       // additionalArguments: ['--headless'],
       windowSize: { width: 1920, height: 1080 },
       additionalArguments: [`--proxy-server=127.0.0.1:8080`]
     });
     // open the REST API for tabs
-    const client = session.createAPIClient("localhost", process.remoteDebuggingPort);
+    const client = session.createAPIClient("localhost", chromeProcess.remoteDebuggingPort);
     const tabs = await client.listTabs();
     const tab = tabs[0];
     await client.activateTab(tab.id);
@@ -60,11 +60,11 @@ export default class ChromeDriver {
 
     const heapProfiler = new ChromeHeapProfiler(debugClient);
     const network = new ChromeNetwork(debugClient);
-    const console = new ChromeConsole(debugClient);
+    const chromeConsole = new ChromeConsole(debugClient);
     const page = new ChromePage(debugClient);
     const runtime = new ChromeRuntime(debugClient);
     const dom = new ChromeDOM(debugClient);
-    await Promise.all([heapProfiler.enable(), network.enable({}),  console.enable(), page.enable(), runtime.enable(), dom.enable()]);
+    await Promise.all([heapProfiler.enable(), network.enable({}),  chromeConsole.enable(), page.enable(), runtime.enable(), dom.enable()]);
     // Intercept network requests.
     // await network.setRequestInterceptionEnabled({ enabled: true });
     // Disable cache
@@ -72,8 +72,9 @@ export default class ChromeDriver {
     // Disable service workers
     await network.setBypassServiceWorker({ bypass: true });
 
-    const driver = new ChromeDriver(log, mitmProxy, session, process, client, debugClient, page, runtime, heapProfiler, network, console, dom);
+    const driver = new ChromeDriver(log, mitmProxy, session, chromeProcess, client, debugClient, page, runtime, heapProfiler, network, chromeConsole, dom);
     //driver._proxy = await createProxyServer(driver, PROXY_PORT);
+
     return driver;
   }
 
