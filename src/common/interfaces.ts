@@ -1,6 +1,3 @@
-import {StackFrame} from 'error-stack-parser';
-import {GrowthObject} from '../lib/growth_graph';
-
 /**
  * A BLeak configuration file.
  */
@@ -40,14 +37,6 @@ export interface Step  {
   check: () => boolean | Promise<boolean>;
   // Transitions to the next step.
   next: () => null | undefined | Promise<void>;
-}
-
-/**
- * Represents a leak in the application.
- * (For now.)
- */
-export interface Leak extends GrowthObject {
-  stacks: StackFrame[][];
 }
 
 /**
@@ -200,20 +189,88 @@ export function SnapshotNodeTypeToString(sn: SnapshotNodeType): string {
   }
 }
 
-export interface LeakJSON {
-  leaks: {
-    paths: string[];
-    scores: {
-      transitive_closure: number;
-      leak_growth: number;
-      retained_size: number;
-    },
-    stacks: {
-      columnNumber: number;
-      lineNumber: number;
-      fileName: string;
-      functionName: string;
-      source: string;
-    }[][];
-  }[];
+/**
+ * The raw output of BLeak, as a JSON object.
+ */
+export interface IBLeakResults {
+  // A listing of memory leaks in no particular order.
+  leaks: ILeakRoot[];
+  // All unique stack frames.
+  stackFrames: IStackFrame[];
+  // The program's original source files.
+  sourceFiles: ISourceFileRepository;
+}
+
+/**
+ * Represents a single leak root.
+ */
+export interface ILeakRoot {
+  // Unique ID for this leak root.
+  id: number;
+  // Paths through the heap to this leak.
+  paths: IPath[];
+  scores: ILeakScores;
+  stacks: IStack[];
+}
+
+/**
+ * Represents a heap path.
+ */
+export type IPath = IPathSegment[];
+
+/**
+ * Contains various leak scores for a given memory leak.
+ */
+export interface ILeakScores {
+  transitiveClosureSize: number;
+  leakShare: number;
+  retainedSize: number;
+  ownedObjects: number;
+}
+
+/**
+ * Contains a collection of source files, indexed by URL.
+ */
+export interface ISourceFileRepository {
+  [url: string]: ISourceFile;
+}
+
+/**
+ * Represents a single source file. Must be JavaScript or HTML.
+ */
+export interface ISourceFile {
+  mimeType: "text/javascript" | "text/html";
+  source: string;
+}
+
+/**
+ * Represents a stack frame in a concise JSON format.
+ * [url, line, column, functionName, source]
+ */
+export type IStackFrame = [string, number, number, string, string];
+
+/**
+ * Represents a stack trace. Each number is an offset into the stackFrames array.
+ */
+export type IStack = number[];
+
+export interface IProgressBar {
+  // Print a line of data above the progress bar.
+  println(data: string): void;
+  // Proceed to the next operation using the given description text.
+  nextOperation(desc: string): void;
+  // Update the current description w/o moving the progress bar.
+  updateDescription(desc: string): void;
+  // The total number of operations that need to be performed.
+  setOperationCount(count: number): void;
+}
+
+/**
+ * Indicates an item's growth status.
+ * **MUST FIT INTO 2 BITS.** (Value <= 3)
+ */
+export const enum GrowthStatus {
+  NEW = 0,
+  NOT_GROWING = 1,
+  GROWING = 2
 }

@@ -27,14 +27,14 @@ async function main() {
     await t.addSnapshot(getHeapSnapshotParser(file));
   }
 
-  const growth = time('Get Growing Objects', () => t.getGrowingPaths());
+  const growth = time('Get Growing Objects', () => t.findLeakPaths());
   console.log(`Found ${growth.length} growing paths.`);
   console.log(``);
   console.log(`Report`);
   console.log(`======`);
   console.log(``);
-  growth.sort((a, b) => b.adjustedRetainedSize - a.adjustedRetainedSize).forEach((obj) => {
-    console.log(`* Adjusted Retained Size: ${obj.adjustedRetainedSize}, Retained Size: ${obj.retainedSize}, Transitive Closure Size: ${obj.transitiveClosureSize}`);
+  growth.sort((a, b) => b.scores.leakShare - a.scores.leakShare).forEach((obj) => {
+    console.log(`* LeakShare: ${obj.scores.leakShare}, Retained Size: ${obj.scores.retainedSize}, Transitive Closure Size: ${obj.scores.transitiveClosureSize}`);
     obj.paths.slice(0, 5).forEach((p, i) => {
       console.log(`   * ${pathToString(p)}`);
     });

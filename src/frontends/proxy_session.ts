@@ -14,7 +14,7 @@ if (!url) {
 }
 
 async function main() {
-  const driver = await ChromeDriver.Launch(<any> process.stdout);
+  const driver = await ChromeDriver.Launch(<any> process.stdout, false);
   configureProxy(driver.mitmProxy, diagnose !== -1, fixes, undefined, false);
   await driver.navigateTo(url);
   await driver.debugLoop();

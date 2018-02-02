@@ -40,7 +40,7 @@ async function main() {
     console.log(`Processing ${file}...`);
     await t.addSnapshot(getHeapSnapshotParser(file));
     if (i > 0) {
-      const go = t.getGrowingPaths();
+      const go = t.findLeakPaths();
       for (const obj of go) {
         const p = pathToString(obj.paths[0]);
         if (i === 1) {
@@ -51,7 +51,7 @@ async function main() {
           // Shouldn't happen...
           console.log(`??? Path ${p} missing???`);
         } else {
-          d.push({ rs: obj.retainedSize, tsc: obj.transitiveClosureSize, owned: obj.ownedObjects });
+          d.push({ rs: obj.scores.retainedSize, tsc: obj.scores.transitiveClosureSize, owned: obj.scores.ownedObjects });
         }
       }
     }
@@ -59,7 +59,7 @@ async function main() {
   }
 
   // OK, now to spit out information...
-  const finalGo = t.getGrowingPaths();
+  const finalGo = t.findLeakPaths();
   out.write(`Path,"Round Trip",Metric,Value,Growing\n`);
   for (const obj of finalGo) {
     const p = pathToString(obj.paths[0]);

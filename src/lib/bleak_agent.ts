@@ -1,4 +1,43 @@
 "no transform";
+
+interface Object {
+  $$$PROXY$$$?: any;
+}
+
+interface Scope {
+  [ident: string]: any;
+}
+
+interface Function {
+  __scope__: Scope;
+}
+
+interface MirrorNode {
+  root: Node;
+  childNodes: ChildNodes;
+}
+
+interface ChildNodes {
+  [p: string]: MirrorNode | number;
+  length: number;
+}
+
+interface Window {
+  $$$INSTRUMENT_PATHS$$$(p: IPathTrees): void;
+  $$$GET_STACK_TRACES$$$(): GrowingStackTraces;
+  $$$CREATE_SCOPE_OBJECT$$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope;
+  $$$SEQ$$$(a: any, b: any): boolean;
+  $$$EQ$$$(a: any, b: any): boolean;
+  $$$SHOULDFIX$$$(n: number): boolean;
+  $$$GLOBAL$$$: Window;
+  $$$REWRITE_EVAL$$$(scope: any, source: string): any;
+  $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function;
+  $$$OBJECT_EXPRESSION$$$(obj: object, scope: Scope): object;
+  $$$CREATE_WITH_SCOPE$$$(withObj: Object, scope: Scope): Scope;
+  $$$SERIALIZE_DOM$$$(): void;
+  $$$DOM$$$: MirrorNode;
+}
+
 interface ListenerInfo {
   useCapture: boolean | object;
   listener: EventListenerOrEventListenerObject;
@@ -11,14 +50,14 @@ interface EventTarget {
 }
 
 interface NodeList {
-  $$$TREE$$$: SerializeableGrowingPathTree;
+  $$$TREE$$$: IPathTree;
   $$$ACCESS_STRING$$$: string;
   $$$STACKTRACES$$$: GrowthObjectStackTraces;
   $$$REINSTRUMENT$$$(): void;
 }
 
 interface Node {
-  $$$TREE$$$: SerializeableGrowingPathTree;
+  $$$TREE$$$: IPathTree;
   $$$ACCESS_STRING$$$: string;
   $$$STACKTRACES$$$: GrowthObjectStackTraces;
   $$$REINSTRUMENT$$$(): void;
@@ -55,7 +94,7 @@ declare function importScripts(s: string): void;
 
   const r = /'/g;
   // Some websites overwrite logToConsole.
-  const console = ROOT.console ? ROOT.console : { log: () => {} };
+  const console = ROOT.console ? ROOT.console : { log: (str: string) => {} };
   const consoleLog = console.log;
   function logToConsole(s: string) {
     consoleLog.call(console, s);
@@ -531,7 +570,7 @@ declare function importScripts(s: string): void;
 
   interface AssignmentProxy {
     (v: any): boolean;
-    $$trees: SerializeableGrowingPathTree[];
+    $$trees: IPathTree[];
     $$rootAccessString: string;
     $$update: (stackTrace: string) => void;
     $$root: any;
@@ -565,7 +604,7 @@ declare function importScripts(s: string): void;
     return thisObj[hiddenPropertyName(n)];
   }
 
-  function instrumentPath(rootAccessString: string, accessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
+  function instrumentPath(rootAccessString: string, accessString: string, root: any, tree: IPathTree, stackTrace: string = null): void {
     let setProxy: AssignmentProxy;
     //logToConsole(`Instrumenting ${accessString} at ${rootAccessString}`);
     const prop = Object.getOwnPropertyDescriptor(root, tree.indexOrName);
@@ -637,7 +676,7 @@ declare function importScripts(s: string): void;
   // Update target node & all children.
   //
 
-  function instrumentDOMTree(rootAccessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
+  function instrumentDOMTree(rootAccessString: string, root: any, tree: IPathTree, stackTrace: string = null): void {
     // For now: Simply crawl to the node(s) and instrument regularly from there. Don't try to plant getters/setters.
     // $$DOM - - - - - -> root [regular subtree]
     let obj: any;
@@ -697,7 +736,7 @@ declare function importScripts(s: string): void;
     }
   }
 
-  function instrumentTree(rootAccessString: string, root: any, tree: SerializeableGrowingPathTree, stackTrace: string = null): void {
+  function instrumentTree(rootAccessString: string, root: any, tree: IPathTree, stackTrace: string = null): void {
     const accessString = rootAccessString + `[${safeString(`${tree.indexOrName}`)}]`;
     //logToConsole(`access string: ${accessString}`);
     // Ignore roots that are not proxyable.
@@ -720,12 +759,12 @@ declare function importScripts(s: string): void;
   // Disables proxy interception.
   let disableProxies = false;
 
-  function isDOMRoot(tree: SerializeableGrowingPathTree): boolean {
+  function isDOMRoot(tree: IPathTree): boolean {
     return tree.indexOrName === "$$$DOM$$$";
   }
 
-  let instrumentedTrees: SerializeableGrowingPaths = [];
-  function $$$INSTRUMENT_PATHS$$$(trees: SerializeableGrowingPaths): void {
+  let instrumentedTrees: IPathTrees = [];
+  function $$$INSTRUMENT_PATHS$$$(trees: IPathTrees): void {
     for (const tree of trees) {
       if (isDOMRoot(tree)) {
         instrumentDOMTree("$$$GLOBAL$$$", ROOT.$$$GLOBAL$$$, tree);
@@ -736,7 +775,7 @@ declare function importScripts(s: string): void;
     instrumentedTrees = instrumentedTrees.concat(trees);
   }
 
-  function getStackTraces(root: any, path: SerializeableGrowingPathTree, stacksMap: {[id: number]: Set<string>}): void {
+  function getStackTraces(root: any, path: IPathTree, stacksMap: {[id: number]: Set<string>}): void {
     const obj = root[path.indexOrName];
     if (isProxyable(obj)) {
       if (path.isGrowing && getProxyStatus(obj) === ProxyStatus.IS_PROXY) {
@@ -755,7 +794,7 @@ declare function importScripts(s: string): void;
     }
   }
 
-  function getDOMStackTraces(root: any, path: SerializeableGrowingPathTree, stacksMap: {[id: number]: Set<string>}): void {
+  function getDOMStackTraces(root: any, path: IPathTree, stacksMap: {[id: number]: Set<string>}): void {
     let obj: any;
     let switchToRegularTree = false;
     switch (path.indexOrName) {

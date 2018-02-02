@@ -1,18 +1,21 @@
 import {equal as assertEqual, notEqual as assertNotEqual} from 'assert';
 import {exposeClosureState, injectIntoHead, parseHTML} from '../src/lib/transformations';
-import {DEFAULT_AGENT_URL} from '../src/common/util';
+import {DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL} from '../src/common/util';
 import {readFileSync} from 'fs';
 
 const AGENT_SOURCE = readFileSync(require.resolve('../src/lib/bleak_agent'), "utf8");
 
+/**
+ * An XMLHttpRequest mock, passed to the BLeak agent so it can support programs with eval.
+ * Mirrors the behavior of the proxy when the /eval URL is requested.
+ */
 class XHRShim {
   public responseText: string = null;
   public open() {}
   public setRequestHeader() {}
   public send(data: string) {
     const d: { scope: string, source: string } = JSON.parse(data);
-    this.responseText = exposeClosureState(`eval-${Math.random()}.js`, d.source, DEFAULT_AGENT_URL, d.scope);
-    // console.log(`Eval:\n${this.responseText}`);
+    this.responseText = exposeClosureState(`eval-${Math.random()}.js`, d.source, DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, d.scope);
   }
 }
 
@@ -52,8 +55,6 @@ describe('Transformations', function() {
       const newSource = exposeClosureState("main.js", `(function(exports) { ${source} })(exports);`);
       // Super basic CommonJS shim.
       const exp: any = {};
-      //console.log("Original Source:\n" + source);
-      // console.log("\nNew Source:\n" + newSource);
       new Function('exports', 'XMLHttpRequest', AGENT_SOURCE + "\n" + newSource)(exp, XHRShim);
       return exp;
     }
@@ -330,7 +331,7 @@ describe('Transformations', function() {
         id: 1,
         isGrowing: true,
         indexOrName: "a",
-        type: EdgeType.NAMED,
+        type: PathSegmentType.PROPERTY,
         children: []
       }]);
       assertNotEqual(module.obj(), a, `Proxy for global variable 'a' is properly installed`);

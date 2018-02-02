@@ -42,7 +42,7 @@ async function getGrowthPaths(snapshots: string[]): Promise<any> {
   for (const snapshot of snapshots) {
     await builder.addSnapshot(HeapSnapshotParser.FromString(snapshot));
   }
-  return builder.getGrowingPaths();
+  return builder.findLeakPaths();
 }
 
 async function getHeapSize(snapshot: string): Promise<SnapshotSizeSummary> {

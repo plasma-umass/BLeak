@@ -4,6 +4,7 @@ import createHTTPServer from './util/http_server';
 import ChromeDriver from '../src/lib/chrome_driver';
 import {readFileSync} from 'fs';
 import {equal as assertEqual} from 'assert';
+// import {createWriteStream} from 'fs';
 
 const HTTP_PORT = 8875;
 const DEBUG = false;
@@ -271,41 +272,58 @@ describe('End-to-end Tests', function() {
   let driver: ChromeDriver;
   before(async function() {
     httpServer = await createHTTPServer(FILES, HTTP_PORT);
-    driver = await ChromeDriver.Launch(<any> process.stdout);
+    driver = await ChromeDriver.Launch(<any> process.stdout, true);
   });
 
   function createStandardLeakTest(description: string, rootFilename: string, expected_line: number): void {
     it(description, async function() {
       // let i = 0;
-      const leaks = await BLeak.FindLeaks(`
+      const result = await BLeak.FindLeaks(`
         exports.url = 'http://localhost:${HTTP_PORT}/${rootFilename}.html';
+        // Due to throttling (esp. when browser is in background), it may take longer
+        // than anticipated for the click we fire to actually run. We want to make
+        // sure all snapshots occur after the click processes.
+        var startedClickCount = 0;
+        var completedClickCount = 0;
         exports.loop = [
           {
             name: 'Click Button',
             check: function() {
-              return document.readyState === "complete";
+              return document.readyState === "complete" && startedClickCount === completedClickCount;
             },
             next: function() {
+              startedClickCount++;
+              if (completedClickCount === 0) {
+                document.getElementById('btn').addEventListener('click', function() {
+                  completedClickCount++;
+                });
+              }
               document.getElementById('btn').click();
             }
           }
         ];
         exports.timeout = 30000;
-      `, driver, (ss) => {
-        // writeFileSync(`${rootFilename}${i}.heapsnapshot`, Buffer.from(JSON.stringify(ss), 'utf8'));
-        // i++;
+      `, driver/*, (ss) => {
+        const stream = createWriteStream(`${rootFilename}${i}.heapsnapshot`);
+        ss.onSnapshotChunk = function(chunk, end) {
+          stream.write(chunk);
+          if (end) {
+            stream.end();
+          }
+        };
+        i++;
         return Promise.resolve();
-      });
-      assertEqual(leaks.length > 0, true);
-      leaks.forEach((leak) => {
+      }*/);
+      assertEqual(result.leaks.length > 0, true);
+      result.leaks.forEach((leak) => {
         const stacks = leak.stacks;
         assertEqual(stacks.length > 0, true);
         stacks.forEach((s) => {
           assertEqual(s.length > 0, true);
-          const topFrame = s[0];
+          const topFrame = result.stackFrames[s[0]];
           //console.log(topFrame.toString());
-          assertEqual(topFrame.lineNumber, expected_line);
-          assertEqual(topFrame.fileName.indexOf(`${rootFilename}.js`) !== -1, true);
+          assertEqual(topFrame[1], expected_line);
+          assertEqual(topFrame[0].indexOf(`${rootFilename}.js`) !== -1, true);
         });
       });
     });

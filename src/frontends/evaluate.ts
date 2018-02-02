@@ -10,6 +10,7 @@ interface CommandLineArgs {
   config: string;
   snapshot: boolean;
   iterations: number;
+  headless: boolean;
   'iterations-per-snapshot': number;
   'resume-iteration'?: number;
   'resume-metric'?: string;
@@ -25,6 +26,9 @@ const args: CommandLineArgs = <any> yargs.number('proxy-port')
   .demand('config')
   .boolean('snapshot')
   .default('snapshot', false)
+  .boolean('headless')
+  .default('headless', false)
+  .describe('headless', `Run Chrome in headless mode (no GUI)`)
   .describe('snapshot', `Save snapshots into output folder`)
   .number('iterations')
   .describe('iterations', `Number of loop iterations to perform`)
@@ -67,7 +71,7 @@ function mkdirp(s: string): void {
 
 async function main() {
   const configFileSource = readFileSync(args.config).toString();
-  const chromeDriver = await ChromeDriver.Launch(<any> process.stdout);
+  const chromeDriver = await ChromeDriver.Launch(<any> process.stdout, args.headless);
   let resumeAt: [number, string];
   if (args['resume-metric'] && typeof(args['resume-iteration']) === "number") {
     resumeAt = [args['resume-iteration'], args['resume-metric']];

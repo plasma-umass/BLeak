@@ -21,8 +21,6 @@ const originalSpawn = childProcess.spawn;
   return originalSpawn.call(this, command, args, options);
 }
 
-//const PROXY_PORT = 8033;
-
 export interface DOMNode extends ChromeDOM.Node {
   eventListenerCounts: {[name: string]: number};
 }
@@ -38,16 +36,22 @@ function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
 }
 
 export default class ChromeDriver {
-  public static async Launch(log: WriteStream): Promise<ChromeDriver> {
+  public static async Launch(log: WriteStream, headless: boolean): Promise<ChromeDriver> {
     const mitmProxy = await MITMProxy.Create();
+    // Tell mitmProxy to stash data requested through the proxy.
     mitmProxy.stashEnabled = true;
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
+    const additionalChromeArgs = [`--proxy-server=127.0.0.1:8080`];
+    if (headless) {
+      // --disable-gpu required for Windows
+      additionalChromeArgs.push(`--headless`, `--disable-gpu`);
+    }
     // spawns a chrome instance with a tmp user data
     // and the debugger open to an ephemeral port
     const chromeProcess = await session.spawnBrowser("canary", {
       // additionalArguments: ['--headless'],
       windowSize: { width: 1920, height: 1080 },
-      additionalArguments: [`--proxy-server=127.0.0.1:8080`]
+      additionalArguments: additionalChromeArgs
     });
     // open the REST API for tabs
     const client = session.createAPIClient("localhost", chromeProcess.remoteDebuggingPort);
@@ -72,13 +76,13 @@ export default class ChromeDriver {
     // Disable service workers
     await network.setBypassServiceWorker({ bypass: true });
 
-    const driver = new ChromeDriver(log, mitmProxy, session, chromeProcess, client, debugClient, page, runtime, heapProfiler, network, chromeConsole, dom);
-    //driver._proxy = await createProxyServer(driver, PROXY_PORT);
+    const driver = new ChromeDriver(log, headless, mitmProxy, session, chromeProcess, client, debugClient, page, runtime, heapProfiler, network, chromeConsole, dom);
 
     return driver;
   }
 
   private _log: WriteStream;
+  private _headless: boolean;
   public readonly mitmProxy: MITMProxy;
   private _session: ChromeSession;
   private _process: ChromeProcess;
@@ -91,9 +95,11 @@ export default class ChromeDriver {
   private _console: ChromeConsole;
   private _dom: ChromeDOM;
   private _loadedFrames = new Set<string>();
+  private _shutdown: boolean = false;
 
-  private constructor(log: WriteStream, mitmProxy: MITMProxy, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole, dom: ChromeDOM) {
+  private constructor(log: WriteStream, headless: boolean, mitmProxy: MITMProxy, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole, dom: ChromeDOM) {
     this._log = log;
+    this._headless = headless;
     this.mitmProxy = mitmProxy;
     this._session = session;
     this._process = process;
@@ -123,7 +129,7 @@ export default class ChromeDriver {
 
   public async relaunch(): Promise<ChromeDriver> {
     await this.shutdown();
-    const driver = await ChromeDriver.Launch(this._log);
+    const driver = await ChromeDriver.Launch(this._log, this._headless);
     driver.mitmProxy.cb = this.mitmProxy.cb;
     return driver;
   }
@@ -132,6 +138,9 @@ export default class ChromeDriver {
     this._loadedFrames.clear();
     const f = await this._page.navigate({ url });
     while (!this._loadedFrames.has(f.frameId)) {
+      if (this._shutdown) {
+        throw new Error(`Cannot navigate to URL; Chrome has shut down.`);
+      }
       // console.log(`Waiting for frame...`);
       await wait(5);
     }
@@ -180,6 +189,7 @@ export default class ChromeDriver {
     });
   }
   public async shutdown(): Promise<void> {
+    this._shutdown = true;
     await Promise.all([this._process.dispose(), this.mitmProxy.shutdown()]);
   }
 }

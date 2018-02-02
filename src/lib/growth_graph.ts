@@ -1,6 +1,34 @@
-import {SnapshotEdgeType, SnapshotNodeType, SnapshotSizeSummary} from '../common/interfaces';
+import {SnapshotEdgeType, SnapshotNodeType, SnapshotSizeSummary, ILeakRoot, IPath, GrowthStatus} from '../common/interfaces';
 import {default as HeapSnapshotParser, DataTypes} from './heap_snapshot_parser';
 import {OneBitArray, TwoBitArray} from '../common/util';
+import LeakRoot from './leak_root';
+
+/**
+ * Represents a link in a heap path. Specified as a simple class to make it quick to consturct and JSONable.
+ * TODO: Better terminology?
+ */
+class PathSegment implements IPathSegment {
+  constructor(public readonly type: PathSegmentType,
+    public readonly indexOrName: string | number) {}
+}
+
+/**
+ * Converts an edge into a heap path segment.
+ * @param edge
+ */
+function edgeToIPathSegment(edge: Edge): IPathSegment {
+  const pst = edge.pathSegmentType;
+  const name = pst === PathSegmentType.CLOSURE ? "__scope__" : edge.indexOrName;
+  return new PathSegment(edge.pathSegmentType, name);
+}
+
+/**
+ * Converts a sequence of edges from the heap graph into an IPath object.
+ * @param edges
+ */
+function edgePathToPath(edges: Edge[]): IPath {
+  return edges.filter(isNotHidden).map(edgeToIPathSegment);
+}
 
 /**
  * Returns true if the given edge type is visible from JavaScript.
@@ -28,56 +56,200 @@ function safeString(s: string): string {
   return s.replace(r, "\\'");
 }
 
-export function pathToString(e: Edge[]): string {
-  const filtered = e.filter(isNotHidden);
-  return `global` + filtered.map((f) => `['${safeString(`${f.indexOrName}`)}']`).join("");
+// From https://stackoverflow.com/a/2008444
+// This is not *perfect*, but it's good enough for human output.
+const JS_IDENTIFIER_REGEXP = /^[_$a-zA-Z\xA0-\uFFFF][_$a-zA-Z0-9\xA0-\uFFFF]*$/;
+/**
+ * Returns true if the property definitely requires array notation.
+ * This check is not sound, as we do not check for JavaScript reserved
+ * words. However, it is 'good enough' for human output, e.g. in a report.
+ * @param prop
+ */
+function propertyNeedsArrayNotation(prop: string | number): boolean {
+  return !JS_IDENTIFIER_REGEXP.test(`${prop}`);
+}
+
+class PathStream {
+  private _p: IPath = null;
+  private _i: number = -1;
+  private _s: string = null;
+  private _ss: string[] = null;
+  public print(s: string) {
+    if (this._s !== null) {
+      this._s += s;
+    }
+  }
+  public pushString() {
+    if (this._ss !== null) {
+      this._ss.push(this._s);
+      this._s = "";
+    }
+  }
+  public flush(): string {
+    const s = this._s;
+    const ss = this._ss;
+    this._ss = this._s = null;
+    ss.push(s);
+    return ss.reverse().join(" ");
+  }
+  public setPath(p: IPath) {
+    this._p = p;
+    this._i = 0;
+    this._s = "";
+    this._ss = [];
+  }
+  public advance(): void {
+    this._i++;
+  }
+  public peek(): IPathSegment | null {
+    if (this.nonempty()) {
+      return this._p[this._i];
+    } else {
+      return null;
+    }
+  }
+  public pop(): IPathSegment | null {
+    const rv = this.peek();
+    this.advance();
+    return rv;
+  }
+  public nonempty(): boolean {
+    return this._p && this._p.length > this._i;
+  }
+}
+// Singleton class.
+const PS = new PathStream();
+
+function propertyAccessString(s: string | number) {
+  if (typeof(s) === "number") {
+    return `[${s}]`;
+  } else if (propertyNeedsArrayNotation(s)) {
+    return `["${safeString(s)}"]`;
+  } else {
+    return `.${s}`;
+  }
+}
+
+function prettyPrintDOMPath(): void {
+  const segment = PS.pop();
+  while (PS.nonempty()) {
+    if (segment.indexOrName === "root") {
+      // Ignore this BLeak-inserted edge.
+      // We're transitioning to a path outside of the DOM, on the DOM object itself.
+      prettyPrintNonDOMPath();
+    } else {
+      // Should alternate between 'childNode' and indices until it gets to 'root'.
+      PS.print(propertyAccessString(segment.indexOrName));
+    }
+  }
+}
+
+function prettyPrintNonDOMPath(): void {
+  while (PS.nonempty()) {
+    const segment = PS.pop();
+    switch (segment.type) {
+      case PathSegmentType.EVENT_LISTENER_LIST: {
+        // Will either be:
+        // - A leak on the list itself.
+        // - A leak *within* an event listener.
+        // Seek forward to figure out which, and print appropriately
+        // $$listeners.type[index].listener
+        const typeSegment = PS.pop();
+        if (!PS.nonempty()) {
+          // List leak
+          PS.pushString();
+          PS.print(`List of '${typeSegment.indexOrName}' listeners on`);
+          PS.pushString();
+        } else {
+          const indexSegment = PS.pop();
+          PS.pop(); // Should be the '.listener' property, unless the application mucked with our metadata.
+          PS.pushString();
+          PS.print(`on listener ${indexSegment.indexOrName} in the list of '${typeSegment.indexOrName}' listeners on`);
+          PS.pushString();
+        }
+        break;
+      }
+      case PathSegmentType.CLOSURE:
+        PS.pushString();
+        PS.print("within closure of");
+        PS.pushString();
+        break;
+      case PathSegmentType.CLOSURE_VARIABLE:
+        // Should've been preceded by CLOSURE.
+        // Begins a new path in the string.
+        PS.print(segment.indexOrName as string);
+        break;
+      default: {
+        let indexOrName = segment.indexOrName;
+        if (typeof(indexOrName) === "string" && indexOrName.startsWith("$$$on")) {
+          // Cut off the $$$. This is a mirrored event listener property.
+          indexOrName = indexOrName.slice(3);
+        }
+        // *Must* be a property on the previously-printed object.
+        PS.print(propertyAccessString(indexOrName));
+        break;
+      }
+    }
+  }
 }
 
 /**
- * Converts the given growth objects into a tree form for sending to the agent.
+ * Pretty print a path as a human-friendly string.
+ * @param p
  */
-export function toSerializeableGrowingPaths(objs: GrowthObject[]): SerializeableGrowingPaths {
-  const tree: SerializeableGrowingPaths = [];
+export function pathToString(p: IPath): string {
+  PS.setPath(p);
+  const segment = PS.peek();
+  if (segment.type === PathSegmentType.DOM_TREE) {
+    PS.print("document");
+    PS.advance();
+    prettyPrintDOMPath();
+  } else {
+    PS.print("window");
+    prettyPrintNonDOMPath();
+  }
+  return PS.flush();
+}
 
-  function addPath(p: Edge[], id: number, index = 0, children = tree): void {
+/**
+ * Extracts a tree of growing heap paths from a series of leak roots and
+ * paths to said roots.
+ *
+ * Called before sending the leak roots to the BLeak agent for instrumentation.
+ */
+export function toPathTree(leakroots: ILeakRoot[]): IPathTrees {
+  const tree: IPathTrees = [];
+
+  function addPath(p: IPath, id: number, index = 0, children = tree): void {
     if (p.length === 0) {
       return;
     }
-    const e = p[index];
-    const indexOrName = e.indexOrName;
-    const snapshotType = e.snapshotType;
-    const matches = snapshotType === SnapshotEdgeType.Internal ?
-      children.filter((c) => c.indexOrName === "__scope__") :
-      children.filter((c) => c.indexOrName === indexOrName);
-    let recur: SerializeableGrowingPathTree;
+    const pathSegment = p[index];
+    const indexOrName = pathSegment.indexOrName;
+    const matches = children.filter((c) => c.indexOrName === indexOrName);
+    let recur: IPathTree;
     if (matches.length > 0) {
       recur = matches[0];
     } else {
       // Add to children list.
-      recur = {
-        type: e.type,
-        indexOrName,
+      recur = <IPathTreeNotGrowing> Object.assign({
         isGrowing: false,
         children: []
-      };
-      // Convert 'context' references to our '__scope__' variable.
-      if (snapshotType === SnapshotEdgeType.Internal) {
-        recur.indexOrName = "__scope__";
-      }
+      }, pathSegment);
       children.push(recur);
     }
     const next = index + 1;
     if (next === p.length) {
-      recur.isGrowing = true;
-      recur.id = id;
+      (recur as IPathTreeGrowing).isGrowing = true;
+      (recur as IPathTreeGrowing).id = id;
     } else {
       addPath(p, id, next, recur.children);
     }
   }
 
-  objs.forEach((o) => {
-    o.paths.forEach((p) => {
-      addPath(p.filter(isNotHidden), o.node.nodeIndex);
+  leakroots.forEach((lr) => {
+    lr.paths.forEach((p) => {
+      addPath(p, lr.id);
     });
   });
 
@@ -90,14 +262,14 @@ type EdgeIndex = number & { ___EdgeIndex: true };
 type NodeIndex = number & { ___NodeIndex: true };
 
 
-export interface GrowthObject {
+/*export interface GrowthObject {
   node: Node;
   paths: Edge[][];
   retainedSize: number;
   adjustedRetainedSize: number;
   transitiveClosureSize: number;
   ownedObjects: number;
-}
+}*/
 
 function shouldTraverse(edge: Edge, wantDom: boolean): boolean {
   // HACK: Ignore <symbol> properties. There may be multiple properties
@@ -136,31 +308,48 @@ function hash(parent: Node, edge: Edge): string | number {
   }
 }
 
-function mergeGraphs(oldG: HeapGraph, oldGrowth: TwoBitArray, newG: HeapGraph, newGrowth: TwoBitArray): void {
-  // getGlobalRootIndices
+/**
+ * PropagateGrowth (Figure 4 in the paper).
+ * Migrates a node's growth between heap snapshots. BLeak considers a path in the heap to be growing
+ * if the node at the path exhibits sustained growth (in terms of number of outgoing edges) between heap
+ * snapshots.
+ * @param oldG The old heap graph.
+ * @param oldGrowth Growth bits for the nodes in the old heap graph.
+ * @param newG The new heap graph.
+ * @param newGrowth Growth bits for the nodes in the new heap graph.
+ */
+function propagateGrowth(oldG: HeapGraph, oldGrowth: TwoBitArray, newG: HeapGraph, newGrowth: TwoBitArray): void {
   const numNewNodes = newG.nodeCount;
   let index = 0;
-  // We visit each new node at most once.
+  // We visit each new node at most once, forming an upper bound on the queue length.
+  // Pre-allocate for better performance.
   let queue = new Uint32Array(numNewNodes << 1);
+  // Stores the length of queue.
   let queueLength = 0;
   // Only store visit bits for the new graph.
   const visitBits = new OneBitArray(numNewNodes);
 
+  // Enqueues the given node pairing (represented by their indices in their respective graphs)
+  // into the queue. oldNodeIndex and newNodeIndex represent a node at the same edge shared between
+  // the graphs.
   function enqueue(oldNodeIndex: NodeIndex, newNodeIndex: NodeIndex): void {
     queue[queueLength++] = oldNodeIndex;
     queue[queueLength++] = newNodeIndex;
   }
 
+  // Returns a single item from the queue. (Called twice to remove a pair.)
   function dequeue(): NodeIndex {
     return queue[index++] as NodeIndex;
   }
 
+  // 0 indicates the root node. Start at the root.
   const oldNode = new Node(0 as NodeIndex, oldG);
   const newNode = new Node(0 as NodeIndex, newG);
   const oldEdgeTmp = new Edge(0 as EdgeIndex, oldG);
 
   {
-    // Visit global roots by *node name*, not *edge name* as edges are arbitrarily numbered.
+    // Visit global roots by *node name*, not *edge name* as edges are arbitrarily numbered from the root node.
+    // These global roots correspond to different JavaScript contexts (e.g. IFrames).
     const newUserRoots = newG.getGlobalRootIndices();
     const oldUserRoots = oldG.getGlobalRootIndices();
     const m = new Map<string, {o: number[], n: number[]}>();
@@ -191,8 +380,8 @@ function mergeGraphs(oldG: HeapGraph, oldGrowth: TwoBitArray, newG: HeapGraph, n
       }
     });
   }
-  // enqueue(oldG.rootNodeIndex, newG.rootNodeIndex);
-  // visitBits.set(newG.rootNodeIndex, true);
+
+  // The main loop, which is the essence of PropagateGrowth.
   while (index < queueLength) {
     const oldIndex = dequeue();
     const newIndex = dequeue();
@@ -239,7 +428,7 @@ export class HeapGrowthTracker {
   private _stringMap: StringMap = new StringMap();
   private _heap: HeapGraph = null;
   private _growthStatus: TwoBitArray = null;
-  // DEBUG INFO
+  // DEBUG INFO; this information is shown in a heap explorer tool.
   public _leakRefs: Uint16Array = null;
   public _nonLeakVisits: OneBitArray = null;
 
@@ -251,7 +440,7 @@ export class HeapGrowthTracker {
       // We only want to consider stable heap paths present from the first snapshot.
       growthStatus.fill(GrowthStatus.NOT_GROWING);
       // Merge graphs.
-      mergeGraphs(this._heap, this._growthStatus, heap, growthStatus);
+      propagateGrowth(this._heap, this._growthStatus, heap, growthStatus);
     }
     // Keep new graph.
     this._heap = heap;
@@ -262,8 +451,18 @@ export class HeapGrowthTracker {
     return this._heap;
   }
 
-  public getGrowingPaths(): GrowthObject[] {
+  /**
+   * Implements FindLeakPaths (Figure 5 in the paper) and CalculateLeakShare (Figure 6 in the paper),
+   * as well as calculations for Retained Size and Transitive Closure Size (which we compare against in the paper).
+   *
+   * Returns paths through the heap to leaking nodes, along with multiple different types of scores to help
+   * developers prioritize them, grouped by the leak root responsible.
+   */
+  public findLeakPaths(): LeakRoot[] {
+    // A map from growing nodes to heap paths that reference them.
     const growthPaths = new Map<NodeIndex, Edge[][]>();
+
+    // Adds a given path to growthPaths.
     function addPath(e: Edge[]): void {
       const to = e[e.length - 1].toIndex;
       let paths = growthPaths.get(to);
@@ -274,22 +473,25 @@ export class HeapGrowthTracker {
       paths.push(e);
     }
 
+    // Filter out DOM nodes and hidden edges that represent internal V8 / Chrome state.
     function filterNoDom(n: Node, e: Edge) {
       return isNotHidden(e) && nonWeakFilter(n, e) && shouldTraverse(e, false);
     }
 
+    // Filter out hidden edges that represent internal V8 / Chrome state, but keep DOM nodes.
     function filterIncludeDom(n: Node, e: Edge) {
       return nonWeakFilter(n, e) && shouldTraverse(e, true);
     }
 
-    // Get the growing paths. Ignore paths through the DOM.
+    // Get the growing paths. Ignore paths through the DOM, as we mirror those in JavaScript.
+    // (See Section 5.3.2 in the paper, "Exposing Hidden State")
     this._heap.visitGlobalEdges((e, getPath) => {
       if (this._growthStatus.get(e.toIndex) === GrowthStatus.GROWING) {
         addPath(getPath());
       }
     }, filterNoDom);
 
-    // Calculate growth metrics.
+    // Now, calculate growth metrics!
 
     // Mark items that are reachable by non-leaks.
     const nonleakVisitBits = new OneBitArray(this._heap.nodeCount);
@@ -301,12 +503,13 @@ export class HeapGrowthTracker {
       return filterIncludeDom(n, e) && !growthPaths.has(e.toIndex);
     });
 
+    // Filter out items that are reachable from non-leaks.
     function nonLeakFilter(n: Node, e: Edge): boolean {
-      // Filter out items that are reachable from non-leaks.
       return filterIncludeDom(n, e) && !nonleakVisitBits.get(e.toIndex);
     }
 
     // Increment visit counter for each heap item reachable from a leak.
+    // Used by LeakShare.
     const leakReferences = new Uint16Array(this._heap.nodeCount);
     growthPaths.forEach((paths, growthNodeIndex) => {
       bfsVisitor(this._heap, [growthNodeIndex], (n) => {
@@ -314,20 +517,23 @@ export class HeapGrowthTracker {
       }, nonLeakFilter);
     });
 
-    // Calculate final growth metrics.
-    let rv = new Array<GrowthObject>();
+    // Calculate final growth metrics (LeakShare, Retained Size, Transitive Closure Size)
+    // for each LeakPath, and construct LeakRoot objects representing each LeakRoot.
+    let rv = new Array<LeakRoot>();
     growthPaths.forEach((paths, growthNodeIndex) => {
       let retainedSize = 0;
-      let adjustedRetainedSize = 0;
+      let leakShare = 0;
       let transitiveClosureSize = 0;
       let ownedObjects = 0;
       bfsVisitor(this._heap, [growthNodeIndex], (n) => {
         const refCount = leakReferences[n.nodeIndex];
         if (refCount === 1) {
+          // A refCount of 1 means the heap item is uniquely referenced by this leak,
+          // so it contributes to retainedSize.
           retainedSize += n.size;
           ownedObjects++;
         }
-        adjustedRetainedSize += n.size / refCount;
+        leakShare += n.size / refCount;
       }, nonLeakFilter);
 
       // Transitive closure size, for comparison to related work.
@@ -335,7 +541,12 @@ export class HeapGrowthTracker {
         transitiveClosureSize += n.size;
       }, filterIncludeDom);
 
-      rv.push({ node: new Node(growthNodeIndex, this._heap), paths, retainedSize, adjustedRetainedSize, transitiveClosureSize, ownedObjects });
+      rv.push(new LeakRoot(growthNodeIndex, paths.map(edgePathToPath), {
+        retainedSize,
+        leakShare,
+        transitiveClosureSize,
+        ownedObjects
+      }));
     });
 
     // DEBUG
@@ -393,32 +604,70 @@ export class Edge {
   public get snapshotType(): SnapshotEdgeType {
     return this._heap.edgeTypes[this.edgeIndex];
   }
+  /**
+   * Returns the index (number) or name (string) that this edge
+   * corresponds to. (Index types occur in Arrays.)
+   */
   public get indexOrName(): string | number {
-    const type = this.type;
     const nameOrIndex = this._heap.edgeNamesOrIndexes[this.edgeIndex];
-    switch (type) {
-      case EdgeType.INDEX:
-        return nameOrIndex;
-      // case EdgeType.CLOSURE:
-      case EdgeType.NAMED:
-        return this._heap.stringMap.fromId(nameOrIndex);
+    if (this._isIndex()) {
+      return nameOrIndex;
+    } else {
+      return this._heap.stringMap.fromId(nameOrIndex);
     }
   }
-  public get type(): EdgeType {
+  /**
+   * Returns 'true' if the edge corresponds to a type where nameOrIndex is an index,
+   * and false otherwise.
+   */
+  private _isIndex(): boolean {
     switch(this.snapshotType) {
       case SnapshotEdgeType.Element: // Array element.
       case SnapshotEdgeType.Hidden: // Hidden from developer, but influences in-memory size. Apparently has an index, not a name. Ignore for now.
-        return EdgeType.INDEX;
+        return true;
       case SnapshotEdgeType.ContextVariable: // Closure variable.
-        // return EdgeType.CLOSURE;
       case SnapshotEdgeType.Internal: // Internal data structures that are not actionable to developers. Influence retained size. Ignore for now.
       case SnapshotEdgeType.Shortcut: // Shortcut: Should be ignored; an internal detail.
       case SnapshotEdgeType.Weak: // Weak reference: Doesn't hold onto memory.
       case SnapshotEdgeType.Property: // Property on an object.
-        return EdgeType.NAMED;
+        return false;
       default:
         throw new Error(`Unrecognized edge type: ${this.snapshotType}`);
     }
+  }
+  /**
+   * Determines what type of edge this is in a heap path.
+   * Recognizes some special BLeak-inserted heap edges that correspond
+   * to hidden browser state.
+   */
+  public get pathSegmentType(): PathSegmentType {
+    switch(this.snapshotType) {
+      case SnapshotEdgeType.Element:
+        return PathSegmentType.ELEMENT;
+      case SnapshotEdgeType.ContextVariable:
+        return PathSegmentType.CLOSURE_VARIABLE;
+      case SnapshotEdgeType.Internal:
+        if (this.indexOrName === 'context') {
+          return PathSegmentType.CLOSURE;
+        }
+        break;
+      case SnapshotEdgeType.Property: {
+        // We assume that no one uses our chosen special property names.
+        // If the program happens to have a memory leak stemming from a non-BLeak-created
+        // property with one of these names, then BLeak might not find it.
+        const name = this.indexOrName;
+        switch (name) {
+          case '$$$DOM$$$':
+            return PathSegmentType.DOM_TREE;
+          case '$$listeners':
+            return PathSegmentType.EVENT_LISTENER_LIST;
+          default:
+            return PathSegmentType.PROPERTY;
+        }
+      }
+    }
+    console.debug(`Unrecognized edge type: ${this.snapshotType}`)
+    return PathSegmentType.UNKNOWN;
   }
 }
 

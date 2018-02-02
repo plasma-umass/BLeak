@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "test": "npm-run-all -s build nyc:test",
-    "nyc:test": "nyc mocha build/test"
+    "nyc:test": "nyc mocha --require source-map-support/register build/test"
   },
   "repository": {
     "type": "git",
@@ -47,6 +47,7 @@
     "mocha": "^3.2.0",
     "npm-run-all": "^4.0.2",
     "nyc": "^10.2.0",
+    "source-map-support": "^0.5.3",
     "typescript": "^2.4.2"
   },
   "dependencies": {
@@ -57,6 +58,7 @@
     "body-parser": "^1.17.2",
     "buble": "^0.15.2",
     "chrome-debugging-client": "^0.4.2",
+    "chrome-devtools-frontend": "^1.0.533100",
     "error-stack-parser": "^2.0.1",
     "esprima": "^4.0.0",
     "express": "^4.15.4",

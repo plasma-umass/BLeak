@@ -1,7 +1,9 @@
-import {SourceMapConsumer} from 'source-map';
+import {SourceMapConsumer, RawSourceMap} from 'source-map';
 import {StackFrame, parse as ErrorStackParser} from 'error-stack-parser';
 import {DEFAULT_AGENT_URL} from '../common/util';
 import {resolve as resolveURL} from 'url';
+import BLeakResults from './bleak_results';
+import {IStack} from '../common/interfaces';
 import MITMProxy from 'mitmproxy';
 
 const magicString = '//# sourceMappingURL=data:application/json;base64,';
@@ -13,9 +15,25 @@ const magicString = '//# sourceMappingURL=data:application/json;base64,';
 export default class StackFrameConverter {
   private _maps = new Map<string, SourceMapConsumer>();
 
-  public static ConvertGrowthStacks(proxy: MITMProxy, pageUrl: string, traces: GrowingStackTraces, agentUrl: string = DEFAULT_AGENT_URL): {[id: number]: StackFrame[][]} {
-    return new StackFrameConverter().convertGrowthStacks(proxy, pageUrl, traces, agentUrl);
+  /**
+   * Converts the raw stack frames from the BLeak-instrumented source code of the application to the
+   * application's original source code.
+   *
+   * Stores relevant StackFrame / source file data into the `results` object, and returns the stack frames
+   * in results format.
+   * @param proxy
+   * @param pageUrl
+   * @param results
+   * @param traces
+   * @param agentUrl
+   */
+  public static ConvertGrowthStacks(proxy: MITMProxy, pageUrl: string, results: BLeakResults, traces: GrowingStackTraces, agentUrl: string = DEFAULT_AGENT_URL): {[id: number]: IStack[]} {
+    return new StackFrameConverter(results).convertGrowthStacks(proxy, pageUrl, traces, agentUrl);
   }
+
+  constructor(
+    private _results: BLeakResults
+  ) {}
 
   private _fetchMap(proxy: MITMProxy, url: string): void {
     if (typeof(url) !== "string") {
@@ -24,15 +42,24 @@ export default class StackFrameConverter {
     let map = this._maps.get(url);
     if (!map) {
       try {
-        const source = proxy.getFromStash(url).data.toString();
+        const stashedItem = proxy.getFromStash(url);
+        const source = stashedItem.data.toString();
         let sourceMapOffset = source.lastIndexOf(magicString)
         if (sourceMapOffset > -1) {
           sourceMapOffset += magicString.length;
           const sourceMapBase64 = source.slice(sourceMapOffset);
           const sourceMapString = new Buffer(sourceMapBase64, 'base64').toString('utf8');
-          const sourceMap = JSON.parse(sourceMapString);
+          const sourceMap: RawSourceMap = JSON.parse(sourceMapString);
           const consumer = new SourceMapConsumer(sourceMap);
           this._maps.set(url, consumer);
+          if (sourceMap.sourcesContent && sourceMap.sourcesContent.length > 0) {
+            const len = sourceMap.sourcesContent.length;
+            for (let i = 0; i < len; i++) {
+              this._results.addSourceFile(url, stashedItem.isJavaScript ? "text/javascript" : "text/html", sourceMap.sourcesContent[i]);
+            }
+          }
+        } else {
+          this._results.addSourceFile(url, stashedItem.isJavaScript ? "text/javascript" : "text/html", source);
         }
       } catch (e) {
         // Failed to get map.
@@ -42,7 +69,7 @@ export default class StackFrameConverter {
     }
   }
 
-  public convertGrowthStacks(proxy: MITMProxy, pageUrl: string, traces: GrowingStackTraces, agentUrl: string): {[id: number]: StackFrame[][]} {
+  public convertGrowthStacks(proxy: MITMProxy, pageUrl: string, traces: GrowingStackTraces, agentUrl: string): {[id: number]: IStack[]} {
     // First pass: Get all unique URLs and their source maps.
     const urls = new Set<string>();
     const rawStacks = new Map<string, StackFrame[]>();
@@ -76,46 +103,31 @@ export default class StackFrameConverter {
       this._fetchMap(proxy, url);
     });
     // Step 3: Convert stacks.
-    const convertedStacks = new Map<string, StackFrame[]>();
+    const convertedStacks = new Map<string, IStack>();
     rawStacks.forEach((stack, k) => {
       convertedStacks.set(k, this._convertStack(stack));
     });
-    // Step 4: Return data!
-    function mapStack(s: string): StackFrame[] {
+    // Step 4: Map stacks back into the return object.
+    function mapStack(s: string): IStack {
       return convertedStacks.get(s);
     }
-    const rv: {[id: number]: StackFrame[][]} = {};
+    const rv: {[id: number]: IStack[]} = {};
     Object.keys(traces).forEach((stringId) => {
-      const unique = new Set<string>();
       const id = parseInt(stringId, 10);
-      // Some traces may be identical after normalization (e.g., removing frames that are from bleak-agent).
-      // Strip those here.
-      rv[id] = traces[id].map(mapStack).filter((s) => {
-        const str = this._getString(s);
-        if (unique.has(str)) {
-          return false;
-        }
-        unique.add(str);
-        return true;
-      });
+      rv[id] = traces[id].map(mapStack);
     });
+
     return rv;
   }
 
-  private _getString(s: StackFrame[]): string {
-    return s.map((f) => {
-      return `${f.functionName} ${f.fileName}:${f.lineNumber}:${f.columnNumber}`;
-    }).join("\n");
-  }
-
-  private _convertStack(stack: StackFrame[]): StackFrame[] {
+  private _convertStack(stack: StackFrame[]): IStack {
     return stack.map((frame) => this._convertStackFrame(frame));
   }
 
-  private _convertStackFrame(frame: StackFrame): StackFrame {
+  private _convertStackFrame(frame: StackFrame): number {
     const map = this._maps.get(frame.fileName);
     if (!map) {
-      return frame;
+      return this._results.addStackFrameFromObject(frame);
     }
     const ogPos = map.originalPositionFor({
       line: frame.lineNumber,
@@ -123,6 +135,6 @@ export default class StackFrameConverter {
     });
     frame.lineNumber = ogPos.line;
     frame.columnNumber = ogPos.column;
-    return frame;
+    return this._results.addStackFrameFromObject(frame);
   }
 }
