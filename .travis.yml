@@ -1,6 +1,9 @@
 sudo: false
 addons:
   chrome: stable
+git:
+  # Don't download Git LFS files! We don't need them for testing.
+  lfs_skip_smudge: true
 matrix:
   # Travis OSX is dog slow; quickly report pass/fail from Ubuntu run
   fast_finish: true

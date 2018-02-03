@@ -7,6 +7,17 @@ environment:
   PYTHON: "C:\\Python36-x64"
   PYTHON_VERSION: "3.6.x" # currently 3.4.3
   PYTHON_ARCH: "64"
+clone_script:
+  # *Don't* download Git LFS files. Those are only for benchmarking.
+  - ps: >-
+    if(-not $env:appveyor_pull_request_number) {
+      git clone --depth=1 -q -c filter.lfs.smudge= -c filter.lfs.required=false --branch=$env:appveyor_repo_branch https://github.com/$env:appveyor_repo_name.git $env:appveyor_build_folder
+      git checkout -qf $env:appveyor_repo_commit
+    } else {
+      git clone --depth=1 -q -c filter.lfs.smudge= -c filter.lfs.required=false https://github.com/$env:appveyor_repo_name.git $env:appveyor_build_folder
+      git fetch -q origin +refs/pull/$env:appveyor_pull_request_number/merge:
+      git checkout -qf FETCH_HEAD
+    }
 install:
   # Install Python (from the official .msi of http://python.org) and pip when
   # not already installed.
