@@ -16,8 +16,6 @@ The following must be installed for BLeak to work:
 * [mitmproxy](https://mitmproxy.org/)
 * Python 3.6 or greater
   * Our mitmproxy plugin uses new Python async features
-* `pip install websockets`
-  * Required for BLeak to talk with mitmproxy
 * [Yarn](https://yarnpkg.com/en/docs/install) package manager
   * NPM *may* work, but we do not test against it
 
