@@ -22,7 +22,7 @@ install:
   - node --version
   - yarn --version
   - pip install --disable-pip-version-check --user --upgrade pip
-  - pip install mitmproxy asyncio websockets
+  - pip install mitmproxy websockets
   - yarn install
 test_script:
   - yarn test

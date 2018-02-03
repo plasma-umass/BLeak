@@ -9,10 +9,32 @@ BLeak uses a short developer-provided script to drive the application in a loop 
 
 BLeak is an active research project of the [PLASMA lab](https://plasma.cs.umass.edu/) at the University of Massachusetts Amherst, and should be considered experimental software. We appreciate pull requests and bug reports, but note that we have not polished the general software artifact for general use yet.
 
+## Prerequisites
+
+The following must be installed for BLeak to work:
+
+* [mitmproxy](https://mitmproxy.org/)
+* Python 3.6 or greater
+  * Our mitmproxy plugin uses new Python async features
+* `pip install websockets`
+  * Required for BLeak to talk with mitmproxy
+* [Yarn](https://yarnpkg.com/en/docs/install) package manager
+  * NPM *may* work, but we do not test against it
+
 ## Building
 
-1. `yarn install`
-2. `yarn run build`
+```
+# Install NPM dependencies (only need to run once)
+yarn install
+# Build BLeak
+yarn run build
+```
+
+## Testing
+
+```
+yarn test
+```
 
 ## Using
 
