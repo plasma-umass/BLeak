@@ -35,7 +35,7 @@ install:
     fi
   - nvm install 8
   - nvm use 8
-  - pip install mitmproxy websockets
+  - pip install mitmproxy
   - yarn install
 script:
   - yarn test
