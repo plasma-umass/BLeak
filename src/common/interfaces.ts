@@ -254,7 +254,12 @@ export type IStackFrame = [string, number, number, string, string];
  */
 export type IStack = number[];
 
+/**
+ * Interface for a progress bar.
+ */
 export interface IProgressBar {
+  // Print a line of data when debug prints are enabled.
+  debugPrintln(data: string): void;
   // Print a line of data above the progress bar.
   println(data: string): void;
   // Proceed to the next operation using the given description text.

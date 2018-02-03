@@ -94,8 +94,8 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean): Promise<
 }
 
 export default class ChromeDriver {
-  public static async Launch(log: WriteStream, headless: boolean): Promise<ChromeDriver> {
-    const mitmProxy = await MITMProxy.Create();
+  public static async Launch(log: WriteStream, headless: boolean, quiet: boolean = true): Promise<ChromeDriver> {
+    const mitmProxy = await MITMProxy.Create(undefined, quiet);
     // Tell mitmProxy to stash data requested through the proxy.
     mitmProxy.stashEnabled = true;
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
