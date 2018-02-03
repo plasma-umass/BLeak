@@ -1,0 +1,41 @@
+sudo: false
+addons:
+  chrome: stable
+matrix:
+  # Travis OSX is dog slow; quickly report pass/fail from Ubuntu run
+  fast_finish: true
+  include:
+    - os: osx
+      osx_image: xcode7.3
+      # Python environment doesn't work on Travis OSX. :|
+      language: generic
+    - dist: trusty
+      # While we are a NodeJS project, we need to specify Python
+      # so mitmproxy works!
+      language: python
+      # Python >=3.6 required for mitmproxy + my plugin
+      python: 3.6
+cache:
+  - yarn
+  - pip
+install:
+  # Workaround for python not working properly in Travis OSX.
+  # From mitmproxy's travis.yml.
+  - |
+    if [[ $TRAVIS_OS_NAME == "osx" ]]
+    then
+      brew update || brew update
+      brew outdated pyenv || brew upgrade pyenv
+      eval "$(pyenv init -)"
+      env PYTHON_CONFIGURE_OPTS="--enable-framework" pyenv install --skip-existing 3.6.4
+      pyenv global 3.6.4
+      pyenv shell 3.6.4
+      pip install -U pip setuptools wheel virtualenv
+      brew install yarn --without-node
+    fi
+  - nvm install 8
+  - nvm use 8
+  - pip install mitmproxy asyncio websockets
+  - yarn install
+script:
+  - yarn test

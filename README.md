@@ -1,5 +1,8 @@
 # BLeak
 
+[![Build Status](https://travis-ci.org/plasma-umass/BLeak.svg?branch=master)](https://travis-ci.org/plasma-umass/BLeak)
+[![Build status](https://ci.appveyor.com/api/projects/status/b92sknh0pu38943q/branch/master?svg=true)](https://ci.appveyor.com/project/jvilk/bleak/branch/master)
+
 BLeak automatically finds, ranks, and diagnoses memory leaks in the client-side of web applications.
 
 BLeak uses a short developer-provided script to drive the application in a loop through specific visual states (e.g., the inbox view and email view of a mail client) as an oracle to find memory leaks. In our experience, BLeak's precision is often **100%** (e.g., no false positives), and fixing the leaks it finds reduces heap growth by **94%** on average on a corpus of real production web apps.
@@ -24,7 +27,7 @@ BLeak is an active research project of the [PLASMA lab](https://plasma.cs.umass.
 
 ## Configuration File
 
-BLeak uses this configuration file to find memory leaks in the client-side of a web application. 
+BLeak uses this configuration file to find memory leaks in the client-side of a web application.
 
 ```javascript
 exports = {
@@ -70,7 +73,7 @@ exports = {
 
   // (Optional) Name for debugging purposes.
   name: "config name",
-  
+
   // (Optional) An array of states describing how to login to the application. Executed *once*
   // to set up the session. See 'config.loop' for a description of a state.
   login: [

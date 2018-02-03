@@ -2,11 +2,13 @@ import HeapSnapshotParser from '../lib/heap_snapshot_parser';
 import {createSession} from 'chrome-debugging-client';
 import {ISession as ChromeSession, IAPIClient as ChromeAPIClient, IBrowserProcess as ChromeProcess, IDebuggingProtocolClient as ChromeDebuggingProtocolClient} from 'chrome-debugging-client/dist/lib/types';
 import {HeapProfiler as ChromeHeapProfiler, Network as ChromeNetwork, Console as ChromeConsole, Page as ChromePage, Runtime as ChromeRuntime, DOM as ChromeDOM} from "chrome-debugging-client/dist/protocol/tot";
-import {WriteStream} from 'fs';
+import {WriteStream, accessSync} from 'fs';
+import {join} from 'path';
 import * as repl from 'repl';
 import {parse as parseJavaScript} from 'esprima';
 import * as childProcess from 'child_process';
 import MITMProxy from 'mitmproxy';
+import {platform} from 'os';
 
 // HACK: Patch spawn to work around chrome-debugging-client limitation
 // https://github.com/krisselden/chrome-debugging-client/issues/10
@@ -35,24 +37,69 @@ function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
   return `${e.url}:${e.lineNumber}:${e.columnNumber} ${e.text} ${e.exception ? e.exception.description : ""}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.filter((f) => f.url !== "").map((f) => `${f.functionName ? `${f.functionName} at ` : ""}${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`;
 }
 
+/**
+ * Spawns a chrome instance with a tmp user data and the debugger open to an ephemeral port
+ */
+function spawnChromeBrowser(session: ChromeSession, headless: boolean): Promise<ChromeProcess> {
+  const additionalChromeArgs = [`--proxy-server=127.0.0.1:8080`];
+  if (headless) {
+    // --disable-gpu required for Windows
+    additionalChromeArgs.push(`--headless`, `--disable-gpu`);
+  }
+  const baseOptions = {
+    // additionalArguments: ['--headless'],
+    windowSize: { width: 1920, height: 1080 },
+    additionalArguments: additionalChromeArgs
+  };
+  switch (platform()) {
+    case 'darwin':
+      return session.spawnBrowser("system", baseOptions);
+    case 'freebsd':
+    case 'linux':
+    case 'openbsd': {
+      // *nix; need to find the exact path to Chrome / Chromium
+      // .trim() removes trailing newline from `which` output.
+      let chromePath = childProcess.execSync(`which google-chrome`).toString().trim();
+      if (chromePath === "") {
+        // Try Chromium
+        chromePath = childProcess.execSync(`which chromium`).toString().trim();
+      }
+      if (chromePath === "") {
+        throw new Error(`Unable to find a Google Chrome or Chromium installation.`)
+      }
+      return session.spawnBrowser("exact", Object.assign({
+        executablePath: chromePath
+      }, baseOptions));
+    }
+    case 'win32': {
+      // Inspired by karma-chrome-launcher
+      // https://github.com/karma-runner/karma-chrome-launcher/blob/master/index.js
+      const suffix = `\\Google\\Chrome\\Application\\chrome.exe`;
+      const prefixes = [process.env.LOCALAPPDATA, process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)']];
+      for (const prefix of prefixes) {
+        try {
+          let chromeLocation = join(prefix, suffix);
+          accessSync(chromeLocation);
+          return session.spawnBrowser("exact", Object.assign({
+            executablePath: chromeLocation
+          }, baseOptions));
+        } catch (e) {}
+      }
+      throw new Error(`Unable to find a Chrome installation`);
+    }
+    default:
+      // Esoteric options
+      throw new Error(`Unsupported platform: ${platform()}`);
+  }
+}
+
 export default class ChromeDriver {
   public static async Launch(log: WriteStream, headless: boolean): Promise<ChromeDriver> {
     const mitmProxy = await MITMProxy.Create();
     // Tell mitmProxy to stash data requested through the proxy.
     mitmProxy.stashEnabled = true;
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
-    const additionalChromeArgs = [`--proxy-server=127.0.0.1:8080`];
-    if (headless) {
-      // --disable-gpu required for Windows
-      additionalChromeArgs.push(`--headless`, `--disable-gpu`);
-    }
-    // spawns a chrome instance with a tmp user data
-    // and the debugger open to an ephemeral port
-    const chromeProcess = await session.spawnBrowser("canary", {
-      // additionalArguments: ['--headless'],
-      windowSize: { width: 1920, height: 1080 },
-      additionalArguments: additionalChromeArgs
-    });
+    let chromeProcess: ChromeProcess = await spawnChromeBrowser(session, headless);
     // open the REST API for tabs
     const client = session.createAPIClient("localhost", chromeProcess.remoteDebuggingPort);
     const tabs = await client.listTabs();

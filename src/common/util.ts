@@ -1,6 +1,5 @@
 import {default as MITMProxy} from 'mitmproxy';
 import {getInterceptor} from '../lib/mitmproxy_interceptor';
-import {createConnection, Socket} from 'net';
 
 export const DEFAULT_AGENT_PATH = require.resolve('../lib/bleak_agent');
 export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
@@ -77,82 +76,4 @@ export class TwoBitArray {
     const mask = 0x3 << offset;
     return (this._bits[index] & mask) >> offset;
   }
-}
-
-export class FourBitArray {
-  private _bits: Uint8Array;
-  constructor(length: number) {
-    this._bits = new Uint8Array(Math.ceil(length / 2));
-  }
-
-  public fill(v: number): void {
-    const vMasked = v & 0xF;
-    const vDouble = (vMasked << 4) | vMasked;
-    this._bits.fill(vDouble);
-  }
-
-  public set(i: number, v: number) {
-    const index = i >> 1;
-    const offset = i - (index << 1);
-    if (offset === 1) {
-      const newV = (v & 0xF) << 4;
-      // Clear area
-      this._bits[index] &= 0xF;
-      // Set area
-      this._bits[index] |= newV;
-    } else {
-      // Clear area
-      this._bits[index] &= 0xF0;
-      // Set area
-      this._bits[index] |= (v & 0xF);
-    }
-  }
-
-  public get(i: number): number {
-    const index = i >> 1;
-    const offset = i - (index << 1);
-    return offset === 1 ? (this._bits[index] >> 4) : this._bits[index] & 0xF;
-  }
-}
-
-export function waitForPort(port: number, retries: number = 10, interval: number = 500): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    let retriesRemaining = retries;
-    let retryInterval = interval;
-    let timer: NodeJS.Timer = null;
-    let socket: Socket = null;
-
-    function clearTimerAndDestroySocket() {
-      clearTimeout(timer);
-      timer = null;
-      if (socket) socket.destroy();
-      socket = null;
-    }
-
-    function retry() {
-      tryToConnect();
-    }
-
-    function tryToConnect() {
-      clearTimerAndDestroySocket();
-
-      if (--retriesRemaining < 0) {
-        reject(new Error('out of retries'));
-      }
-
-      socket = createConnection(port, "localhost", function() {
-        clearTimerAndDestroySocket();
-        if (retriesRemaining >= 0) resolve();
-      });
-
-      timer = setTimeout(function() { retry(); }, retryInterval);
-
-      socket.on('error', function(err) {
-        clearTimerAndDestroySocket();
-        setTimeout(retry, retryInterval);
-      });
-    }
-
-    tryToConnect();
-  });
 }
