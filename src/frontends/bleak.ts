@@ -1,16 +1,19 @@
-import {readFileSync, openSync, writeSync, closeSync, mkdirSync, existsSync, createWriteStream, writeFileSync} from 'fs';
+import {readFileSync, mkdirSync, existsSync, createWriteStream, writeFileSync} from 'fs';
 import {join} from 'path';
 import BLeak from '../lib/bleak';
 import ChromeDriver from '../lib/chrome_driver';
 import TextReporter from '../lib/text_reporter';
 import * as yargs from 'yargs';
 import {createGzip} from 'zlib';
+import ProgressProgressBar from '../lib/progress_progress_bar';
 
 interface CommandLineArgs {
   out: string;
   config: string;
   snapshot: boolean;
   headless: boolean;
+  debug: boolean;
+  'take-screenshots': number;
 }
 
 const args: CommandLineArgs = <any> yargs.number('proxy-port')
@@ -27,6 +30,12 @@ const args: CommandLineArgs = <any> yargs.number('proxy-port')
   .boolean('headless')
   .default('headless', false)
   .describe('headless', `Run Chrome in headless mode (no GUI)`)
+  .boolean('debug')
+  .default('debug', false)
+  .describe('debug', 'Print debug information to console during run')
+  .number('take-screenshots')
+  .default('take-screenshots', -1)
+  .describe('take-screenshots', `Take periodic screenshots every n seconds. Useful for debugging hung headless runs. -1 disables.`)
   .help('help')
   .parse(process.argv);
 
@@ -39,26 +48,44 @@ if (args.snapshot) {
   }
   mkdirSync(join(args.out, 'snapshots', 'leak_detection'));
 }
-
-const outFile = openSync(join(args.out, 'leaks.log'), "w");
-function LOG(str: string): void {
-  console.log(str);
-  writeSync(outFile, str + "\n");
+const SCREENSHOTS_DIR = join(args.out, 'screenshots');
+if (args['take-screenshots'] !== -1) {
+  if (!existsSync(SCREENSHOTS_DIR)) {
+    mkdirSync(SCREENSHOTS_DIR);
+  }
 }
+
+const progressBar = new ProgressProgressBar(args.debug);
+// Add stack traces to Node warnings.
+// https://stackoverflow.com/a/38482688
+process.on('warning', (e: Error) => progressBar.error(e.stack));
 
 async function main() {
   const configFileSource = readFileSync(args.config).toString();
   writeFileSync(join(args.out, 'config.js'), configFileSource);
-  let chromeDriver = await ChromeDriver.Launch(<any> process.stdout, args.headless);
-  // Add stack traces to Node warnings.
-  // https://stackoverflow.com/a/38482688
-  process.on('warning', (e: Error) => console.warn(e.stack));
+  let chromeDriver = await ChromeDriver.Launch(progressBar, args.headless);
+
+  let screenshotTimer: NodeJS.Timer | null = null;
+  if (args['take-screenshots'] > -1) {
+    screenshotTimer = setInterval(async function() {
+      const time = Date.now();
+      progressBar.debug(`Taking screenshot...`);
+      const ss = await chromeDriver.takeScreenshot();
+      const ssFilename = join(SCREENSHOTS_DIR, `screenshot_${time}.png`);
+      progressBar.debug(`Writing ${ssFilename}...`);
+      writeFileSync(ssFilename, ss);
+    }, args['take-screenshots'] * 1000);
+  }
+
   let shuttingDown = false;
   async function shutDown() {
     if (shuttingDown) {
       return;
     }
     shuttingDown = true;
+    if (screenshotTimer) {
+      clearInterval(screenshotTimer);
+    }
     await chromeDriver.shutdown();
     // All sockets/subprocesses/resources *should* be closed, so we can just exit.
     process.exit(0);
@@ -69,7 +96,7 @@ async function main() {
     shutDown();
   });
   let i = 0;
-  const results = await BLeak.FindLeaks(configFileSource, chromeDriver, (sn) => {
+  const results = await BLeak.FindLeaks(configFileSource, progressBar, chromeDriver, (sn) => {
     if (args.snapshot) {
       const str = createWriteStream(join(args.out, 'snapshots', 'leak_detection', `snapshot_${i}.heapsnapshot.gz`));
       i++;
@@ -84,9 +111,10 @@ async function main() {
     }
     return Promise.resolve();
   });
-  writeFileSync(join(args.out, 'bleak_results.json'), JSON.stringify(results, undefined, '  '));
-  LOG(TextReporter(results));
-  closeSync(outFile);
+  writeFileSync(join(args.out, 'bleak_results.json'), JSON.stringify(results));
+  const resultsLog = TextReporter(results);
+  writeFileSync(join(args.out, 'bleak_report.log'), resultsLog);
+  console.log(resultsLog);
   console.log(`Results can be found in ${args.out}`);
   await shutDown();
 }

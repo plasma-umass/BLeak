@@ -255,15 +255,27 @@ export type IStackFrame = [string, number, number, string, string];
 export type IStack = number[];
 
 /**
+ * Logging interface. Specified so that `console` satisfies this interface.
+ */
+export interface Log {
+  // A debug println.
+  debug(data: string): void;
+  // A regular println.
+  log(data: string): void;
+  // Print an error
+  error(data: string): void;
+}
+
+/**
  * Interface for a progress bar.
  */
-export interface IProgressBar {
-  // Print a line of data when debug prints are enabled.
-  debugPrintln(data: string): void;
-  // Print a line of data above the progress bar.
-  println(data: string): void;
-  // Proceed to the next operation using the given description text.
-  nextOperation(desc: string): void;
+export interface IProgressBar extends Log {
+  // Proceed to the next operation.
+  nextOperation(): void;
+  // Go to 100% complete, regardless of current completion amount.
+  finish(): void;
+  // Abort the progress bar due to a fatal error.
+  abort(): void;
   // Update the current description w/o moving the progress bar.
   updateDescription(desc: string): void;
   // The total number of operations that need to be performed.

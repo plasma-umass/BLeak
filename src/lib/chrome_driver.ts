@@ -2,13 +2,14 @@ import HeapSnapshotParser from '../lib/heap_snapshot_parser';
 import {createSession} from 'chrome-debugging-client';
 import {ISession as ChromeSession, IAPIClient as ChromeAPIClient, IBrowserProcess as ChromeProcess, IDebuggingProtocolClient as ChromeDebuggingProtocolClient} from 'chrome-debugging-client/dist/lib/types';
 import {HeapProfiler as ChromeHeapProfiler, Network as ChromeNetwork, Console as ChromeConsole, Page as ChromePage, Runtime as ChromeRuntime, DOM as ChromeDOM} from "chrome-debugging-client/dist/protocol/tot";
-import {WriteStream, accessSync} from 'fs';
+import {accessSync} from 'fs';
 import {join} from 'path';
 import * as repl from 'repl';
 import {parse as parseJavaScript} from 'esprima';
 import * as childProcess from 'child_process';
 import MITMProxy from 'mitmproxy';
 import {platform} from 'os';
+import {Log} from '../common/interfaces';
 
 // HACK: Patch spawn to work around chrome-debugging-client limitation
 // https://github.com/krisselden/chrome-debugging-client/issues/10
@@ -94,7 +95,7 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean): Promise<
 }
 
 export default class ChromeDriver {
-  public static async Launch(log: WriteStream, headless: boolean, quiet: boolean = true): Promise<ChromeDriver> {
+  public static async Launch(log: Log, headless: boolean, quiet: boolean = true): Promise<ChromeDriver> {
     const mitmProxy = await MITMProxy.Create(undefined, quiet);
     // Tell mitmProxy to stash data requested through the proxy.
     mitmProxy.stashEnabled = true;
@@ -128,7 +129,7 @@ export default class ChromeDriver {
     return driver;
   }
 
-  private _log: WriteStream;
+  private _log: Log;
   private _headless: boolean;
   public readonly mitmProxy: MITMProxy;
   private _session: ChromeSession;
@@ -144,7 +145,7 @@ export default class ChromeDriver {
   private _loadedFrames = new Set<string>();
   private _shutdown: boolean = false;
 
-  private constructor(log: WriteStream, headless: boolean, mitmProxy: MITMProxy, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole, dom: ChromeDOM) {
+  private constructor(log: Log, headless: boolean, mitmProxy: MITMProxy, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole, dom: ChromeDOM) {
     this._log = log;
     this._headless = headless;
     this.mitmProxy = mitmProxy;
@@ -161,17 +162,22 @@ export default class ChromeDriver {
 
     this._console.messageAdded = (evt) => {
       const m = evt.message;
-      log.write(`[${m.level}] [${m.source}] ${m.url}:${m.line}:${m.column} ${m.text}\n`);
+      log.debug(`[${m.level}] [${m.source}] ${m.url}:${m.line}:${m.column} ${m.text}`);
     };
 
     this._runtime.exceptionThrown = (evt) => {
       const e = evt.exceptionDetails;
-      log.write(exceptionDetailsToString(e));
+      log.error(exceptionDetailsToString(e));
     };
 
     this._page.frameStoppedLoading = (e) => {
       this._loadedFrames.add(e.frameId);
     };
+  }
+
+  public async takeScreenshot(): Promise<Buffer> {
+    const ss = await this._page.captureScreenshot({});
+    return Buffer.from(ss.data, 'base64');
   }
 
   public async relaunch(): Promise<ChromeDriver> {
@@ -188,14 +194,13 @@ export default class ChromeDriver {
       if (this._shutdown) {
         throw new Error(`Cannot navigate to URL; Chrome has shut down.`);
       }
-      // console.log(`Waiting for frame...`);
       await wait(5);
     }
   }
 
   public async runCode<T>(expression: string): Promise<T> {
     const e = await this._runtime.evaluate({ expression, returnByValue: true });
-    console.log(`${expression} => ${JSON.stringify(e.result.value)}`);
+    this._log.debug(`${expression} => ${JSON.stringify(e.result.value)}`);
     if (e.exceptionDetails) {
       throw new Error(exceptionDetailsToString(e.exceptionDetails));
     }

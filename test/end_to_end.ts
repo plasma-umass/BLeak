@@ -4,6 +4,7 @@ import createHTTPServer from './util/http_server';
 import ChromeDriver from '../src/lib/chrome_driver';
 import {readFileSync} from 'fs';
 import {equal as assertEqual} from 'assert';
+import NopProgressBar from '../src/lib/nop_progress_bar';
 // import {createWriteStream} from 'fs';
 
 const HTTP_PORT = 8875;
@@ -303,7 +304,7 @@ describe('End-to-end Tests', function() {
           }
         ];
         exports.timeout = 30000;
-      `, driver/*, (ss) => {
+      `, new NopProgressBar(), driver/*, (ss) => {
         const stream = createWriteStream(`${rootFilename}${i}.heapsnapshot`);
         ss.onSnapshotChunk = function(chunk, end) {
           stream.write(chunk);

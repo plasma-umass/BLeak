@@ -27,7 +27,7 @@ async function main() {
     await t.addSnapshot(getHeapSnapshotParser(file));
   }
 
-  const growth = time('Get Growing Objects', () => t.findLeakPaths());
+  const growth = time('Get Growing Objects', console, () => t.findLeakPaths());
   console.log(`Found ${growth.length} growing paths.`);
   console.log(``);
   console.log(`Report`);

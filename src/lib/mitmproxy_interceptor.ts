@@ -1,6 +1,7 @@
 import {parseHTML, exposeClosureState, injectIntoHead, ensureES5} from './transformations';
 import {readFileSync} from 'fs';
 import {Interceptor, InterceptedHTTPMessage} from 'mitmproxy';
+import {Log} from '../common/interfaces';
 
 function identJSTransform(f: string, s: string) {
   return s;
@@ -19,7 +20,7 @@ function defaultRewrite(url: string, type: string, data: Buffer): Buffer {
  * @param fixes
  * @param disableAllRewrites
  */
-export function getInterceptor(agentUrl: string, agentPath: string, polyfillUrl: string, polyfillPath: string, rewrite: boolean, config = "", fixes: number[] = [], disableAllRewrites: boolean, fixRewriteFunction: (url: string, type: string, data: Buffer, fixes: number[]) => Buffer = defaultRewrite): Interceptor {
+export function getInterceptor(log: Log, agentUrl: string, agentPath: string, polyfillUrl: string, polyfillPath: string, rewrite: boolean, config = "", fixes: number[] = [], disableAllRewrites: boolean, fixRewriteFunction: (url: string, type: string, data: Buffer, fixes: number[]) => Buffer = defaultRewrite): Interceptor {
   const agentTransformURL = `${agentUrl.slice(0, -3)}_transform.js`;
   const agentTransformPath = `${agentPath.slice(0, -3)}_transform.js`;
   const parsedInjection = parseHTML(`<script type="text/javascript" src="${agentUrl}"></script>
@@ -128,10 +129,10 @@ export function getInterceptor(agentUrl: string, agentPath: string, polyfillUrl:
       case 'application/x-javascript':
         if (response.statusCode === 200) {
           if (rewrite) {
-            console.log(`Rewriting ${request.rawUrl}...`);
+            log.debug(`Rewriting ${request.rawUrl}...`);
             f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, f.responseBody.toString("utf8"), agentUrl, polyfillUrl), 'utf8'));
           } else if (!disableAllRewrites) {
-            console.log(`ES5ing ${request.rawUrl}...`)
+            log.debug(`ES5ing ${request.rawUrl}...`)
             f.setResponseBody(Buffer.from(ensureES5(url.pathname, f.responseBody.toString("utf8"), agentUrl, polyfillUrl), 'utf8'));
           }
         }

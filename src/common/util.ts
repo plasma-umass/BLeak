@@ -1,25 +1,22 @@
 import {default as MITMProxy} from 'mitmproxy';
 import {getInterceptor} from '../lib/mitmproxy_interceptor';
+import {Log} from './interfaces';
 
 export const DEFAULT_AGENT_PATH = require.resolve('../lib/bleak_agent');
 export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
 export const DEFAULT_BABEL_POLYFILL_URL = `/bleak_polyfill.js`;
 export const DEFAULT_BABEL_POLYFILL_PATH = require.resolve('babel-polyfill/dist/polyfill');
 
-export function configureProxy(proxy: MITMProxy, diagnose: boolean, fixes: number[] = [], config = "", disableAllRewrites: boolean, rewriteFunction?: (url: string, type: string, data: Buffer, fixes: number[]) => Buffer): void {
-  proxy.cb = getInterceptor(DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_BABEL_POLYFILL_PATH, diagnose, config, fixes, disableAllRewrites, rewriteFunction);
+export function configureProxy(proxy: MITMProxy, log: Log, diagnose: boolean, fixes: number[] = [], config = "", disableAllRewrites: boolean, rewriteFunction?: (url: string, type: string, data: Buffer, fixes: number[]) => Buffer): void {
+  proxy.cb = getInterceptor(log, DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_BABEL_POLYFILL_PATH, diagnose, config, fixes, disableAllRewrites, rewriteFunction);
 }
 
-export function time<T>(n: string, action: () => T, log?: (s: string) => void): T {
+export function time<T>(n: string, log: Log, action: () => T): T {
   const start = Date.now();
   const rv = action();
   const end = Date.now();
   const str = `Time to run ${n}: ${(end - start) / 1000} seconds.`;
-  if (log) {
-    log(str);
-  } else {
-    console.log(str);
-  }
+  log.log(str);
   return rv;
 }
 

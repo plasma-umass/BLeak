@@ -1,7 +1,6 @@
 import ChromeDriver from '../lib/chrome_driver';
 import {configureProxy} from '../common/util';
 
-
 const url = process.argv[2];
 const diagnose = process.argv.indexOf('--diagnose');
 if (diagnose !== -1) {
@@ -14,8 +13,8 @@ if (!url) {
 }
 
 async function main() {
-  const driver = await ChromeDriver.Launch(<any> process.stdout, false);
-  configureProxy(driver.mitmProxy, diagnose !== -1, fixes, undefined, false);
+  const driver = await ChromeDriver.Launch(console, false);
+  configureProxy(driver.mitmProxy, console, diagnose !== -1, fixes, undefined, false);
   await driver.navigateTo(url);
   await driver.debugLoop();
   await driver.shutdown();

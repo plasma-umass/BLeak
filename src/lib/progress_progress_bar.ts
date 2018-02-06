@@ -1,0 +1,50 @@
+import {IProgressBar} from '../common/interfaces';
+import * as ProgressBar from 'progress';
+
+/**
+ * A ProgressBar, using the 'progress' npm package.
+ */
+export default class ProgressProgressBar implements IProgressBar {
+  private _bar: ProgressBar = null;
+  constructor(private readonly _debug: boolean) {}
+
+  public nextOperation(): void {
+    this._bar.tick();
+  }
+  public finish(): void {
+    if (this._bar) {
+      this._bar.update(1);
+    }
+  }
+  public abort(): void {
+    throw new Error("Method not implemented.");
+  }
+  public updateDescription(desc: string): void {
+    if (this._bar) {
+      this._bar.render({
+        msg: desc
+      });
+    }
+  }
+  public setOperationCount(count: number): void {
+    this._bar = new ProgressBar(':bar :percent :msg', {
+      total: count
+    });
+  }
+  public debug(data: string): void {
+    if (this._bar && this._debug) {
+      this._bar.interrupt(`[DEBUG] ${data}`);
+    }
+  }
+  public log(data: string): void {
+    if (this._bar) {
+      this._bar.interrupt(data);
+    }
+  }
+  public error(data: string): void {
+    if (this._bar) {
+      // TODO: Red.
+      this._bar.interrupt(data);
+    }
+  }
+}

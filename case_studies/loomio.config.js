@@ -107,3 +107,6 @@ exports.loop = [
     }
   }
 ];
+
+// 30 second timeout
+exports.timeout = 30000;

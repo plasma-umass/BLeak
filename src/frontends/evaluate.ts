@@ -1,9 +1,10 @@
-import {openSync, writeSync, readFileSync, existsSync, mkdirSync, createWriteStream} from 'fs';
+import {readFileSync, existsSync, mkdirSync, createWriteStream} from 'fs';
 import {join, dirname} from 'path';
 import BLeak from '../lib/bleak';
 import ChromeDriver from '../lib/chrome_driver';
 import {createGzip} from 'zlib';
 import * as yargs from 'yargs';
+import ProgressProgressBar from '../lib/progress_progress_bar';
 
 interface CommandLineArgs {
   out: string;
@@ -55,12 +56,6 @@ if (args.snapshot) {
   }
 }
 
-const outFile = openSync(join(args.out, 'impact.csv'), 'a');
-function LOG(str: string): void {
-  console.log(str);
-  writeSync(outFile, str + "\n");
-}
-
 function mkdirp(s: string): void {
   if (!existsSync(s)) {
     const parent = dirname(s);
@@ -71,12 +66,13 @@ function mkdirp(s: string): void {
 
 async function main() {
   const configFileSource = readFileSync(args.config).toString();
-  const chromeDriver = await ChromeDriver.Launch(<any> process.stdout, args.headless);
+  const progressBar = new ProgressProgressBar(false);
+  const chromeDriver = await ChromeDriver.Launch(progressBar, args.headless);
   let resumeAt: [number, string];
   if (args['resume-metric'] && typeof(args['resume-iteration']) === "number") {
     resumeAt = [args['resume-iteration'], args['resume-metric']];
   }
-  await BLeak.EvaluateLeakFixes(configFileSource, chromeDriver, args.iterations, args['iterations-per-snapshot'], LOG, function(ss, metric, leaksFixed, iterationCount) {
+  await BLeak.EvaluateLeakFixes(configFileSource, progressBar, chromeDriver, args.iterations, args['iterations-per-snapshot'], function(ss, metric, leaksFixed, iterationCount) {
     if (args.snapshot) {
       const outdir = join(args.out, 'snapshots', 'evaluation', metric, `${leaksFixed}`);
       mkdirp(outdir);
