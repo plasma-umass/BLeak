@@ -112,7 +112,7 @@ exports = {
         submitBtn.click();
       }
     }
-  ]
+  ],
   // (Optional) An array of states describing how to get from config.url to the first state in
   // the loop. Executed each time the tool explicitly re-navigates to config.url. See
   // config.loop for a description of states.
