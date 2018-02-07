@@ -29,14 +29,14 @@ function wait(d: number): Promise<void> {
   });
 }
 
-function getConfigFromSource(configSource: string): ConfigurationFile {
+export function getConfigFromSource(configSource: string): ConfigurationFile {
   const m = {exports: Object.assign({}, DEFAULT_CONFIG) };
   // CommonJS emulation
   new Function('exports', 'module', configSource)(m.exports, m);
   return m.exports;
 }
 
-function getConfigBrowserInjection(configSource: string): string {
+export function getConfigBrowserInjection(configSource: string): string {
   // CommonJS emulation
   return `(function() {
   var module = { exports: ${DEFAULT_CONFIG_STRING} };
