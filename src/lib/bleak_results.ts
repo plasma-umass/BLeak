@@ -1,4 +1,4 @@
-import {IBLeakResults, ILeakRoot, IStackFrame, IStack, ISourceFileRepository} from '../common/interfaces';
+import {IBLeakResults, ILeakRoot, IStackFrame, IStack, ISourceFileRepository, SnapshotSizeSummary} from '../common/interfaces';
 import LeakRoot from './leak_root';
 import {StackFrame} from 'error-stack-parser';
 
@@ -19,12 +19,13 @@ export default class BLeakResults implements IBLeakResults {
    * @param br
    */
   public static FromJSON(br: IBLeakResults): BLeakResults {
-    return new BLeakResults(br.leaks.map(leakRootFromJSON), br.stackFrames, br.sourceFiles);
+    return new BLeakResults(br.leaks.map(leakRootFromJSON), br.stackFrames, br.sourceFiles, br.heapStats);
   }
 
   constructor (public readonly leaks: LeakRoot[] = [],
     public readonly stackFrames: IStackFrame[] = [],
-    public readonly sourceFiles: ISourceFileRepository = {}) {}
+    public readonly sourceFiles: ISourceFileRepository = {},
+    public readonly heapStats: SnapshotSizeSummary[] = []) {}
 
   /**
    * Add the given stack frame to the results, and returns a canonical ID.
@@ -105,7 +106,7 @@ export default class BLeakResults implements IBLeakResults {
       }
       newLeaks.push(new LeakRoot(leak.id, leak.paths, leak.scores, newStacks));
     }
-    return new BLeakResults(newLeaks, newStackFrames, newSourceFiles);
+    return new BLeakResults(newLeaks, newStackFrames, newSourceFiles, this.heapStats);
   }
 
   /**
@@ -127,7 +128,8 @@ export default class BLeakResults implements IBLeakResults {
     return {
       leaks: this.leaks.map(leakRootToJSON),
       stackFrames: this.stackFrames,
-      sourceFiles: this.sourceFiles
+      sourceFiles: this.sourceFiles,
+      heapStats: this.heapStats
     };
   }
 }

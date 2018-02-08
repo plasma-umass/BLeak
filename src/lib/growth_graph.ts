@@ -261,16 +261,6 @@ type EdgeIndex = number & { ___EdgeIndex: true };
 // Node brand
 type NodeIndex = number & { ___NodeIndex: true };
 
-
-/*export interface GrowthObject {
-  node: Node;
-  paths: Edge[][];
-  retainedSize: number;
-  adjustedRetainedSize: number;
-  transitiveClosureSize: number;
-  ownedObjects: number;
-}*/
-
 function shouldTraverse(edge: Edge, wantDom: boolean): boolean {
   // HACK: Ignore <symbol> properties. There may be multiple properties
   // with the name <symbol> in a heap snapshot. There does not appear to

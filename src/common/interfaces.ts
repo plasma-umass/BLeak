@@ -199,6 +199,8 @@ export interface IBLeakResults {
   stackFrames: IStackFrame[];
   // The program's original source files.
   sourceFiles: ISourceFileRepository;
+  // Heap statistics, broken down by iteration.
+  heapStats: SnapshotSizeSummary[];
 }
 
 /**

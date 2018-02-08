@@ -1,4 +1,4 @@
-import {ConfigurationFile, IStack, IProgressBar} from '../common/interfaces';
+import {ConfigurationFile, IStack, IProgressBar, SnapshotSizeSummary} from '../common/interfaces';
 import HeapSnapshotParser from './heap_snapshot_parser';
 import {HeapGrowthTracker, HeapGraph, toPathTree} from './growth_graph';
 import StackFrameConverter from './stack_frame_converter';
@@ -85,6 +85,7 @@ export class BLeakDetector {
   private _leakRoots: LeakRoot[] = [];
   private _snapshotCb: (sn: HeapSnapshotParser) => Promise<void>;
   private readonly _configInject: string;
+  private _heapSnapshotSizeStats: SnapshotSizeSummary[] = [];
   private constructor(driver: ChromeDriver, progressBar: IProgressBar, configSource: string, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb) {
     this._driver = driver;
     this._progressBar = progressBar;
@@ -151,7 +152,10 @@ export class BLeakDetector {
   public async findLeakPaths(steps = this._numberOfSteps(true, false)): Promise<LeakRoot[]> {
     this._progressBar.setOperationCount(steps);
     this.configureProxy(false, this._config.fixedLeaks, undefined, true);
-    await this._execute(this._config.iterations, true, 'Looking for leaks', (sn) => this._growthTracker.addSnapshot(sn));
+    await this._execute(this._config.iterations, true, 'Looking for leaks', async (sn) => {
+      await this._growthTracker.addSnapshot(sn);
+      this._heapSnapshotSizeStats.push(this._growthTracker.getGraph().calculateSize());
+    });
     const leakRoots = this._leakRoots = this._growthTracker.findLeakPaths();
     return leakRoots;
   }
@@ -192,7 +196,8 @@ export class BLeakDetector {
    */
   public async diagnoseLeaks(leakRoots: LeakRoot[], loggedIn: boolean = true, steps = this._numberOfSteps(false, true)): Promise<BLeakResults> {
     this._progressBar.setOperationCount(steps);
-    const results = new BLeakResults(leakRoots);
+    const results = new BLeakResults(leakRoots, undefined, undefined, this._heapSnapshotSizeStats);
+    this._heapSnapshotSizeStats = [];
     const leaksDebug = JSON.stringify(toPathTree(leakRoots));
     this._progressBar.debug(`Growing paths:\n${leaksDebug}`);
     // We now have all needed closure modifications ready.
