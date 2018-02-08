@@ -17,7 +17,9 @@ export default class ProgressProgressBar implements IProgressBar {
     }
   }
   public abort(): void {
-    throw new Error("Method not implemented.");
+    if (this._bar) {
+      this._bar.update(1);
+    }
   }
   public updateDescription(desc: string): void {
     if (this._bar) {

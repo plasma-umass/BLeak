@@ -99,30 +99,13 @@ export function getInterceptor(log: Log, agentUrl: string, agentPath: string, po
       // Rewrite before anything else happens.
       f.setResponseBody(fixRewriteFunction(request.rawUrl, mime, f.responseBody, fixes));
     }
-    /*if (url.path.indexOf('libraries') !== -1) {
-      // XXXX hot fix for mailpile
-      const c = f.contents.toString();
-      const magic = "tuples[3-i][2].disable,tuples[0][2].lock";
-      const i = c.indexOf(magic);
-      console.log(`Found jQuery text at ${i}`);
-      const newC = c.slice(0, i) + "tuples[3-i][2].disable,tuples[3-i][3].disable,tuples[ 0 ][ 2 ].lock,tuples[ 0 ][ 3 ].lock" + c.slice(i + magic.length);
-      f.contents = Buffer.from(newC, "utf8");
-    }*/
-    /*if (url.path.indexOf("app.js") !== -1) {
-      // XXX hot fix 2 for mailpile
-      const c = f.contents.toString();
-      const magic = `EventLog.subscribe(".mail_source"`;
-      const i = c.indexOf(magic);
-      console.log(`Found mailsource line at ${i}`);
-      const newC = c.slice(0, i) + `if (!window["$$HAS_SUBSCRIBED$$"]) window["$$HAS_SUBSCRIBED$$"] = true && EventLog.subscribe(".mail_source"` + c.slice(i + magic.length);
-      f.contents = Buffer.from(newC, "utf8");
-    }*/
+
     switch (mime) {
       case 'text/html':
       //if (f.status === 200) {
         f.setResponseBody(Buffer.from(injectIntoHead(url.pathname, f.responseBody.toString("utf8"), parsedInjection, rewrite ? exposeClosureState : identJSTransform), 'utf8'));
         //}
-      break;
+        break;
       case 'text/javascript':
       case 'application/javascript':
       case 'text/x-javascript':

@@ -1924,6 +1924,9 @@ class ScopeCreationVisitor extends Visitor {
     // Unwrap into an expression.
     if ((<any> left).type === "ExpressionStatement") {
       rv.left = (<ExpressionStatement><any> left).expression;
+      if (rv.left.type === "AssignmentExpression") {
+        rv.left = rv.left.left as MemberExpression;
+      }
     }
     return rv;
   }

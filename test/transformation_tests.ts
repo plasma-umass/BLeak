@@ -177,11 +177,31 @@ describe('Transformations', function() {
                 a += parseInt(prop, 10);
               }
             }
-            return a;
+            // Make sure prop doesn't escape.
+            return function() {
+              return [prop, a];
+            };
           }
         };
       `);
-      assertEqual(module.obj.decl(0, [0,1,2]), 3);
+      assertEqual(module.obj.decl(0, [0,1,2])()[1], 3);
+    });
+
+    it(`works with initializers in for in loops`, function() {
+      const module = instrumentModule<{obj: {decl: Function}}>(`
+        exports.b = [0,1,2];
+        exports.obj = {
+          decl: function(a) {
+            for (var prop in exports.b) a += prop;
+            prop = "hello";
+            // Make sure prop escapes.
+            return function() {
+              return prop;
+            };
+          }
+        };
+      `);
+      assertEqual(module.obj.decl("")(), "hello");
     });
 
     it(`works with catch clauses`, function() {
