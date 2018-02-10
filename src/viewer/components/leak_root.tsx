@@ -3,12 +3,16 @@ import BLeakResults from '../../lib/bleak_results';
 import LeakRoot from '../../lib/leak_root';
 import pathToString from '../../lib/path_to_string';
 import StackTraceComponent from './stack_trace';
+import {IStackFrame} from '../../common/interfaces';
+import {FileLocation} from '../model/interfaces';
 
 interface LeakRootComponentProps {
   rank: number;
   rankBy: "transitiveClosureSize" | "leakShare" | "retainedSize" | "ownedObjects";
   bleakResults: BLeakResults;
   leakRoot: LeakRoot;
+  onStackFrameSelect: (sf: IStackFrame) => void;
+  fileLocation: FileLocation;
 }
 
 interface LeakRootComponentState {
@@ -34,22 +38,24 @@ export default class LeakRootComponent extends React.Component<LeakRootComponent
             Score {Math.floor(lr.scores[this.props.rankBy])} {pathToString(paths[0])}
           </button>
         </h5>
-        <p className={paths.length > 1 ? "" : "hidden"}>Also accessible via the following paths:</p>
-        <ul>
-          {paths.slice(1, extraPathsToDisplay + 1).map((p, i) => <li key={`${keyPrefix}Path${i}`}>{pathToString(p)}</li>)}
-          <li className={this.state.expanded || paths.length < 7 ? "hidden" : ""}><button className="btn btn-link" style={{padding: 0}} onClick={() => this.setState({expanded: true})}>Show {paths.length - extraPathsToDisplay - 1} more...</button></li>
-        </ul>
       </div>
 
       <div id={`collapse${keyPrefix}`} className="collapse" aria-labelledby={keyPrefix}>
         <div className="card-body">
-          {lr.stacks.map((s) => results.stackToFrames(s)).map((s, i) => {
-            const stKeyPrefix = `${keyPrefix}Stack${i}`;
-            return <div className="stack-trace" key={stKeyPrefix}>
-              <p><b>Stack Trace {i + 1}</b></p>
-              <StackTraceComponent keyPrefix={stKeyPrefix} stack={s} />
-            </div>;
-          })}
+          <p className={paths.length > 1 ? "" : "hidden"}>Also accessible via the following paths:</p>
+          <ul className={paths.length > 1 ? "" : "hidden"}>
+            {paths.slice(1, extraPathsToDisplay + 1).map((p, i) => <li key={`${keyPrefix}Path${i}`}>{pathToString(p)}</li>)}
+            <li className={this.state.expanded || paths.length < 7 ? "hidden" : ""}><button className="btn btn-link" style={{padding: 0}} onClick={() => this.setState({expanded: true})}>Show {paths.length - extraPathsToDisplay - 1} more...</button></li>
+          </ul>
+          <div className="stack-trace-list">
+            {lr.stacks.map((s) => results.stackToFrames(s)).map((s, i) => {
+              const stKeyPrefix = `${keyPrefix}Stack${i}`;
+              return <div className="stack-trace" key={stKeyPrefix}>
+                <p><b>Stack Trace {i + 1}</b></p>
+                <StackTraceComponent keyPrefix={stKeyPrefix} fileLocation={this.props.fileLocation} onStackFrameSelect={this.props.onStackFrameSelect} stack={s} />
+              </div>;
+            })}
+          </div>
         </div>
       </div>
     </div>;

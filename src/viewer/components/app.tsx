@@ -4,6 +4,7 @@ import HeapGrowthGraph from './heap_growth_graph';
 import LeakRootsAndStackTraces from './leak_roots_and_stack_traces';
 import SourceCodeViewer from './source_code_view';
 import SourceFileManager from '../model/source_file_manager';
+import {FileLocation} from '../model/interfaces';
 
 const enum ViewState {
   WAIT_FOR_FILE,
@@ -18,6 +19,7 @@ interface AppState {
   errorMessage: string | null;
   progress: number;
   progressMessage: string | null;
+  fileLocation: FileLocation;
 }
 
 export default class App extends React.Component<{}, AppState> {
@@ -29,12 +31,11 @@ export default class App extends React.Component<{}, AppState> {
       sourceFileManager: null,
       errorMessage: null,
       progress: -1,
-      progressMessage: null
+      progressMessage: null,
+      fileLocation: null
     };
   }
 
-  // TODO: Display an error when this fails.
-  // TODO: Friendlier upload box (have a 'submit' button and title)
   private _onFileSelect() {
     const input = this.refs['file_select'] as HTMLInputElement;
     const files = input.files;
@@ -60,7 +61,12 @@ export default class App extends React.Component<{}, AppState> {
           this.setState({
             state: ViewState.DISPLAYING_FILE,
             bleakResults,
-            sourceFileManager
+            sourceFileManager,
+            fileLocation: {
+              url: sourceFileManager.getSourceFiles()[0].url,
+              line: 1,
+              column: 1
+            }
           });
         } catch (e) {
           this.setState({
@@ -91,7 +97,7 @@ export default class App extends React.Component<{}, AppState> {
         <a className="navbar-brand" href="/">BLeak Results Viewer</a>
       </nav>
 
-      <main role="main" className="container">
+      <main role="main" className="container-fluid">
         {this.state.state === ViewState.WAIT_FOR_FILE || this.state.state === ViewState.PROCESSING_FILE ?
           <div className="jumbotron" key="bleakUpload">
             <h1 className="display-4">Upload Results File</h1>
@@ -114,19 +120,27 @@ export default class App extends React.Component<{}, AppState> {
         : ''}
         {this.state.state === ViewState.DISPLAYING_FILE ? <div key="bleakResults">
           <div className="row">
-            <div className="col-sm-6">
+            <div className="col-sm">
               <h3>Heap Growth</h3>
               <HeapGrowthGraph key="heap_growth" bleakResults={this.state.bleakResults} />
             </div>
-            <div className="col-sm-6">
-              <h3>Leak Roots and Stack Traces</h3>
-              <LeakRootsAndStackTraces key="leak_root_list" bleakResults={this.state.bleakResults} />
-            </div>
           </div>
           <div className="row">
-            <div className="col-sm">
+            <div className="col-sm-5">
+              <h3>Leak Roots and Stack Traces</h3>
+              <LeakRootsAndStackTraces key="leak_root_list" onStackFrameSelect={(sf) => {
+                this.setState({
+                  fileLocation: {
+                    url: sf[0],
+                    line: sf[1],
+                    column: sf[2]
+                  }
+                });
+              }} bleakResults={this.state.bleakResults} fileLocation={this.state.fileLocation} />
+            </div>
+            <div className="col-sm-7">
               <h3>Source Code</h3>
-              <SourceCodeViewer key="source_code_viewer" files={this.state.sourceFileManager} openFile={this.state.sourceFileManager.getSourceFiles()[0].url} />
+              <SourceCodeViewer key="source_code_viewer" files={this.state.sourceFileManager} fileLocation={this.state.fileLocation} results={this.state.bleakResults} />
             </div>
           </div>
         </div> : ''}

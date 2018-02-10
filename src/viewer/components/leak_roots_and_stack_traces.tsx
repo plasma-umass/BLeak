@@ -1,9 +1,13 @@
 import * as React from 'react';
 import BLeakResults from '../../lib/bleak_results';
 import LeakRootList from './leak_root_list';
+import {IStackFrame} from '../../common/interfaces';
+import {FileLocation} from '../model/interfaces';
 
 interface LeakRootsAndStackTracesComponentProps {
   bleakResults: BLeakResults;
+  onStackFrameSelect: (sf: IStackFrame) => void;
+  fileLocation: FileLocation;
 }
 
 interface LeakRootsAndStackTracesComponentState {
@@ -31,7 +35,7 @@ export default class LeakRootsAndStackTracesComponent extends React.Component<Le
           </select>
         </div>
       </div>
-      <LeakRootList bleakResults={this.props.bleakResults} rankBy={this.state.rankBy} />
+      <LeakRootList fileLocation={this.props.fileLocation} bleakResults={this.props.bleakResults} onStackFrameSelect={this.props.onStackFrameSelect} rankBy={this.state.rankBy} />
     </div>;
   }
 }

@@ -4,7 +4,7 @@ body {
 
 .heap-growth-graph > svg {
   width: 100%;
-  height: 500px;
+  height: 300px;
 }
 
 .graph {
@@ -49,6 +49,10 @@ body {
   width: 100%;
 }
 
+.leak-root-list .card-header {
+  padding: 0;
+}
+
 .leak-root-list .btn-link {
   white-space: normal;
   text-align: left;
@@ -59,9 +63,17 @@ body {
   margin-top: 16px;
 }
 
+.stack-trace-list .stack-trace:first-child {
+  margin-top: 0;
+}
+
 /* Make stack traces dense. */
 .stack-trace .list-group-item {
   padding: 0;
+}
+
+.stack-trace .selected {
+  background-color: grey;
 }
 
 .stack-frame {
@@ -122,4 +134,11 @@ body {
 
 .ace_editor {
   border: 1px gray solid;
+  cursor: pointer;
+}
+
+.leak_line {
+  position: absolute;
+  background-color: red;
+  z-index: 99;
 }
