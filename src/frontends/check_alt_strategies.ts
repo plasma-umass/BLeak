@@ -1,4 +1,5 @@
-import {HeapGrowthTracker, pathToString} from '../lib/growth_graph';
+import {HeapGrowthTracker} from '../lib/growth_graph';
+import pathToString from '../lib/path_to_string';
 import {createReadStream, createWriteStream} from 'fs';
 import HeapSnapshotParser from '../lib/heap_snapshot_parser';
 import {createGunzip} from 'zlib';

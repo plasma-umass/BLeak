@@ -1,4 +1,4 @@
-import {pathToString} from './growth_graph';
+import pathToString from './path_to_string';
 import BLeakResults from './bleak_results';
 import LeakRoot from './leak_root';
 

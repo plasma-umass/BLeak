@@ -1,4 +1,5 @@
-import {HeapGrowthTracker, pathToString} from '../lib/growth_graph';
+import {HeapGrowthTracker} from '../lib/growth_graph';
+import pathToString from '../lib/path_to_string';
 import {createReadStream} from 'fs';
 import * as readline from 'readline';
 import {SnapshotNodeTypeToString, SnapshotEdgeTypeToString, SnapshotNodeType} from '../common/interfaces';

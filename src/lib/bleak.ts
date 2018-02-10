@@ -79,7 +79,7 @@ export class BLeakDetector {
 
   private _driver: ChromeDriver;
   private readonly _progressBar: IProgressBar;
-  private readonly _configSource: string;
+  //private readonly _configSource: string;
   private readonly _config: ConfigurationFile;
   private readonly _growthTracker = new HeapGrowthTracker();
   private _leakRoots: LeakRoot[] = [];
@@ -89,7 +89,7 @@ export class BLeakDetector {
   private constructor(driver: ChromeDriver, progressBar: IProgressBar, configSource: string, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb) {
     this._driver = driver;
     this._progressBar = progressBar;
-    this._configSource = configSource;
+    //this._configSource = configSource;
     this._config = getConfigFromSource(configSource);
     this._snapshotCb = snapshotCb;
     this._configInject = getConfigBrowserInjection(configSource);

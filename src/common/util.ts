@@ -1,4 +1,4 @@
-import {default as MITMProxy} from 'mitmproxy';
+import MITMProxy from 'mitmproxy';
 import {getInterceptor} from '../lib/mitmproxy_interceptor';
 import {Log} from './interfaces';
 

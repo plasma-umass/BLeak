@@ -321,7 +321,6 @@ function getProgramPrelude(statements: IfStatement[]): ExpressionStatement {
               }]
             },
             generator: false,
-            expression: false,
             async: false
           }]).concat(statements)
         },
@@ -407,7 +406,6 @@ function getScopeAssignment(functionVarName: string, scopeVarName: string): Expr
               }]
             },
             generator: false,
-            expression: false,
             async: false
           },
           kind: "init",
@@ -501,7 +499,6 @@ function getScopeProperties(names: string[]): Property[] {
                 }]
             },
             generator: false,
-            expression: false,
             async: false
           },
           kind: "init",
@@ -534,7 +531,6 @@ function getScopeProperties(names: string[]): Property[] {
               }]
             },
             generator: false,
-            expression: false,
             async: false
           },
           kind: "init",

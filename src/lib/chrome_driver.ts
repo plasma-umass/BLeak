@@ -1,6 +1,6 @@
 import HeapSnapshotParser from '../lib/heap_snapshot_parser';
 import {createSession} from 'chrome-debugging-client';
-import {ISession as ChromeSession, IAPIClient as ChromeAPIClient, IBrowserProcess as ChromeProcess, IDebuggingProtocolClient as ChromeDebuggingProtocolClient} from 'chrome-debugging-client/dist/lib/types';
+import {ISession as ChromeSession, IBrowserProcess as ChromeProcess} from 'chrome-debugging-client/dist/lib/types';
 import {HeapProfiler as ChromeHeapProfiler, Network as ChromeNetwork, Console as ChromeConsole, Page as ChromePage, Runtime as ChromeRuntime, DOM as ChromeDOM} from "chrome-debugging-client/dist/protocol/tot";
 import {accessSync} from 'fs';
 import {join} from 'path';
@@ -124,7 +124,7 @@ export default class ChromeDriver {
     // Disable service workers
     await network.setBypassServiceWorker({ bypass: true });
 
-    const driver = new ChromeDriver(log, headless, mitmProxy, session, chromeProcess, client, debugClient, page, runtime, heapProfiler, network, chromeConsole, dom);
+    const driver = new ChromeDriver(log, headless, mitmProxy, chromeProcess, page, runtime, heapProfiler, chromeConsole);
 
     return driver;
   }
@@ -132,33 +132,23 @@ export default class ChromeDriver {
   private _log: Log;
   private _headless: boolean;
   public readonly mitmProxy: MITMProxy;
-  private _session: ChromeSession;
   private _process: ChromeProcess;
-  private _client: ChromeAPIClient;
-  private _debugClient: ChromeDebuggingProtocolClient;
   private _page: ChromePage;
   private _runtime: ChromeRuntime;
   private _heapProfiler: ChromeHeapProfiler;
-  private _network: ChromeNetwork;
   private _console: ChromeConsole;
-  private _dom: ChromeDOM;
   private _loadedFrames = new Set<string>();
   private _shutdown: boolean = false;
 
-  private constructor(log: Log, headless: boolean, mitmProxy: MITMProxy, session: ChromeSession, process: ChromeProcess, client: ChromeAPIClient, debugClient: ChromeDebuggingProtocolClient, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, network: ChromeNetwork, console: ChromeConsole, dom: ChromeDOM) {
+  private constructor(log: Log, headless: boolean, mitmProxy: MITMProxy, process: ChromeProcess, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, console: ChromeConsole) {
     this._log = log;
     this._headless = headless;
     this.mitmProxy = mitmProxy;
-    this._session = session;
     this._process = process;
-    this._client = client;
-    this._debugClient = debugClient;
     this._runtime = runtime;
     this._page = page;
     this._heapProfiler = heapProfiler;
-    this._network = network;
     this._console = console;
-    this._dom = dom;
 
     this._console.messageAdded = (evt) => {
       const m = evt.message;

@@ -1,0 +1,77 @@
+import BLeakResults from '../../lib/bleak_results';
+import {default as FormatWorker, FormatterSourceMapping} from './../formatter';
+
+export class SourceFile {
+  constructor(
+    public readonly url: string,
+    public readonly source: string,
+    public readonly formattedSource: string,
+    public readonly mapping: FormatterSourceMapping) {}
+}
+
+/**
+ * Queriable object that stores source files and source maps.
+ */
+export default class SourceFileManager {
+  /**
+   * Constructs a SourceFileManager object from BLeakResults. Eagerly
+   * formats the source files, and invokes the progress callback after
+   * each finishes.
+   * @param results
+   * @param progress
+   */
+  public static async FromBLeakResults(results: BLeakResults, progress: (completed: number, total: number) => void): Promise<SourceFileManager> {
+    return new Promise<SourceFileManager>(async (resolve, reject) => {
+      const sfm = new SourceFileManager();
+      const sourceFiles = Object.keys(results.sourceFiles);
+      let completed = 0;
+      let total = sourceFiles.length;
+      function completedCallback(url: string, source: string, formattedSource: string, mapping: FormatterSourceMapping) {
+        completed++;
+        sfm.addSourceFile(url, source, formattedSource, mapping);
+        progress(completed, total);
+        if (completed === total) {
+          resolve(sfm);
+        }
+      }
+      // Assumption: We're on a ~2 core machine, so let's work it a bit
+      // w/ two parallel format requests.
+      const workers = await Promise.all([FormatWorker.Create(), FormatWorker.Create()]);
+      for (let i = 0; i < sourceFiles.length; i++) {
+        const sourceFile = sourceFiles[i];
+        const fileContents = results.sourceFiles[sourceFile];
+        workers[i % 2].format(fileContents.source, fileContents.mimeType, completedCallback.bind(null, sourceFile), reject);
+      }
+    });
+  }
+
+  private _sourceFiles: {[url: string]: SourceFile} = Object.create(null);
+
+  public addSourceFile(url: string, source: string, formattedSource: string, mapping: FormatterSourceMapping): void {
+    this._sourceFiles[url] = new SourceFile(url, source, formattedSource, mapping);
+  }
+
+  public originalToFormatted(url: string, line: number, column: number): [number, number] {
+    const sf = this._sourceFiles[url];
+    if (!sf) {
+      return [-1, -1];
+    }
+    return sf.mapping.originalToFormatted(line, column);
+  }
+
+  public formattedToOriginal(url: string, line: number, column: number): [number, number] {
+    const sf = this._sourceFiles[url];
+    if (!sf) {
+      return [-1, -1];
+    }
+    return sf.mapping.formattedToOriginal(line, column);
+  }
+
+  public getSourceFiles(): SourceFile[] {
+    return Object.keys(this._sourceFiles).map((k) => this._sourceFiles[k]);
+  }
+
+  public getSourceFile(url: string): SourceFile {
+    return this._sourceFiles[url];
+  }
+}
