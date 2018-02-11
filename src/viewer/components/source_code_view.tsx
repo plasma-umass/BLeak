@@ -5,6 +5,8 @@ import {default as AceEditor, Marker as AceMarker, Annotation as AceAnnotation} 
 import StackTraceManager from '../model/stack_trace_manager';
 import BLeakResults from '../../lib/bleak_results';
 import {FileLocation} from '../model/interfaces';
+import {IStackFrame} from '../../common/interfaces';
+import pathToString from '../../lib/path_to_string';
 import 'brace/mode/javascript';
 import 'brace/theme/github';
 import 'brace/ext/searchbox';
@@ -21,35 +23,61 @@ interface SourceCodeViewState {
   stackTraces: StackTraceManager;
   // URL => (line,column)
   fileState: {[url: string]: [number, number]};
+  // Active annotations
+  highlightedFrames: IStackFrame[];
 }
 
 export default class SourceCodeView extends React.Component<SourceCodeViewProps, SourceCodeViewState> {
   constructor(props: SourceCodeViewProps, context?: any) {
     super(props, context);
+    const stm = StackTraceManager.FromBLeakResults(props.results);
     this.state = {
       openFile: this.props.fileLocation.url,
-      stackTraces: StackTraceManager.FromBLeakResults(props.results),
-      fileState: {}
+      stackTraces: stm,
+      fileState: {},
+      highlightedFrames: stm.getFramesForFile(this.props.fileLocation.url)
     };
     this.state.fileState[this.state.openFile] = [props.fileLocation.line, props.fileLocation.column];
   }
 
   public componentDidMount() {
-    this._scrollAceEditor();
+    this._updateAceEditor();
+    // TODO: On click annotation / marker, select frames in left pane.
+    /*const editor: AceAjax.Editor = (this.refs.aceEditor as any).editor;
+    editor.on('click', (e) => {
+      const pos = e.getDocumentPosition();
+      const row = pos.row;
+      const col = pos.column;
+    });*/
+    // guttermousedown
   }
 
   public componentDidUpdate() {
-    this._scrollAceEditor();
+    this._updateAceEditor();
   }
 
-  private _scrollAceEditor() {
+  private _updateAceEditor() {
     const editor: AceAjax.Editor = (this.refs.aceEditor as any).editor;
+
+    // Scroll into view
     let editorState = this.state.fileState[this.state.openFile];
     if (!editorState) {
       editorState = [1, 1];
       this.state.fileState[this.state.openFile] = editorState;
     }
     (editor.renderer.scrollCursorIntoView as any)({ row: editorState[0] - 1, column: editorState[1] - 1 }, 0.5);
+
+    // Display annotations for file.
+    const annotations = this.state.highlightedFrames.map((f): AceAnnotation => {
+      const leaks = this.state.stackTraces.getLeaksForLocation(f[0], f[1], f[2]);
+      return {
+        row: f[1] - 1,
+        column: f[2] - 1,
+        type: 'error',
+        text: `Contributes to memory leaks:\n${leaks.map((l) => pathToString(l.paths[0])).join(",\n")}`
+      };
+    });
+    editor.getSession().setAnnotations(annotations);
   }
 
   public componentWillReceiveProps(props: SourceCodeViewProps) {
@@ -68,11 +96,12 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
     const newFileState: {[url: string]: [number, number]} = Object.assign({}, this.state.fileState);
     newFileState[this.state.openFile] = [middle, 1];
     newFileState[url] = position;
-    this.setState({ openFile: url, fileState: newFileState });
+    const frames = this.state.stackTraces.getFramesForFile(url);
+    this.setState({ openFile: url, fileState: newFileState, highlightedFrames: frames });
   }
 
   public render() {
-    const frames = this.state.stackTraces.getFramesForFile(this.state.openFile);
+    const frames = this.state.highlightedFrames;
     const markers = frames.map((f): AceMarker => {
       // Note: Ace uses 0-index rows and cols internally.
       return {
@@ -82,14 +111,6 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
         endCol: Number.POSITIVE_INFINITY,
         className: 'leak_line',
         type: 'sometype'
-      };
-    });
-    const annotations = frames.map((f): AceAnnotation => {
-      return {
-        row: f[1] - 1,
-        column: 0,
-        type: 'error',
-        text: 'Code on this line is part of a memory leak.'
       };
     });
     return <div className="row">
@@ -107,7 +128,6 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
           width="100%"
           highlightActiveLine={false}
           setOptions={ { highlightGutterLine: false, useWorker: false } }
-          annotations={annotations}
           markers={markers}
           value={this.props.files.getSourceFile(this.state.openFile).source} />
       </div>

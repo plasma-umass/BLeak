@@ -186,7 +186,7 @@ export class BLeakDetector {
    */
   public async findAndDiagnoseLeaks(): Promise<BLeakResults> {
     const steps = this._numberOfSteps(true, true);
-    return this.diagnoseLeaks(await this.findLeakPaths(steps), true, steps);
+    return this.diagnoseLeaks(await this.findLeakPaths(steps), true, true);
   }
 
   /**
@@ -194,8 +194,10 @@ export class BLeakDetector {
    * instrumented state that collects stack traces as the objects at the roots grow.
    * @param leakRoots
    */
-  public async diagnoseLeaks(leakRoots: LeakRoot[], loggedIn: boolean = true, steps = this._numberOfSteps(false, true)): Promise<BLeakResults> {
-    this._progressBar.setOperationCount(steps);
+  public async diagnoseLeaks(leakRoots: LeakRoot[], loggedIn: boolean = true, progressBarInitialized: boolean): Promise<BLeakResults> {
+    if (!progressBarInitialized) {
+      this._progressBar.setOperationCount(this._numberOfSteps(false, true));
+    }
     const results = new BLeakResults(leakRoots, undefined, undefined, this._heapSnapshotSizeStats);
     this._heapSnapshotSizeStats = [];
     const leaksDebug = JSON.stringify(toPathTree(leakRoots));

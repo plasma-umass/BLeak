@@ -33,15 +33,20 @@ function propertyAccessString(s: string | number) {
 }
 
 function prettyPrintDOMPath(): void {
-  const segment = PS.pop();
   while (PS.nonempty()) {
-    if (segment.indexOrName === "root") {
+    const segment = PS.pop();
+    const name = segment.indexOrName;
+    if (name === "root") {
       // Ignore this BLeak-inserted edge.
       // We're transitioning to a path outside of the DOM, on the DOM object itself.
       prettyPrintNonDOMPath();
+    } else if (name === 'childNodes') {
+      PS.print(propertyAccessString(name));
     } else {
+      // $$$CHILD$$$n => n
+      const idx = parseInt((name as string).slice(11), 10);
       // Should alternate between 'childNode' and indices until it gets to 'root'.
-      PS.print(propertyAccessString(segment.indexOrName));
+      PS.print(propertyAccessString(idx));
     }
   }
 }

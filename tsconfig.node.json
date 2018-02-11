@@ -1,6 +1,6 @@
 {
     "compilerOptions": {
-        "module": "es2015",
+        "module": "commonjs",
         "target": "es5",
         "moduleResolution": "node",
         "noImplicitAny": true,
@@ -16,6 +16,6 @@
             "dom",
             "es2015"
         ],
-        "outDir": "build/browser"
+        "outDir": "build/node"
     }
 }

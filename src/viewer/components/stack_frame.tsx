@@ -25,7 +25,7 @@ export default function StackFrame(p: StackFrameComponentProps) {
   const url = formatUrl(f[0]);
   const line = f[1];
   const col = f[2];
-  const selected = location.url === url && location.line === line && location.column === col;
+  const selected = location.url === f[0] && location.line === line && location.column === col;
   return <button type="button" className={"list-group-item list-group-item-action" + (selected ? " selected" : "")} onClick={p.onStackFrameSelect.bind(null, p.frame)}>
     <span className="stack-frame"><span>{functionName}</span> <span>{url}:{line}:{col}</span></span>
   </button>;

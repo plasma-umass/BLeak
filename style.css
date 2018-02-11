@@ -53,6 +53,11 @@ body {
   padding: 0;
 }
 
+/* Makes sure long leak root names wrap appropriately, otherwise the button expands to accomodate them. */
+.leak-root-list .card-header button {
+  max-width: 100%;
+}
+
 .leak-root-list .btn-link {
   white-space: normal;
   text-align: left;
@@ -74,6 +79,7 @@ body {
 
 .stack-trace .selected {
   background-color: grey;
+  color: white;
 }
 
 .stack-frame {
@@ -84,6 +90,10 @@ body {
 .stack-frame span:nth-child(2) {
   flex-grow: 1;
   text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-left: 10px;
 }
 
 .tree-view .folder, .tree-view .file {

@@ -7,8 +7,8 @@ import replace from 'rollup-plugin-replace';
 // import globals from 'rollup-plugin-node-globals';
 import {join} from 'path';
 
-const inBase = join(__dirname, 'build', 'src');
-const outBase = join(__dirname, 'build');
+const inBase = join(__dirname, 'build', 'browser', 'src');
+const outBase = join(__dirname, 'build', 'browser');
 
 export default {
   input: join(inBase, 'viewer', 'index.js'),

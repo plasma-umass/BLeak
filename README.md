@@ -38,7 +38,7 @@ yarn test
 
 1. **Build** BLeak (see above).
 1. **Write** a *configuration file* for your web application (see below).
-2. **Run** `node build/src/frontends/bleak.js --config path/to/config.js --out path/to/where/you/want/output`
+2. **Run** `node build/node/src/frontends/bleak.js --config path/to/config.js --out path/to/where/you/want/output`
   * The output directory should be unique for this specific run of BLeak, otherwise it will overwrite files in the directory. It will be created if needed.
 3. **Wait.** BLeak typically runs in <10 minutes, but its speed depends on the number of states in your loop and the speed of your web application.
 4. **Examine** `path/to/where/you/want/output/leaks.log`, which contains a list of growing objects and stack traces responsible for growing it.

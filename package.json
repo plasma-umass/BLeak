@@ -4,13 +4,15 @@
   "description": "Automatically finds memory leaks in single page web applications.",
   "main": "dist/index.js",
   "scripts": {
-    "build": "npm-run-all -s build:core rollup:viewer",
-    "build:core": "tsc",
+    "build": "npm-run-all -p build:node build:viewer -s rollup:viewer",
+    "build:node": "tsc -p tsconfig.node.json",
+    "build:viewer": "tsc",
     "rollup:viewer": "rollup -c",
     "test": "npm-run-all -s build nyc:test",
-    "nyc:test": "nyc mocha --require source-map-support/register build/test",
-    "watch": "npm-run-all -s build:core -p tsc:watch rollup:viewer:watch",
+    "nyc:test": "nyc mocha --require source-map-support/register build/node/test",
+    "watch": "npm-run-all -p build:node build:viewer -p tsc:viewer:watch tsc:watch rollup:viewer:watch",
     "tsc:watch": "tsc -w",
+    "tsc:viewer:watch": "tsc -w -p tsconfig.node.json",
     "rollup:viewer:watch": "rollup -w -c"
   },
   "repository": {
