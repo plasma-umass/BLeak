@@ -43,9 +43,8 @@ yarn test
 2. **Run** `node build/node/src/frontends/bleak.js --config path/to/config.js --out path/to/where/you/want/output`
   * The output directory should be unique for this specific run of BLeak, otherwise it will overwrite files in the directory. It will be created if needed.
 3. **Wait.** BLeak typically runs in <10 minutes, but its speed depends on the number of states in your loop and the speed of your web application.
-4. **Examine** `path/to/where/you/want/output/leaks.log`, which contains a list of growing objects and stack traces responsible for growing it.
-  * Note: leaks.log currently reports three different rankings for different ranking metrics; use the first ranking. This is an artifact from our research.
-  * Note 2: Paths with `$$$listeners$$$` correspond to a specific event listener list, paths with `$$$DOM$$$` refer to a specific DOM node (accessed via `childNodes`), and paths with `__closure__` refer to function closures. We will make these easier for humans to read soon!
+4. **Run the BLeak Results Viewer** by running `yarn run viewer` and navigating to http://localhost:8889/ in a web browser. Upload `path/to/where/you/want/output/bleak_results.json` to the web application to view the results!
+  * Alternatively, BLeak prints out a report in `bleak_report.log` in the same directory, but the results viewer presents additional information not shown in that form.
 
 ## Configuration File
 
