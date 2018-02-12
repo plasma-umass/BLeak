@@ -55,7 +55,8 @@ export default {
       namedExports: {
         //'vis': ['Network', 'DataSet'],
         'react-dom': ['render'],
-        'react': ['Component', 'createElement']
+        'react': ['Component', 'createElement'],
+        'brace': ['acequire']
       }
     }),
     replace({

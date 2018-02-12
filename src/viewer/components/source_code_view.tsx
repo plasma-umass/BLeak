@@ -7,9 +7,11 @@ import BLeakResults from '../../lib/bleak_results';
 import {FileLocation} from '../model/interfaces';
 import {IStackFrame} from '../../common/interfaces';
 import pathToString from '../../lib/path_to_string';
+import {acequire} from 'brace';
 import 'brace/mode/javascript';
 import 'brace/theme/github';
 import 'brace/ext/searchbox';
+const Range = acequire('ace/range').Range;
 
 interface SourceCodeViewProps {
   results: BLeakResults;
@@ -67,8 +69,11 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
     }
     (editor.renderer.scrollCursorIntoView as any)({ row: editorState[0] - 1, column: editorState[1] - 1 }, 0.5);
 
+    const session = editor.getSession();
+    const frames = this.state.highlightedFrames;
+
     // Display annotations for file.
-    const annotations = this.state.highlightedFrames.map((f): AceAnnotation => {
+    const annotations = frames.map((f): AceAnnotation => {
       const leaks = this.state.stackTraces.getLeaksForLocation(f[0], f[1], f[2]);
       return {
         row: f[1] - 1,
@@ -77,7 +82,79 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
         text: `Contributes to memory leaks:\n${leaks.map((l) => pathToString(l.paths[0])).join(",\n")}`
       };
     });
-    editor.getSession().setAnnotations(annotations);
+    session.setAnnotations(annotations);
+
+    // Remove old markers.
+    const markers = session.getMarkers(false);
+    for (const prop in markers) {
+      if (markers.hasOwnProperty(prop)) {
+        session.removeMarker(markers[prop].id);
+      }
+    }
+
+    const doc = session.getDocument();
+    const file = this.props.files.getSourceFile(this.state.openFile);
+    const fileSource = file.source;
+
+    // Display markers.
+    frames.forEach((f) => {
+      const index = doc.positionToIndex({ row: f[1] - 1, column: f[2] - 1 }, 0);
+      let parensDeep = 0;
+      let inString = false;
+      let stringChar: string = null;
+      let nextEscaped = false;
+      let end = index;
+      outerLoop:
+      for (end; end < fileSource.length; end++) {
+        const c = fileSource[end];
+        if (inString) {
+          if (nextEscaped) {
+            nextEscaped = false;
+            continue;
+          }
+          switch (c) {
+            case '\\':
+              nextEscaped = true;
+            default:
+              inString = c === stringChar;
+              break;
+          }
+        } else if (parensDeep > 0) {
+          switch(c) {
+            case '(':
+              parensDeep++;
+              break;
+            case ')':
+              parensDeep--;
+              break;
+          }
+          if (parensDeep === 0) {
+            // Break outer loop.
+            // We reached the end of a function call.
+            break outerLoop;
+          }
+        } else {
+          switch (c) {
+            case '"':
+            case "'":
+              inString = true;
+              stringChar = c;
+              break;
+            case '(':
+              parensDeep = 1;
+              break;
+            case ';':
+            case ',':
+            case ':':
+            case '\n':
+              // End of statement.
+              break outerLoop;
+          }
+        }
+      }
+      const endPos = doc.indexToPosition(end, 0);
+      session.addMarker(new Range(f[1] - 1, f[2] - 1, endPos.row, endPos.column), 'leak_line', 'someType', false);
+    });
   }
 
   public componentWillReceiveProps(props: SourceCodeViewProps) {
@@ -101,18 +178,6 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
   }
 
   public render() {
-    const frames = this.state.highlightedFrames;
-    const markers = frames.map((f): AceMarker => {
-      // Note: Ace uses 0-index rows and cols internally.
-      return {
-        startRow: f[1] - 1,
-        startCol: f[2] - 1,
-        endRow: f[1] - 1,
-        endCol: Number.POSITIVE_INFINITY,
-        className: 'leak_line',
-        type: 'sometype'
-      };
-    });
     return <div className="row">
       <div className="col-lg-3">
         <FileList files={this.props.files} editorFile={this.state.openFile} onFileSelected={(f) => {
@@ -128,7 +193,6 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
           width="100%"
           highlightActiveLine={false}
           setOptions={ { highlightGutterLine: false, useWorker: false } }
-          markers={markers}
           value={this.props.files.getSourceFile(this.state.openFile).source} />
       </div>
     </div>;
