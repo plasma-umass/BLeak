@@ -1,6 +1,10 @@
 import {IStackFrame} from '../../common/interfaces';
 import BLeakResults from '../../lib/bleak_results';
 import LeakRoot from '../../lib/leak_root';
+import StackFrame from './stack_frame';
+import SourceFileManager from './source_file_manager';
+import SourceFile from './source_file';
+import Location from './location';
 
 class StackFrameStats {
   constructor(
@@ -21,17 +25,20 @@ class StackFrameStats {
  * - Returning the stack traces associated with a specific leak
  */
 export default class StackTraceManager {
-  public static FromBLeakResults(results: BLeakResults): StackTraceManager {
-    return new StackTraceManager(results.stackFrames, results.leaks);
+  public static FromBLeakResults(sourceFileManager: SourceFileManager, results: BLeakResults): StackTraceManager {
+    return new StackTraceManager(sourceFileManager, results.stackFrames, results.leaks);
   }
 
   private _frameStats: StackFrameStats[];
-  private _fileStackFrames: {[url: string]: number[]} = {};
+  private _fileStackFrames = new Map<SourceFile, number[]>();
   private _locationToId = new Map<string, number>();
+  private _frames: StackFrame[];
   constructor(
-    private _frames: IStackFrame[],
+    sfm: SourceFileManager,
+    frames: IStackFrame[],
     private _leaks: LeakRoot[]
   ) {
+    this._frames = frames.map((f) => new StackFrame(sfm.getSourceFile(f[0]), f[3], f[1], f[2]));
     this._frameStats = this._frames.map((f, id) => new StackFrameStats(id, [], 0));
     this._leaks.forEach((l) => {
       l.stacks.forEach((s) => {
@@ -42,38 +49,44 @@ export default class StackTraceManager {
             stats.leaks.push(l);
           }
           const sfObj = this._frames[sf];
-          let fileStackFrames = this._fileStackFrames[sfObj[0]];
+          let fileStackFrames = this._fileStackFrames.get(sfObj.file);
           if (!fileStackFrames) {
-            fileStackFrames = this._fileStackFrames[sfObj[0]] = [];
+            fileStackFrames = [];
+            this._fileStackFrames.set(sfObj.file, fileStackFrames);
           }
           // TODO: Could use a set, but these arrays are expected to be small.
           if (fileStackFrames.indexOf(sf) === -1) {
             fileStackFrames.push(sf);
           }
-          this._locationToId.set(`${sfObj[0]}:${sfObj[1]}:${sfObj[2]}`, sf);
+          this._locationToId.set(sfObj.key, sf);
         }
       });
     });
   }
 
-  private _getFrameForLocation(url: string, line: number, column: number): number {
-    return this._locationToId.get(`${url}:${line}:${column}`);
+  private _getFrameForLocation(location: Location): number {
+    return this._locationToId.get(location.key);
   }
 
-  public getLeaksForLocation(url: string, line: number, column: number): LeakRoot[] {
-    const sfId = this._getFrameForLocation(url, line, column);
+  public getLeaksForLocation(location: Location): LeakRoot[] {
+    const sfId = this._getFrameForLocation(location.getOriginalLocation());
     return this._frameStats[sfId].leaks;
   }
 
-  public getFramesForFile(url: string): IStackFrame[] {
-    const fileInfo = this._fileStackFrames[url];
+  public getFramesForFile(file: SourceFile): StackFrame[] {
+    const fileInfo = this._fileStackFrames.get(file);
     if (!fileInfo) {
       return [];
     }
-    return fileInfo.map((sf) => this._frames[sf]);
+    // Filter out locations at invalid locations (0, -1, etc).
+    return fileInfo.map((sf) => this._frames[sf]).filter((sf) => sf.line > 0 && sf.column > 0);
   }
 
-  public getTracesForLeak(l: LeakRoot): IStackFrame[][] {
+  public getTracesForLeak(l: LeakRoot): StackFrame[][] {
     return l.stacks.map((s) => s.map((sf) => this._frames[sf]));
+  }
+
+  public stackToFrames(s: number[]): StackFrame[] {
+    return s.map((s) => this._frames[s]);
   }
 }

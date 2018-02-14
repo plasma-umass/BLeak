@@ -1,6 +1,6 @@
 import {Parser as HTMLParser, DomHandler, DomUtils} from 'htmlparser2';
 
-export {exposeClosureState, ensureES5} from './closure_state_transform';
+export {exposeClosureState, ensureES5, nopTransform} from './closure_state_transform';
 
 declare module "htmlparser2" {
   export const DomHandler: any;

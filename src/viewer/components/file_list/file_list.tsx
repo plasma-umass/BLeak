@@ -1,12 +1,13 @@
 import * as React from 'react';
-import {default as SourceFileManager, SourceFile} from '../../model/source_file_manager';
+import {default as SourceFileManager} from '../../model/source_file_manager';
+import SourceFile from '../../model/source_file';
 import FolderNode from './folder_node';
 import {default as Folder, FolderType} from './model/folder';
 
 interface FileListProps {
   files: SourceFileManager;
   onFileSelected: (file: SourceFile) => void;
-  editorFile: string;
+  editorFile: SourceFile;
 }
 
 interface FileListState {

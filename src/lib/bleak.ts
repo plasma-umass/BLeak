@@ -9,7 +9,9 @@ import BLeakResults from './bleak_results';
 
 const DEFAULT_CONFIG: ConfigurationFile = {
   name: "unknown",
-  iterations: 4,
+  iterations: 8,
+  rankingEvaluationIterations: 10,
+  rankingEvaluationRuns: 5,
   url: "http://localhost:8080/",
   fixedLeaks: [],
   leaks: {},
@@ -23,10 +25,44 @@ const DEFAULT_CONFIG: ConfigurationFile = {
 const DEFAULT_CONFIG_STRING = JSON.stringify(DEFAULT_CONFIG);
 type StepType = "login" | "setup" | "loop";
 
+/**
+ * A specific BLeak configuration used during ranking metric evaluation.
+ * Since metrics may share specific configurations, this contains a boolean
+ * indicating which metrics this configuration applies to.
+ */
+class RankingEvalConfig {
+  public leakShare: boolean = false;
+  public retainedSize: boolean = false;
+  public transitiveClosureSize: boolean = false;
+  constructor(public readonly leakRootIdsFixed: number[], public remainingRuns: number) {}
+  public metrics(): string {
+    let rv: string[] = [];
+    for (let metric of ['leakShare', 'retainedSize', 'transitiveClosureSize']) {
+      if (this[metric as 'leakShare']) {
+        rv.push(metric);
+      }
+    }
+    return rv.join(', ');
+  }
+}
+
 function wait(d: number): Promise<void> {
   return new Promise<void>((resolve) => {
     setTimeout(resolve, d);
   });
+}
+
+function increasingSort(a: number, b: number): number {
+  return a - b;
+}
+
+/**
+ * Given a set of leaks, return a unique key.
+ * @param set
+ */
+function leakSetKey(set: number[]): string {
+  // Canonicalize order, then produce string.
+  return set.sort(increasingSort).join(',');
 }
 
 export function getConfigFromSource(configSource: string): ConfigurationFile {
@@ -63,23 +99,25 @@ export class BLeakDetector {
   }
 
   /**
-   * Evaluate the effectiveness of leak fixes. Runs the application without any of the fixes,
-   * and then with each fix in successive order. Outputs a CSV report to the `log` function.
+   * Evaluate the effectiveness of leak fixes applied in order using different metrics.
+   * Runs the application without any of the fixes, and then with each fix in successive order using
+   * different metrics. Mutates the BLeakResults object with the data, and calls a callback
+   * periodically to flush it to disk. Intelligently resumes from a partially-completed
+   * evaluation run.
    * @param configSource The source code of the configuration file as a CommonJS module.
    * @param progressBar A progress bar, to which BLeak will print information about its progress.
    * @param driver The browser driver.
-   * @param iterations Number of loop iterations to perform.
-   * @param iterationsPerSnapshot Number of loop iterations to perform before each snapshot.
+   * @param results The results file from a BLeak run.
+   * @param flushResults Called when the results file should be flushed to disk.
    * @param snapshotCb (Optional) Snapshot callback.
    */
-  public static async EvaluateLeakFixes(configSource: string, progressBar: IProgressBar, driver: ChromeDriver, iterations: number, iterationsPerSnapshot: number, snapshotCb: (sn: HeapSnapshotParser, metric: string, leaksFixed: number, iteration: number) => Promise<void> = defaultSnapshotCb, resumeAt?: [number, string]): Promise<void> {
+  public static async EvaluateRankingMetrics(configSource: string, progressBar: IProgressBar, driver: ChromeDriver, results: BLeakResults, flushResults: (results: BLeakResults) => void, snapshotCb: (sn: HeapSnapshotParser, metric: string, leaksFixed: number, iteration: number) => Promise<void> = defaultSnapshotCb): Promise<void> {
     const detector = new BLeakDetector(driver, progressBar, configSource);
-    return detector.evaluateLeakFixes(iterations, iterationsPerSnapshot, snapshotCb, resumeAt);
+    return detector.evaluateRankingMetrics(results, flushResults, snapshotCb);;
   }
 
   private _driver: ChromeDriver;
   private readonly _progressBar: IProgressBar;
-  //private readonly _configSource: string;
   private readonly _config: ConfigurationFile;
   private readonly _growthTracker = new HeapGrowthTracker();
   private _leakRoots: LeakRoot[] = [];
@@ -89,7 +127,6 @@ export class BLeakDetector {
   private constructor(driver: ChromeDriver, progressBar: IProgressBar, configSource: string, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb) {
     this._driver = driver;
     this._progressBar = progressBar;
-    //this._configSource = configSource;
     this._config = getConfigFromSource(configSource);
     this._snapshotCb = snapshotCb;
     this._configInject = getConfigBrowserInjection(configSource);
@@ -227,82 +264,116 @@ export class BLeakDetector {
     return results.compact();
   }
 
-  public async evaluateLeakFixes(iterations: number, iterationsPerSnapshot: number, snapshotCb: (ss: HeapSnapshotParser, metric: string, leaksFixed: number, iteration: number) => Promise<void>, resumeAt?: [number, string]): Promise<void> {
+  /**
+   * Given a BLeak results file, collects the information needed to evaluate the effectiveness of various metrics.
+   * @param results BLeak results file from a BLeak run.
+   * @param flushResults Callback that flushes the results file to disk. Called periodically when new results are added.
+   * @param snapshotCb Optional callback that is called whenever a heap snapshot is taken.
+   */
+  public async evaluateRankingMetrics(results: BLeakResults, flushResults: (results: BLeakResults) => void, snapshotCb: (ss: HeapSnapshotParser, metric: string, leaksFixed: number, iteration: number) => Promise<void>): Promise<void> {
     const pb = this._progressBar;
-    let metrics = Object.keys(this._config.leaks);
-    let headerPrinted = !!resumeAt;
-    let iterationCount = 0;
-    let leaksFixed = resumeAt ? resumeAt[0] : 0;
-    let metric: string;
-
-    let logBuffer = new Array<string>();
-    function stageLog(l: string): void {
-      logBuffer.push(l);
+    if (!results.leaks || results.leaks.length < 2) {
+      pb.finish();
+      pb.log(`BLeak results file does not contain more than 2 leak roots; nothing to do.`);
+      return;
+    }
+    function getSorter(rankBy: "transitiveClosureSize" | "leakShare" | "retainedSize" | "ownedObjects"): (a: number, b: number) => number {
+      return (a, b) => {
+        return results.leaks[b].scores[rankBy] - results.leaks[a].scores[rankBy];
+      };
     }
 
-    function flushLog(): void {
-      for (const msg of logBuffer) {
-        pb.log(msg);
-      }
-      logBuffer = [];
-    }
-
-    function emptyLog(): void {
-      logBuffer = [];
-    }
-
-    async function snapshotReport(sn: HeapSnapshotParser): Promise<void> {
-      const g = await HeapGraph.Construct(sn);
-      const size = g.calculateSize();
-      const data = Object.assign({ metric, leaksFixed, iterationCount }, size);
-      const keys = Object.keys(data).sort();
-      if (!headerPrinted) {
-        pb.log(keys.join(","));
-        headerPrinted = true;
-      }
-      stageLog(keys.map((k) => (<any> data)[k]).join(","));
-      iterationCount++;
-    }
-
-    const executeWrapper = async (iterations: number, login: boolean, takeSnapshots?: (sn: HeapSnapshotParser) => Promise<void>, iterationsPerSnapshot?: number, snapshotOnFirst?: boolean): Promise<void> => {
-      while (true) {
-        try {
-          iterationCount = 0;
-          await this._execute(iterations, login, 'Evaluating Leak Fixes', takeSnapshots, iterationsPerSnapshot, snapshotOnFirst);
-          flushLog();
-          return;
-        } catch (e) {
-          this._progressBar.log(e);
-          this._progressBar.log(`Timed out. Trying again.`);
-          emptyLog();
-          this._driver = await this._driver.relaunch();
+    // Figure out which runs are completed and in the results file,
+    const configsToTest = new Map<string, RankingEvalConfig>();
+    const leaksById = results.leaks.map((l, i) => i);
+    const orders = {
+      'leakShare': leaksById.sort(getSorter('leakShare')),
+      'retainedSize': leaksById.sort(getSorter('retainedSize')),
+      'transitiveClosureSize': leaksById.sort(getSorter('transitiveClosureSize'))
+    };
+    const runsPerConfig = this._config.rankingEvaluationRuns;
+    const roundTripsPerConfig = this._config.rankingEvaluationIterations;
+    let completed = 0;
+    let toGo = 0;
+    for (let metric in orders) {
+      if (orders.hasOwnProperty(metric)) {
+        const metricCast = <'leakShare' | 'retainedSize' | 'transitiveClosureSize'> metric;
+        const order = orders[metricCast];
+        const existingData = results.rankingEvaluation[metricCast];
+        // Determine how many configurations to run. Skip configurations for which we have sufficient data.
+        for (let i = 0; i <= order.length; i++) {
+          // Note: When i=0, this is the empty array -- the base case.
+          const configOrder = order.slice(0, i);
+          let existingRuns = 0;
+          if (existingData.length > i) {
+            existingRuns = existingData[i] ? existingData[i].length : 0;
+          }
+          if (existingRuns < runsPerConfig) {
+            // We still need to run this config more times.
+            const key = leakSetKey(configOrder);
+            let config = configsToTest.get(key);
+            if (!config) {
+              config = new RankingEvalConfig(configOrder, runsPerConfig - existingRuns);
+              configsToTest.set(key, config);
+              toGo = config.remainingRuns * roundTripsPerConfig;
+            }
+            config[metricCast] = true;
+          } else {
+            completed += runsPerConfig * roundTripsPerConfig;
+          }
         }
+      }
+    }
+    // Resume progress bar.
+    this._progressBar.setOperationCount(toGo + completed);
+    for (let i = 0; i < completed; i++) {
+      this._progressBar.nextOperation();
+    }
+
+    // Proceed to evaluate!
+    const executeConfig = async (config: RankingEvalConfig): Promise<void> => {
+      let login = true;
+      this._snapshotCb = function(ss) {
+        return snapshotCb(ss, config.metrics(), config.leakRootIdsFixed.length, runsPerConfig - config.remainingRuns);
+      };
+      let buffer: SnapshotSizeSummary[] = [];
+      async function snapshotReport(sn: HeapSnapshotParser): Promise<void> {
+        const g = await HeapGraph.Construct(sn);
+        const size = g.calculateSize();
+        buffer.push(size);
+      }
+      this.configureProxy(false, config.leakRootIdsFixed, true, true);
+      while (config.remainingRuns > 0) {
+        config.remainingRuns--;
+        await this._execute(roundTripsPerConfig, login, 'Evaluating Leak Fixes', snapshotReport, 1, true);
+        login = false;
+        // Update results w/ data from run.
+        ['leakShare', 'retainedSize', 'transitiveClosureSize'].forEach((metric: 'leakShare') => {
+          if (!config[metric]) {
+            return;
+          }
+          const metricResults = results.rankingEvaluation[metric];
+          let configRuns = metricResults[config.leakRootIdsFixed.length];
+          if (!configRuns) {
+            configRuns = metricResults[config.leakRootIdsFixed.length] = [];
+          }
+          const run = runsPerConfig - config.remainingRuns;
+          configRuns[run] = buffer.slice(0);
+        });
+        buffer = [];
+        flushResults(results);
       }
     };
 
-    // Disable fixes for base case.
-    this.configureProxy(false, [], true, true);
+    let configs: RankingEvalConfig[] = [];
+    configsToTest.forEach((config) => {
+      configs.push(config);
+    });
 
-    this._snapshotCb = function(ss) {
-      return snapshotCb(ss, metric, leaksFixed, iterationCount);
-    };
-
-    let hasResumed = false;
-    for (metric of metrics) {
-      if (resumeAt && !hasResumed) {
-        hasResumed = metric === resumeAt[1];
-        if (!hasResumed) {
-          continue;
-        }
-      }
-      const leaks = this._config.leaks[metric];
-      for (leaksFixed = resumeAt && metric === resumeAt[1] ? resumeAt[0] : 0; leaksFixed <= leaks.length; leaksFixed++) {
-        this.configureProxy(false, leaks.slice(0, leaksFixed), true, true);
-        await executeWrapper(iterations, true, snapshotReport, iterationsPerSnapshot, true);
-        this._driver = await this._driver.relaunch();
-      }
+    for (const config of configs) {
+      await executeConfig(config);
+      this._driver = await this._driver.relaunch();
     }
-    await this._driver.shutdown();
   }
 
   private async _waitUntilTrue(i: number, prop: StepType, timeoutDuration: number = this._config.timeout): Promise<void> {

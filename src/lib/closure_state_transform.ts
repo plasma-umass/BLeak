@@ -2161,7 +2161,7 @@ function tryJSTransform(filename: string, source: string, transform: (filename: 
         file: filename
       });
       const converted = transform(filename, transformed.code, conversionSourceMap, false);
-      return embedSourceMap(converted, mergeMaps(filename, source, transformed.map, conversionSourceMap.toJSON()));
+      return embedSourceMap(converted, mergeMaps(filename, source, transformed.map, (conversionSourceMap as any).toJSON() as RawSourceMap));
     } catch (e) {
       try {
         // Might be even crazier ES2015! Use Babel (SLOWEST PATH)
@@ -2178,7 +2178,7 @@ function tryJSTransform(filename: string, source: string, transform: (filename: 
           file: filename
         });
         const converted = transform(filename, transformed.code, conversionSourceMap, true);
-        return embedSourceMap(converted, mergeMaps(filename, source, <any> transformed.map, conversionSourceMap.toJSON()));
+        return embedSourceMap(converted, mergeMaps(filename, source, <any> transformed.map, (conversionSourceMap as any).toJSON() as RawSourceMap));
       } catch (e) {
         console.error(`Unable to transform ${filename} - going to proceed with untransformed JavaScript!\nError:`);
         console.error(e);
@@ -2225,4 +2225,14 @@ export function exposeClosureState(filename: string, source: string, agentUrl="b
   return tryJSTransform(filename, source, (filename, source, sourceMap, needsBabel) => {
     return exposeClosureStateInternal(filename, source, sourceMap, agentUrl, needsBabel ? polyfillUrl : null, evalScopeName)
   });
+}
+
+export function nopTransform(filename: string, source: string): string {
+  let ast = parseJavaScript(source, { loc: true });
+  const sourceMap = new SourceMapGenerator({
+    file: filename
+  });
+  sourceMap.setSourceContent(filename, source);
+  const converted = generateJavaScript(ast, { sourceMap });
+  return embedSourceMap(converted, sourceMap.toString());
 }

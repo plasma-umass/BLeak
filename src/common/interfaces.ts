@@ -6,6 +6,10 @@ export interface ConfigurationFile {
   name?: string;
   // Number of iterations to do
   iterations?: number;
+  // Number of iterations to perform during a ranking evaluation.
+  rankingEvaluationIterations?: number;
+  // Number of runs to perform during a ranking evaluation.
+  rankingEvaluationRuns?: number;
   // Leaks to consider "fixed" during run.
   // Used for BLeak script.
   fixedLeaks?: number[];
@@ -189,6 +193,13 @@ export function SnapshotNodeTypeToString(sn: SnapshotNodeType): string {
   }
 }
 
+// rankingEvaluation[rankingName][run][top n fixed] => heap size over time
+export interface RankingEvaluation {
+  transitiveClosureSize: SnapshotSizeSummary[][][];
+  leakShare: SnapshotSizeSummary[][][];
+  retainedSize: SnapshotSizeSummary[][][];
+}
+
 /**
  * The raw output of BLeak, as a JSON object.
  */
@@ -201,6 +212,8 @@ export interface IBLeakResults {
   sourceFiles: ISourceFileRepository;
   // Heap statistics, broken down by iteration.
   heapStats: SnapshotSizeSummary[];
+  // Performance of different rankings.
+  rankingEvaluation: RankingEvaluation;
 }
 
 /**

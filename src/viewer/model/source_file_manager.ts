@@ -1,13 +1,6 @@
 import BLeakResults from '../../lib/bleak_results';
 import {default as FormatWorker, FormatterSourceMapping} from './../formatter';
-
-export class SourceFile {
-  constructor(
-    public readonly url: string,
-    public readonly source: string,
-    public readonly formattedSource: string,
-    public readonly mapping: FormatterSourceMapping) {}
-}
+import SourceFile from './source_file';
 
 /**
  * Queriable object that stores source files and source maps.
@@ -42,6 +35,10 @@ export default class SourceFileManager {
         const fileContents = results.sourceFiles[sourceFile];
         workers[i % 2].format(fileContents.source, fileContents.mimeType, completedCallback.bind(null, sourceFile), reject);
       }
+      if (total === 0) {
+        // No source files.
+        resolve(sfm);
+      }
     });
   }
 
@@ -49,22 +46,6 @@ export default class SourceFileManager {
 
   public addSourceFile(url: string, source: string, formattedSource: string, mapping: FormatterSourceMapping): void {
     this._sourceFiles[url] = new SourceFile(url, source, formattedSource, mapping);
-  }
-
-  public originalToFormatted(url: string, line: number, column: number): [number, number] {
-    const sf = this._sourceFiles[url];
-    if (!sf) {
-      return [-1, -1];
-    }
-    return sf.mapping.originalToFormatted(line, column);
-  }
-
-  public formattedToOriginal(url: string, line: number, column: number): [number, number] {
-    const sf = this._sourceFiles[url];
-    if (!sf) {
-      return [-1, -1];
-    }
-    return sf.mapping.formattedToOriginal(line, column);
   }
 
   public getSourceFiles(): SourceFile[] {

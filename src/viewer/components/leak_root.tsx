@@ -1,18 +1,18 @@
 import * as React from 'react';
-import BLeakResults from '../../lib/bleak_results';
 import LeakRoot from '../../lib/leak_root';
 import pathToString from '../../lib/path_to_string';
 import StackTraceComponent from './stack_trace';
-import {IStackFrame} from '../../common/interfaces';
-import {FileLocation} from '../model/interfaces';
+import StackFrame from '../model/stack_frame';
+import Location from '../model/location';
+import StackTraceManager from '../model/stack_trace_manager';
 
 interface LeakRootComponentProps {
   rank: number;
   rankBy: "transitiveClosureSize" | "leakShare" | "retainedSize" | "ownedObjects";
-  bleakResults: BLeakResults;
+  stackTraces: StackTraceManager;
   leakRoot: LeakRoot;
-  onStackFrameSelect: (sf: IStackFrame) => void;
-  fileLocation: FileLocation;
+  onStackFrameSelect: (sf: StackFrame) => void;
+  selectedLocation: Location;
 }
 
 interface LeakRootComponentState {
@@ -26,7 +26,6 @@ export default class LeakRootComponent extends React.Component<LeakRootComponent
   }
 
   public render() {
-    const results = this.props.bleakResults;
     const lr = this.props.leakRoot;
     const paths = lr.paths;
     const keyPrefix = `${this.props.rankBy}${this.props.rank}`;
@@ -48,11 +47,11 @@ export default class LeakRootComponent extends React.Component<LeakRootComponent
             <li className={this.state.expanded || paths.length < 7 ? "hidden" : ""}><button className="btn btn-link" style={{padding: 0}} onClick={() => this.setState({expanded: true})}>Show {paths.length - extraPathsToDisplay - 1} more...</button></li>
           </ul>
           <div className="stack-trace-list">
-            {lr.stacks.map((s) => results.stackToFrames(s)).map((s, i) => {
+            {lr.stacks.map((s) => this.props.stackTraces.stackToFrames(s)).map((s, i) => {
               const stKeyPrefix = `${keyPrefix}Stack${i}`;
               return <div className="stack-trace" key={stKeyPrefix}>
                 <p><b>Stack Trace {i + 1}</b></p>
-                <StackTraceComponent keyPrefix={stKeyPrefix} fileLocation={this.props.fileLocation} onStackFrameSelect={this.props.onStackFrameSelect} stack={s} />
+                <StackTraceComponent keyPrefix={stKeyPrefix} selectedLocation={this.props.selectedLocation} onStackFrameSelect={this.props.onStackFrameSelect} stack={s} />
               </div>;
             })}
           </div>

@@ -4,7 +4,8 @@ import HeapGrowthGraph from './heap_growth_graph';
 import LeakRootsAndStackTraces from './leak_roots_and_stack_traces';
 import SourceCodeViewer from './source_code_view';
 import SourceFileManager from '../model/source_file_manager';
-import {FileLocation} from '../model/interfaces';
+import Location from '../model/location';
+import StackTraceManager from '../model/stack_trace_manager';
 
 const enum ViewState {
   WAIT_FOR_FILE,
@@ -15,11 +16,12 @@ const enum ViewState {
 interface AppState {
   state: ViewState;
   bleakResults: BLeakResults | null;
+  stackTraces: StackTraceManager | null;
   sourceFileManager: SourceFileManager | null;
   errorMessage: string | null;
   progress: number;
   progressMessage: string | null;
-  fileLocation: FileLocation;
+  selectedLocation: Location | null;
 }
 
 export default class App extends React.Component<{}, AppState> {
@@ -28,11 +30,12 @@ export default class App extends React.Component<{}, AppState> {
     this.state = {
       state: ViewState.WAIT_FOR_FILE,
       bleakResults: null,
+      stackTraces: null,
       sourceFileManager: null,
       errorMessage: null,
       progress: -1,
       progressMessage: null,
-      fileLocation: null
+      selectedLocation: null
     };
   }
 
@@ -58,15 +61,14 @@ export default class App extends React.Component<{}, AppState> {
               progressMessage: `${completed} of ${total} source files formatted...`
             });
           });
+          const sourceFiles = sourceFileManager.getSourceFiles();
+          const stackTraces = StackTraceManager.FromBLeakResults(sourceFileManager, bleakResults);
           this.setState({
             state: ViewState.DISPLAYING_FILE,
             bleakResults,
             sourceFileManager,
-            fileLocation: {
-              url: sourceFileManager.getSourceFiles()[0].url,
-              line: 1,
-              column: 1
-            }
+            stackTraces,
+            selectedLocation: new Location(sourceFiles[0], 1, 1, true)
           });
         } catch (e) {
           this.setState({
@@ -121,7 +123,7 @@ export default class App extends React.Component<{}, AppState> {
         {this.state.state === ViewState.DISPLAYING_FILE ? <div key="bleakResults">
           <div className="row">
             <div className="col-sm">
-              <h3>Heap Growth</h3>
+              <h3>Live Heap Size</h3>
               <HeapGrowthGraph key="heap_growth" bleakResults={this.state.bleakResults} />
             </div>
           </div>
@@ -130,17 +132,13 @@ export default class App extends React.Component<{}, AppState> {
               <h3>Leak Roots and Stack Traces</h3>
               <LeakRootsAndStackTraces key="leak_root_list" onStackFrameSelect={(sf) => {
                 this.setState({
-                  fileLocation: {
-                    url: sf[0],
-                    line: sf[1],
-                    column: sf[2]
-                  }
+                  selectedLocation: sf
                 });
-              }} bleakResults={this.state.bleakResults} fileLocation={this.state.fileLocation} />
+              }} bleakResults={this.state.bleakResults} stackTraces={this.state.stackTraces} selectedLocation={this.state.selectedLocation} />
             </div>
             <div className="col-sm-7">
               <h3>Source Code</h3>
-              <SourceCodeViewer key="source_code_viewer" files={this.state.sourceFileManager} fileLocation={this.state.fileLocation} results={this.state.bleakResults} />
+              {this.state.sourceFileManager.getSourceFiles().length === 0 ? <p key="no_source_files">No source files found in results file.</p> :  <SourceCodeViewer key="source_code_viewer" files={this.state.sourceFileManager} stackTraces={this.state.stackTraces} location={this.state.selectedLocation} /> }
             </div>
           </div>
         </div> : ''}

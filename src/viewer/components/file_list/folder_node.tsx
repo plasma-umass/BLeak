@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {default as Folder} from './model/folder';
 import FileNode from './file_node';
-import {SourceFile} from '../../model/source_file_manager';
+import SourceFile from '../../model/source_file';
 import TreeView from 'react-treeview';
 
 interface FolderNodeState {
@@ -11,7 +11,7 @@ interface FolderNodeState {
 interface FolderNodeProps {
   contents: Folder;
   onFileSelected: (f: SourceFile) => void;
-  editorFile: string;
+  editorFile: SourceFile;
 }
 
 export default class FolderNode extends React.Component<FolderNodeProps, FolderNodeState> {

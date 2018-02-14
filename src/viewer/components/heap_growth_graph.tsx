@@ -130,10 +130,33 @@ export default class HeapGrowthGraph extends React.Component<HeapGrowthGraphProp
   }
 
   public render() {
-    return <div ref="d3_div" className="heap-growth-graph">
-      <div className={this._hasHeapStats() ? 'hidden' : ''}>
-        Results file does not contain any heap growth information. Please re-run in the newest version of BLeak.
+    let avgGrowth = 0;
+    let samples = 0;
+    if (this._hasHeapStats()) {
+      const heapStats = this.props.bleakResults.heapStats;
+      if (heapStats.length > 5) {
+        const postSteadyState = heapStats.slice(Math.floor(5));
+        avgGrowth = postSteadyState.reduce((prev, curr, i) => {
+          if (i === 0) {
+            return prev;
+          } else {
+            const prevElement = postSteadyState[i - 1];
+            return prev + (curr.totalSize - prevElement.totalSize);
+          }
+        }, 0) / (postSteadyState.length - 1) / (1024 * 1024);
+        samples = postSteadyState.length;
+      }
+    }
+    return <div>
+      <div className={this._hasHeapStats() && samples > 0 ? '' : 'hidden'}>
+        <b>Average Growth:</b> {avgGrowth.toFixed(2)} MB / round trip <br />
+        (Ignores impact of first 5 heap snapshots, which are typically noisy due to applicaton startup + JavaScript engine warmup)
       </div>
-    </div>
+      <div ref="d3_div" className="heap-growth-graph">
+        <div className={this._hasHeapStats() ? 'hidden' : ''}>
+          Results file does not contain any heap growth information. Please re-run in the newest version of BLeak.
+        </div>
+      </div>
+    </div>;
   }
 }

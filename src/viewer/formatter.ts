@@ -30,6 +30,9 @@
 // JavaScript source code formatter. These wrappers were manually converted
 // to TypeScript and simplified from the original source.
 
+import Location from './model/location';
+import SourceFile from './model/source_file';
+
 interface FormatRequest {
   method: "format",
   params: {
@@ -140,18 +143,22 @@ function upperBound(arr: number[], item: number) {
 }
 
 export class FormatterSourceMapping {
-  public static locationToPosition(lineEndings: number[], lineNumber: number, columnNumber: number): number {
-    var position = lineNumber ? lineEndings[lineNumber - 1] + 1 : 0;
+  public static locationToPosition(lineEndings: number[], location: Location): number {
+    const lineNumber = location.lineZeroIndexed;
+    const columnNumber = location.columnZeroIndexed;
+    const position = lineNumber ? lineEndings[lineNumber - 1] + 1 : 0;
     return position + columnNumber;
   }
 
-  public static positionToLocation(lineEndings: number[], position: number): [number, number] {
-    var lineNumber = upperBound(lineEndings, position - 1);
-    if (!lineNumber)
-      var columnNumber = position;
-    else
-      var columnNumber = position - lineEndings[lineNumber - 1] - 1;
-    return [lineNumber, columnNumber];
+  public static positionToLocation(lineEndings: number[], file: SourceFile, position: number, forOriginal: boolean): Location {
+    const lineNumber = upperBound(lineEndings, position - 1);
+    let columnNumber: number;
+    if (!lineNumber) {
+      columnNumber = position;
+    } else {
+      columnNumber = position - lineEndings[lineNumber - 1] - 1;
+    }
+    return new Location(file, lineNumber + 1, columnNumber + 1, forOriginal);
   }
 
 
@@ -159,26 +166,27 @@ export class FormatterSourceMapping {
     private readonly _formattedLineEndings: number[],
     private readonly _mapping: FormatMapping) {}
 
-  public originalToFormatted(lineNumber: number, columnNumber: number): [number, number] {
-    var originalPosition =
-      FormatterSourceMapping.locationToPosition(this._originalLineEndings, lineNumber, columnNumber || 0);
-    var formattedPosition =
+  public originalToFormatted(location: Location): Location {
+    const originalPosition =
+      FormatterSourceMapping.locationToPosition(this._originalLineEndings, location);
+    const formattedPosition =
         this._convertPosition(this._mapping.original, this._mapping.formatted, originalPosition || 0);
-    return FormatterSourceMapping.positionToLocation(this._formattedLineEndings, formattedPosition);
+    return FormatterSourceMapping.positionToLocation(this._formattedLineEndings, location.file, formattedPosition || 0, false);
   }
 
-  public formattedToOriginal(lineNumber: number, columnNumber: number): [number, number] {
-    var formattedPosition =
-      FormatterSourceMapping.locationToPosition(this._formattedLineEndings, lineNumber, columnNumber || 0);
-    var originalPosition = this._convertPosition(this._mapping.formatted, this._mapping.original, formattedPosition);
-    return FormatterSourceMapping.positionToLocation(this._originalLineEndings, originalPosition || 0);
+  public formattedToOriginal(location: Location): Location {
+    const formattedPosition =
+      FormatterSourceMapping.locationToPosition(this._formattedLineEndings, location);
+    const originalPosition = this._convertPosition(this._mapping.formatted, this._mapping.original, formattedPosition);
+    return FormatterSourceMapping.positionToLocation(this._originalLineEndings, location.file, originalPosition || 0, true);
   }
 
   private _convertPosition(positions1: number[], positions2: number[], position: number): number {
-    var index = upperBound(positions1, position) - 1;
-    var convertedPosition = positions2[index] + position - positions1[index];
-    if (index < positions2.length - 1 && convertedPosition > positions2[index + 1])
+    const index = upperBound(positions1, position) - 1;
+    let convertedPosition = positions2[index] + position - positions1[index];
+    if (index < positions2.length - 1 && convertedPosition > positions2[index + 1]) {
       convertedPosition = positions2[index + 1];
+    }
     return convertedPosition;
   }
 }

@@ -152,3 +152,9 @@ body {
   background-color: red;
   z-index: 99;
 }
+
+.leak_line_selected {
+  position: absolute;
+  background-color: yellow;
+  z-index: 99;
+}

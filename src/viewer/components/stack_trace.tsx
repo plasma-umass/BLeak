@@ -1,17 +1,17 @@
-import {IStackFrame} from '../../common/interfaces';
 import * as React from 'react';
 import StackFrameComponent from './stack_frame';
-import {FileLocation} from '../model/interfaces';
+import Location from '../model/location';
+import StackFrame from '../model/stack_frame';
 
 interface StackTraceComponentProps {
   keyPrefix: string;
-  stack: IStackFrame[];
-  onStackFrameSelect: (sf: IStackFrame) => void;
-  fileLocation: FileLocation;
+  stack: StackFrame[];
+  onStackFrameSelect: (sf: StackFrame) => void;
+  selectedLocation: Location;
 }
 
-export default function StackFrame(p: StackTraceComponentProps) {
+export default function StackTrace(p: StackTraceComponentProps) {
   return <div className="list-group">
-    {p.stack.map((f, i) => <StackFrameComponent fileLocation={p.fileLocation} onStackFrameSelect={p.onStackFrameSelect} key={`${p.keyPrefix}${i}`} frame={f} />)}
+    {p.stack.map((f, i) => <StackFrameComponent selectedLocation={p.selectedLocation} onStackFrameSelect={p.onStackFrameSelect} key={`${p.keyPrefix}${i}`} frame={f} />)}
   </div>;
 }
