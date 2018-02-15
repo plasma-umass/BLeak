@@ -12,10 +12,10 @@ let loomioSnapshots: string[] = [];
 let piwikSnapshots: string[] = [];
 let loomioJs: string = null;
 let piwikJs: string = null;
-const suite = new Benchmark.Suite();
+const suite = new Benchmark.Suite('BLeak');
 const snapshotDir = './benchmarks/snapshots';
 const jsDir = './benchmarks/javascript';
-const reportFilename = `./benchmarks/benchmark_report_${new Date().toISOString()}.log`;
+const reportFilename = `./benchmarks/benchmark_report_${new Date().toISOString().replace(/:/g, '_')}.log`;
 const benchmarkReport = createWriteStream(reportFilename)
 console.log(`Writing report to ${reportFilename}`);
 if (skipSnapshots) {
@@ -50,35 +50,47 @@ async function getHeapSize(snapshot: string): Promise<SnapshotSizeSummary> {
   return graph.calculateSize();
 }
 
+interface Deferred {
+  resolve(): void;
+}
+
 if (!skipSnapshots) {
   suite
-    .add("Loomio: Growth Paths", async function() {
-      await getGrowthPaths(loomioSnapshots);
-    }, {
+    .add("Loomio: Growth Paths", {
+      fn: function(deferred: Deferred) {
+        getGrowthPaths(loomioSnapshots).then(() => deferred.resolve());
+      },
       onStart: () => {
         loomioSnapshots = getSnapshots("loomio");
-      }
+      },
+      defer: true
     })
-    .add("Loomio: Heap Size", async function() {
-      await Promise.all(loomioSnapshots.map(getHeapSize));
-    }, {
+    .add("Loomio: Heap Size", {
+      fn: function(deferred: Deferred) {
+        Promise.all(loomioSnapshots.map(getHeapSize)).then(() => deferred.resolve());
+      },
       onComplete: () => {
         loomioSnapshots = [];
-      }
+      },
+      defer: true
     })
-    .add("Piwik: Growth Paths", async function() {
-      await getGrowthPaths(piwikSnapshots);
-    }, {
+    .add("Piwik: Growth Paths", {
+      fn: function(deferred: Deferred) {
+        getGrowthPaths(piwikSnapshots).then(() => deferred.resolve());
+      },
       onStart: () => {
         piwikSnapshots = getSnapshots("piwik");
-      }
+      },
+      defer: true
     })
-    .add("Piwik: Heap Size", async function() {
-      await Promise.all(piwikSnapshots.map(getHeapSize));
-    }, {
+    .add("Piwik: Heap Size", {
+      fn: function(deferred: Deferred) {
+        Promise.all(piwikSnapshots.map(getHeapSize)).then(() => deferred.resolve());
+      },
       onComplete: () => {
         piwikSnapshots = [];
-      }
+      },
+      defer: true
     });
 }
 suite.add("Loomio: Expose Closure State", function() {
@@ -89,7 +101,8 @@ suite.add("Loomio: Expose Closure State", function() {
     },
     onComplete: () => {
       loomioJs = null;
-    }
+    },
+    defer: false
   })
   .add("Piwik: Expose Closure State", function() {
     exposeClosureState('piwik_app.js', piwikJs);
@@ -99,7 +112,8 @@ suite.add("Loomio: Expose Closure State", function() {
     },
     onComplete: () => {
       piwikJs = null;
-    }
+    },
+    defer: false
   })
   // add listeners
   .on('cycle', function(event: any) {
@@ -113,6 +127,6 @@ suite.add("Loomio: Expose Closure State", function() {
   .on('error', function(e: any) {
     console.log("Received error!");
     console.log(e);
-  })
+  });
 
 suite.run();

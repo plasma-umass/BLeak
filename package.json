@@ -14,11 +14,13 @@
     "tsc:watch": "tsc -w",
     "tsc:viewer:watch": "tsc -w -p tsconfig.node.json",
     "rollup:viewer:watch": "rollup -w -c",
-    "viewer": "http-server -p 8889"
+    "viewer": "http-server -p 8889",
+    "benchmark": "npm-run-all build:node -s run:benchmark",
+    "run:benchmark": "node --max-old-space-size=8192 build/node/benchmarks/benchmark.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://bitbucket.org/jvilk/deuterium-oxide.git"
+    "url": "https://github.com/plasma-umass/BLeak.git"
   },
   "keywords": [
     "memory",
@@ -33,7 +35,7 @@
   ],
   "author": "John Vilk <jvilk@cs.umass.edu>",
   "license": "MIT",
-  "homepage": "https://bitbucket.org/jvilk/deuterium-oxide#readme",
+  "homepage": "https://github.com/plasma-umass/BLeak",
   "devDependencies": {
     "@types/ace": "^0.0.36",
     "@types/babel-core": "^6.25.1",
@@ -95,7 +97,7 @@
     "htmlparser2": "^3.9.2",
     "locate-java-home": "^0.1.6",
     "microtime": "^2.1.6",
-    "mitmproxy": "~1.4.0",
+    "mitmproxy": "~1.5.0",
     "papaparse": "^4.3.6",
     "progress": "^2.0.0",
     "source-map": "~0.6.0",

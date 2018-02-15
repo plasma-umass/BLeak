@@ -2455,9 +2455,9 @@ minimist@^1.1.0, minimist@^1.2.0:
   version "1.2.0"
   resolved "https://registry.yarnpkg.com/minimist/-/minimist-1.2.0.tgz#a35008b20f41383eec1fb914f4cd5df79a264284"
 
-mitmproxy@~1.4.0:
-  version "1.4.0"
-  resolved "https://registry.yarnpkg.com/mitmproxy/-/mitmproxy-1.4.0.tgz#49dee4532871987564bbbe5cc17a2e20a62d4bb8"
+mitmproxy@~1.5.0:
+  version "1.5.0"
+  resolved "https://registry.yarnpkg.com/mitmproxy/-/mitmproxy-1.5.0.tgz#6b83efe4061004cb7b867717d8f353b673137a67"
   dependencies:
     "@types/node" "^7.0.44"
     "@types/ws" "^3.2.0"
