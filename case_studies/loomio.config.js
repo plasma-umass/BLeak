@@ -1,15 +1,6 @@
 exports.url = "http://localhost:3000/dashboard";
-//exports.fixedLeaks = [0,1,3,4,2,5,99,13,14];
-/*exports.leaks = {
-  leak_share: [0,1,3,4,2,5,99,13,14],
-  retained_size: [5,0,1,3,4,2,13,14,99],
-  transitive_closure: [5,0,1,3,4,2,13,99,14]
-};*/
-exports.iterations = 8;
 exports.login = [
   {
-    // (Optional) Name for debugging purposes.
-    name: "login-username",
     // Return 'true' if the program has finished loading the current state
     check: function() {
       // Return 'true' if the element 'password-field' exists.
@@ -19,7 +10,6 @@ exports.login = [
       }
       return false;
     },
-    // Transitions to the next step. Can return a promise.
     next: function() {
       const emailField = document.getElementsByTagName('input')[1];
       emailField.value = 'default@loomio.org';
@@ -30,7 +20,6 @@ exports.login = [
     }
   },
   {
-    name: "login-password",
     check: function() {
       const pswdField = document.getElementsByTagName('input')[1];
       const modalHeader = document.getElementsByTagName('h2')[3];
@@ -48,7 +37,6 @@ exports.login = [
 ];
 exports.setup = [
   {
-    name: "open-menu-setup",
     check: function() {
       const tp = document.getElementsByClassName('thread-preview');
       if (tp.length > 0) {
@@ -62,13 +50,8 @@ exports.setup = [
     }
   }
 ];
-// Runs your program in a loop. Each step has a "check" function, and a "next" function
-// to transition to the next step in the loop.
-// BLeak assumes your program is in the first step when it navigates to the URL,
-// and that the last step transitions to the first step.
 exports.loop = [
   {
-    name: "fun-group-1",
     check: function() {
       const span = document.getElementsByTagName('span')[6];
       return !!span && span.innerText === "Fun Group 1";
@@ -78,7 +61,6 @@ exports.loop = [
     }
   },
   {
-    name: "thread-browse",
     check: function() {
       const tp = document.getElementsByClassName('thread-preview');
       if (tp.length > 0) {
@@ -92,7 +74,6 @@ exports.loop = [
     }
   },
   {
-    name: "open-menu",
     check: function() {
       // Check if content has loaded.
       const paragraphs = document.getElementsByTagName('p');
@@ -110,3 +91,17 @@ exports.loop = [
 
 // 30 second timeout
 exports.timeout = 30000;
+
+// Maps leak roots to distinct fix IDs, which are referenced in the code.
+exports.fixMap = {
+  'window.angular.element.cache[3].events["resize.mentio"]': 0,
+  'window.angular.element.cache[2].events["click.mentio"]': 1,
+  'window.angular.element.cache[2].events["paste.mentio"]': 3,
+  'window.angular.element.cache[2].events["keypress.mentio"]': 4,
+  'window.angular.element.cache[2].events["keydown.mentio"]': 2,
+  'window.Loomio.records.discussions.collection.DynamicViews': 5,
+  'window.dataLayer': -1,
+  'List of \'$translateChangeSuccess\' listeners on window.angular.element.cache[4].data.$scope.$parent': 99,
+  'window.Loomio.records.stanceChoices.collection.DynamicViews': 13,
+  'window.Loomio.records.versions.collection.DynamicViews': 14
+};

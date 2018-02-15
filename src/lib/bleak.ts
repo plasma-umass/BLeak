@@ -6,6 +6,7 @@ import ChromeDriver from './chrome_driver';
 import {configureProxy} from '../common/util';
 import LeakRoot from './leak_root';
 import BLeakResults from './bleak_results';
+import PathToString from './path_to_string';
 
 const DEFAULT_CONFIG: ConfigurationFile = {
   name: "unknown",
@@ -14,8 +15,7 @@ const DEFAULT_CONFIG: ConfigurationFile = {
   rankingEvaluationRuns: 5,
   url: "http://localhost:8080/",
   fixedLeaks: [],
-  leaks: {},
-  blackBox: [],
+  fixMap: {},
   login: [],
   setup: [],
   loop: [],
@@ -34,7 +34,7 @@ class RankingEvalConfig {
   public leakShare: boolean = false;
   public retainedSize: boolean = false;
   public transitiveClosureSize: boolean = false;
-  constructor(public readonly leakRootIdsFixed: number[], public remainingRuns: number) {}
+  constructor(public readonly fixIds: number[], public remainingRuns: number) {}
   public metrics(): string {
     let rv: string[] = [];
     for (let metric of ['leakShare', 'retainedSize', 'transitiveClosureSize']) {
@@ -153,7 +153,6 @@ export class BLeakDetector {
    * @param iterations Number of loops to perform.
    * @param login Whether or not to run the login steps.
    * @param reason A string describing what mode BLeak is in.
-   * @param runGc Whether or not to run the GC before taking a snapshot.
    * @param takeSnapshotFunction If set, takes snapshots after every loop and passes it to the given callback.
    */
   private async _execute(iterations: number, login: boolean, reason: string, takeSnapshotFunction: (sn: HeapSnapshotParser) => Promise<void | undefined> = undefined, iterationsPerSnapshot: number = 1, snapshotOnFirst = false): Promise<void> {
@@ -282,14 +281,30 @@ export class BLeakDetector {
         return results.leaks[b].scores[rankBy] - results.leaks[a].scores[rankBy];
       };
     }
+    const config = this._config;
+    function fixMapper(leakId: number): number {
+      const str = PathToString(results.leaks[leakId].paths[0]);
+      const fixId = config.fixMap[str];
+      if (fixId === undefined || fixId === null) {
+        throw new Error(`Unable to find leak ID for ${str}.`);
+      }
+      return fixId;
+    }
+    function removeDupes(unique: number[], fixId: number): number[] {
+      if (unique.indexOf(fixId) === -1) {
+        unique.push(fixId);
+      }
+      return unique;
+    }
 
     // Figure out which runs are completed and in the results file,
     const configsToTest = new Map<string, RankingEvalConfig>();
     const leaksById = results.leaks.map((l, i) => i);
+    // Map from metric => list of fixes to apply, in-order.
     const orders = {
-      'leakShare': leaksById.sort(getSorter('leakShare')),
-      'retainedSize': leaksById.sort(getSorter('retainedSize')),
-      'transitiveClosureSize': leaksById.sort(getSorter('transitiveClosureSize'))
+      'leakShare': leaksById.sort(getSorter('leakShare')).map(fixMapper).reduce(removeDupes, []),
+      'retainedSize': leaksById.sort(getSorter('retainedSize')).map(fixMapper).reduce(removeDupes, []),
+      'transitiveClosureSize': leaksById.sort(getSorter('transitiveClosureSize')).map(fixMapper).reduce(removeDupes, [])
     };
     const runsPerConfig = this._config.rankingEvaluationRuns;
     const roundTripsPerConfig = this._config.rankingEvaluationIterations;
@@ -334,7 +349,7 @@ export class BLeakDetector {
     const executeConfig = async (config: RankingEvalConfig): Promise<void> => {
       let login = true;
       this._snapshotCb = function(ss) {
-        return snapshotCb(ss, config.metrics(), config.leakRootIdsFixed.length, runsPerConfig - config.remainingRuns);
+        return snapshotCb(ss, config.metrics(), config.fixIds.length, runsPerConfig - config.remainingRuns);
       };
       let buffer: SnapshotSizeSummary[] = [];
       async function snapshotReport(sn: HeapSnapshotParser): Promise<void> {
@@ -342,7 +357,7 @@ export class BLeakDetector {
         const size = g.calculateSize();
         buffer.push(size);
       }
-      this.configureProxy(false, config.leakRootIdsFixed, true, true);
+      this.configureProxy(false, config.fixIds, true, true);
       while (config.remainingRuns > 0) {
         config.remainingRuns--;
         await this._execute(roundTripsPerConfig, login, 'Evaluating Leak Fixes', snapshotReport, 1, true);
@@ -353,9 +368,9 @@ export class BLeakDetector {
             return;
           }
           const metricResults = results.rankingEvaluation[metric];
-          let configRuns = metricResults[config.leakRootIdsFixed.length];
+          let configRuns = metricResults[config.fixIds.length];
           if (!configRuns) {
-            configRuns = metricResults[config.leakRootIdsFixed.length] = [];
+            configRuns = metricResults[config.fixIds.length] = [];
           }
           const run = runsPerConfig - config.remainingRuns;
           configRuns[run] = buffer.slice(0);

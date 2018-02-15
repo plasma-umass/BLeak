@@ -47,7 +47,7 @@ const Viewer: CommandModule = {
     const app = express();
     app.use(express.static(findPath()));
     createServer(app).listen(port, function() {
-      console.log(`Visit the viewer in your favorite web browser at http://localhost:${port}/`);
+      console.log(`Visit the viewer in your favorite web browser at http://localhost:${port}/ (CTRL+C to close)`);
     });
   }
 };

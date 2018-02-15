@@ -42,7 +42,7 @@ function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
  * Spawns a chrome instance with a tmp user data and the debugger open to an ephemeral port
  */
 function spawnChromeBrowser(session: ChromeSession, headless: boolean): Promise<ChromeProcess> {
-  const additionalChromeArgs = [`--proxy-server=127.0.0.1:8080`];
+  const additionalChromeArgs = [`--proxy-server=127.0.0.1:8080`, `--disable-background-timer-throttling`, `--disable-renderer-backgrounding`, `--disable-renderer-priority-management`, `--disable-gpu`];
   if (headless) {
     // --disable-gpu required for Windows
     additionalChromeArgs.push(`--headless`, `--disable-gpu`);

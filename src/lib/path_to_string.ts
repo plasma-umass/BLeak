@@ -121,7 +121,7 @@ class PathStream {
     const ss = this._ss;
     this._ss = this._s = null;
     ss.push(s);
-    return ss.reverse().join(" ");
+    return ss.filter((s) => s !== "").reverse().join(" ");
   }
   public setPath(p: IPath) {
     this._p = p;

@@ -11,14 +11,11 @@ export interface ConfigurationFile {
   // Number of runs to perform during a ranking evaluation.
   rankingEvaluationRuns?: number;
   // Leaks to consider "fixed" during run.
-  // Used for BLeak script.
   fixedLeaks?: number[];
-  // Leak rank for each metric. Used for evaluation script.
-  leaks?: {[metric:string]: number[]};
+  // Maps leak roots back to distinct leak fixes, identified by their first heap path. Used to evaluate different ranking metrics.
+  fixMap?: {[leakRoot: string]: number};
   // URL to web page to check for memory leaks.
   url: string;
-  // (Optional) Globs for script files that should be *black boxed* during leak detection.
-  blackBox?: string[];
   login?: Step[];
   setup?: Step[];
   // Runs your program in a loop. Each step has a "check" function, and a "next" function
