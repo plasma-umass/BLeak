@@ -14,7 +14,6 @@
     "tsc:watch": "tsc -w",
     "tsc:viewer:watch": "tsc -w -p tsconfig.node.json",
     "rollup:viewer:watch": "rollup -w -c",
-    "viewer": "http-server -p 8889",
     "benchmark": "npm-run-all build:node -s run:benchmark",
     "run:benchmark": "node --max-old-space-size=8192 build/node/benchmarks/benchmark.js"
   },
@@ -58,12 +57,11 @@
     "@types/react": "^16.0.36",
     "@types/react-dom": "^16.0.3",
     "@types/ws": "^3.0.2",
-    "@types/yargs": "^8.0.2",
+    "@types/yargs": "~11.0.0",
     "benchmark": "^2.1.4",
     "brace": "^0.11.0",
     "d3": "^4.13.0",
     "glob": "^7.1.2",
-    "http-server": "^0.11.1",
     "mocha": "^3.2.0",
     "npm-run-all": "^4.0.2",
     "nyc": "^10.2.0",
@@ -103,7 +101,7 @@
     "source-map": "~0.6.0",
     "tslib": "^1.9.0",
     "ws": "^3.1.0",
-    "yargs": "^8.0.2"
+    "yargs": "~11.0.0"
   },
   "optionalDependencies": {
     "bufferutil": "^3.0.2",
