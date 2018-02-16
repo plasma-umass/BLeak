@@ -14,12 +14,22 @@ interface CommandLineArgs {
   headless: boolean;
   debug: boolean;
   'take-screenshots': number;
+  chromeSize: string;
 }
 
 const Run: CommandModule = {
   command: "run",
   describe: `Runs BLeak to locate, rank, and diagnose memory leaks in a web application.`,
   handler: (args: CommandLineArgs) => {
+    let width: number, height: number;
+    {
+      const chromeSize = /^([0-9]+)x([0-9]+)$/.exec(args.chromeSize);
+      if (!chromeSize) {
+        throw new Error(`Invalid chromeSize: ${args.chromeSize}`);
+      }
+      width = parseInt(chromeSize[1], 10);
+      height = parseInt(chromeSize[2], 10);
+    }
     if (!existsSync(args.out)) {
       mkdirSync(args.out);
     }
@@ -44,7 +54,7 @@ const Run: CommandModule = {
     async function main() {
       const configFileSource = readFileSync(args.config).toString();
       writeFileSync(join(args.out, 'config.js'), configFileSource);
-      let chromeDriver = await ChromeDriver.Launch(progressBar, args.headless);
+      let chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height);
 
       let screenshotTimer: NodeJS.Timer | null = null;
       if (args['take-screenshots'] > -1) {
@@ -132,6 +142,11 @@ const Run: CommandModule = {
       type: 'number',
       default: -1,
       describe: 'Take periodic screenshots every n seconds. Useful for debugging hung headless runs. -1 disables.'
+    },
+    chromeSize: {
+      type: 'string',
+      default: '1920x1080',
+      describe: 'Specifies the size of the Chrome browser window'
     }
   }
 };

@@ -1,6 +1,6 @@
 import {SourceMapConsumer, RawSourceMap} from 'source-map';
 import {StackFrame, parse as ErrorStackParser} from 'error-stack-parser';
-import {DEFAULT_AGENT_URL} from '../common/util';
+import {DEFAULT_AGENT_URL} from './mitmproxy_interceptor';
 import {resolve as resolveURL} from 'url';
 import BLeakResults from './bleak_results';
 import {IStack} from '../common/interfaces';

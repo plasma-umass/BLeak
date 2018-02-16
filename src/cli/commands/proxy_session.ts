@@ -1,8 +1,8 @@
 import ChromeDriver from '../../lib/chrome_driver';
-import {configureProxy} from '../../common/util';
+import getInterceptor from '../../lib/mitmproxy_interceptor';
 import {readFileSync} from 'fs';
-import {getConfigFromSource, getConfigBrowserInjection} from '../../lib/bleak';
 import {CommandModule} from 'yargs';
+import BLeakConfig from '../../lib/bleak_config';
 
 interface CommandLineArgs {
   config: string;
@@ -33,12 +33,19 @@ const ProxySession: CommandModule = {
   },
   handler: async (args: CommandLineArgs) => {
     const rawConfig = readFileSync(args.config).toString();
-    const config = getConfigFromSource(rawConfig);
+    const config = BLeakConfig.FromSource(rawConfig);
     const url = config.url;
     const diagnose = args.diagnose;
     const fixes = args.fix;
-    const driver = await ChromeDriver.Launch(console, false);
-    configureProxy(driver.mitmProxy, console, diagnose, fixes, getConfigBrowserInjection(rawConfig), false, config.rewrite);
+    const driver = await ChromeDriver.Launch(console, false, 1920, 1080);
+    driver.mitmProxy.cb = getInterceptor({
+      log: console,
+      rewrite: diagnose,
+      fixes: fixes,
+      config: config.getBrowserInjection(),
+      disableAllRewrites: false,
+      fixRewriteFunction: config.rewrite
+    });
     await driver.navigateTo(url);
     await driver.debugLoop();
     await driver.shutdown();

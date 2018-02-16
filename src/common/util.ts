@@ -1,15 +1,4 @@
-import MITMProxy from 'mitmproxy';
-import {getInterceptor} from '../lib/mitmproxy_interceptor';
 import {Log} from './interfaces';
-
-export const DEFAULT_AGENT_PATH = require.resolve('../lib/bleak_agent');
-export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
-export const DEFAULT_BABEL_POLYFILL_URL = `/bleak_polyfill.js`;
-export const DEFAULT_BABEL_POLYFILL_PATH = require.resolve('babel-polyfill/dist/polyfill');
-
-export function configureProxy(proxy: MITMProxy, log: Log, diagnose: boolean, fixes: number[] = [], config = "", disableAllRewrites: boolean, rewriteFunction?: (url: string, type: string, data: Buffer, fixes: number[]) => Buffer): void {
-  proxy.cb = getInterceptor(log, DEFAULT_AGENT_URL, DEFAULT_AGENT_PATH, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_BABEL_POLYFILL_PATH, diagnose, config, fixes, disableAllRewrites, rewriteFunction);
-}
 
 export function time<T>(n: string, log: Log, action: () => T): T {
   const start = Date.now();
@@ -18,6 +7,12 @@ export function time<T>(n: string, log: Log, action: () => T): T {
   const str = `Time to run ${n}: ${(end - start) / 1000} seconds.`;
   log.log(str);
   return rv;
+}
+
+export function wait(ms: number): Promise<void> {
+  return new Promise<void>((res) => {
+    setTimeout(res, ms);
+  });
 }
 
 export class OneBitArray {

@@ -19,7 +19,7 @@ describe("Chrome Driver", function() {
     }, HTTP_PORT);
     // Silence debug messages.
     console.debug = () => {};
-    chromeDriver = await ChromeDriver.Launch(console, true);
+    chromeDriver = await ChromeDriver.Launch(console, true, 1920, 1080);
   });
 
   it("Successfully loads a webpage", async function() {

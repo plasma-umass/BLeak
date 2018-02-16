@@ -10,6 +10,7 @@ interface CommandLineArgs {
   results: string;
   debug: boolean;
   headless: boolean;
+  chromeSize: string;
 }
 
 const EvaluateMetrics: CommandModule = {
@@ -35,11 +36,25 @@ const EvaluateMetrics: CommandModule = {
       type: 'boolean',
       default: false,
       describe: 'Run in Chrome Headless (currently buggy)'
+    },
+    chromeSize: {
+      type: 'string',
+      default: '1920x1080',
+      describe: 'Specifies the size of the Chrome browser window'
     }
   },
   handler: async (args: CommandLineArgs) => {
+    let width: number, height: number;
+    {
+      const chromeSize = /^([0-9]+)x([0-9]+)$/.exec(args.chromeSize);
+      if (!chromeSize) {
+        throw new Error(`Invalid chromeSize: ${args.chromeSize}`);
+      }
+      width = parseInt(chromeSize[1], 10);
+      height = parseInt(chromeSize[2], 10);
+    }
     const progressBar = new ProgressProgressBar(args.debug);
-    const chromeDriver = await ChromeDriver.Launch(progressBar, args.headless);
+    const chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height);
     const configFileSource = readFileSync(args.config).toString();
     const results = BLeakResults.FromJSON(JSON.parse(readFileSync(args.results, 'utf8')));
 
@@ -61,6 +76,9 @@ const EvaluateMetrics: CommandModule = {
 
     BLeak.EvaluateRankingMetrics(configFileSource, progressBar, chromeDriver, results, (results) => {
       writeFileSync(args.results, Buffer.from(JSON.stringify(results), 'utf8'));
+    }).then(shutDown).catch((e) => {
+      progressBar.error(`${e}`);
+      shutDown();
     });
   }
 };

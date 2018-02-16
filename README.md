@@ -92,9 +92,6 @@ exports = {
   // (Optional) Number of loop iterations to perform during leak detection (default: 8)
   iterations: 8,
 
-  // (Optional) Name for debugging purposes.
-  name: "config name",
-
   // (Optional) An array of states describing how to login to the application. Executed *once*
   // to set up the session. See 'config.loop' for a description of a state.
   login: [

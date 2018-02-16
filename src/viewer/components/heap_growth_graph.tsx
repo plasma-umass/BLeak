@@ -27,7 +27,12 @@ export default class HeapGrowthGraph extends React.Component<HeapGrowthGraphProp
     if (!this._hasHeapStats()) {
       return;
     }
-    const heapStats = this.props.bleakResults.heapStats;
+    let heapStats = this.props.bleakResults.heapStats;
+    if (this.props.bleakResults.rankingEvaluation) {
+      const metricStats = this.props.bleakResults.rankingEvaluation.leakShare;
+      const runStats = metricStats[metricStats.length - 1];
+      heapStats = runStats[runStats.length - 1];
+    }
     const d3div = this.refs['d3_div'] as HTMLDivElement;
     if (d3div.childNodes && d3div.childNodes.length > 0) {
       const nodes: Node[] = [];

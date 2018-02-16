@@ -276,7 +276,7 @@ describe('End-to-end Tests', function() {
       // Silence debug messages.
       console.debug = () => {};
     }
-    driver = await ChromeDriver.Launch(console, true);
+    driver = await ChromeDriver.Launch(console, true, 1920, 1080);
   });
 
   function createStandardLeakTest(description: string, rootFilename: string, expected_line: number): void {

@@ -1,43 +1,42 @@
 /**
  * A BLeak configuration file.
  */
-export interface ConfigurationFile {
-  // Name of website / config.
-  name?: string;
-  // Number of iterations to do
-  iterations?: number;
-  // Number of iterations to perform during a ranking evaluation.
-  rankingEvaluationIterations?: number;
-  // Number of runs to perform during a ranking evaluation.
-  rankingEvaluationRuns?: number;
-  // Leaks to consider "fixed" during run.
-  fixedLeaks?: number[];
-  // Maps leak roots back to distinct leak fixes, identified by their first heap path. Used to evaluate different ranking metrics.
-  fixMap?: {[leakRoot: string]: number};
+export interface IBLeakConfig {
   // URL to web page to check for memory leaks.
   url: string;
-  login?: Step[];
-  setup?: Step[];
   // Runs your program in a loop. Each step has a "check" function, and a "next" function
   // to transition to the next step in the loop.
   loop: Step[];
+
+  // Number of iterations to do
+  iterations: number;
+  // Number of iterations to perform during a ranking evaluation.
+  rankingEvaluationIterations: number;
+  // Number of runs to perform during a ranking evaluation.
+  rankingEvaluationRuns: number;
+  // Leaks to consider "fixed" during run.
+  fixedLeaks: number[];
+  // Maps leak roots back to distinct leak fixes, identified by their first heap path. Used to evaluate different ranking metrics.
+  fixMap: {[leakRoot: string]: number};
+  login: Step[];
+  setup: Step[];
+
   // (Optional) How long to wait for a step transition to finish before declaring an error.
-  timeout?: number;
-  rewrite?: (url: string, type: string, source: Buffer, fixes: number[]) => Buffer;
+  // Default: 10 minutes.
+  timeout: number;
+  rewrite: (url: string, type: string, source: Buffer, fixes: number[]) => Buffer;
 }
+
+export type StepType = "login" | "setup" | "loop";
 
 /**
  * A stage in an application loop.
  */
 export interface Step  {
-  // (Optional) Name for debugging purposes.
-  name?: string;
-  // (Optional) Milliseconds to sleep before running check or next.
-  sleep?: number;
   // Return 'true' if the program has finished loading the current state
-  check: () => boolean | Promise<boolean>;
+  check: () => boolean;
   // Transitions to the next step.
-  next: () => null | undefined | Promise<void>;
+  next: () => null | undefined;
 }
 
 /**
@@ -190,7 +189,7 @@ export function SnapshotNodeTypeToString(sn: SnapshotNodeType): string {
   }
 }
 
-// rankingEvaluation[rankingName][run][top n fixed] => heap size over time
+// rankingEvaluation[rankingName][top n fixed][run] => heap size over time
 export interface RankingEvaluation {
   transitiveClosureSize: SnapshotSizeSummary[][][];
   leakShare: SnapshotSizeSummary[][][];

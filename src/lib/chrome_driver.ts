@@ -10,6 +10,7 @@ import * as childProcess from 'child_process';
 import MITMProxy from 'mitmproxy';
 import {platform} from 'os';
 import {Log} from '../common/interfaces';
+import {wait} from '../common/util';
 
 // HACK: Patch spawn to work around chrome-debugging-client limitation
 // https://github.com/krisselden/chrome-debugging-client/issues/10
@@ -28,12 +29,6 @@ export interface DOMNode extends ChromeDOM.Node {
   eventListenerCounts: {[name: string]: number};
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise<void>((res) => {
-    setTimeout(res, ms);
-  });
-}
-
 function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
   return `${e.url}:${e.lineNumber}:${e.columnNumber} ${e.text} ${e.exception ? e.exception.description : ""}\n${e.stackTrace ? e.stackTrace.description : ""}\n  ${e.stackTrace ? e.stackTrace.callFrames.filter((f) => f.url !== "").map((f) => `${f.functionName ? `${f.functionName} at ` : ""}${f.url}:${f.lineNumber}:${f.columnNumber}`).join("\n  ") : ""}\n`;
 }
@@ -41,7 +36,7 @@ function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
 /**
  * Spawns a chrome instance with a tmp user data and the debugger open to an ephemeral port
  */
-function spawnChromeBrowser(session: ChromeSession, headless: boolean): Promise<ChromeProcess> {
+function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: number, height: number): Promise<ChromeProcess> {
   const additionalChromeArgs = [`--proxy-server=127.0.0.1:8080`, `--disable-background-timer-throttling`, `--disable-renderer-backgrounding`, `--disable-renderer-priority-management`, `--disable-gpu`];
   if (headless) {
     // --disable-gpu required for Windows
@@ -49,7 +44,7 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean): Promise<
   }
   const baseOptions = {
     // additionalArguments: ['--headless'],
-    windowSize: { width: 1920, height: 1080 },
+    windowSize: { width: width, height: height },
     additionalArguments: additionalChromeArgs
   };
   switch (platform()) {
@@ -95,12 +90,12 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean): Promise<
 }
 
 export default class ChromeDriver {
-  public static async Launch(log: Log, headless: boolean, quiet: boolean = true): Promise<ChromeDriver> {
+  public static async Launch(log: Log, headless: boolean, width: number, height: number, quiet: boolean = true): Promise<ChromeDriver> {
     const mitmProxy = await MITMProxy.Create(undefined, quiet);
     // Tell mitmProxy to stash data requested through the proxy.
     mitmProxy.stashEnabled = true;
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
-    let chromeProcess: ChromeProcess = await spawnChromeBrowser(session, headless);
+    let chromeProcess: ChromeProcess = await spawnChromeBrowser(session, headless, width, height);
     // open the REST API for tabs
     const client = session.createAPIClient("localhost", chromeProcess.remoteDebuggingPort);
     const tabs = await client.listTabs();
@@ -124,7 +119,7 @@ export default class ChromeDriver {
     // Disable service workers
     await network.setBypassServiceWorker({ bypass: true });
 
-    const driver = new ChromeDriver(log, headless, mitmProxy, chromeProcess, page, runtime, heapProfiler, chromeConsole);
+    const driver = new ChromeDriver(log, headless, width, height, quiet, mitmProxy, chromeProcess, page, runtime, heapProfiler, chromeConsole);
 
     return driver;
   }
@@ -139,8 +134,11 @@ export default class ChromeDriver {
   private _console: ChromeConsole;
   private _loadedFrames = new Set<string>();
   private _shutdown: boolean = false;
+  private _width: number;
+  private _height: number;
+  private _quiet: boolean;
 
-  private constructor(log: Log, headless: boolean, mitmProxy: MITMProxy, process: ChromeProcess, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, console: ChromeConsole) {
+  private constructor(log: Log, headless: boolean, width: number, height: number, quiet: boolean, mitmProxy: MITMProxy, process: ChromeProcess, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, console: ChromeConsole) {
     this._log = log;
     this._headless = headless;
     this.mitmProxy = mitmProxy;
@@ -149,6 +147,9 @@ export default class ChromeDriver {
     this._page = page;
     this._heapProfiler = heapProfiler;
     this._console = console;
+    this._width = width;
+    this._height = height;
+    this._quiet = quiet;
 
     this._console.messageAdded = (evt) => {
       const m = evt.message;
@@ -172,7 +173,7 @@ export default class ChromeDriver {
 
   public async relaunch(): Promise<ChromeDriver> {
     await this.shutdown();
-    const driver = await ChromeDriver.Launch(this._log, this._headless);
+    const driver = await ChromeDriver.Launch(this._log, this._headless, this._width, this._height, this._quiet);
     driver.mitmProxy.cb = this.mitmProxy.cb;
     return driver;
   }

@@ -1,6 +1,6 @@
 import {equal as assertEqual, notEqual as assertNotEqual} from 'assert';
 import {exposeClosureState, injectIntoHead, parseHTML} from '../src/lib/transformations';
-import {DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL} from '../src/common/util';
+import {DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL} from '../src/lib/mitmproxy_interceptor';
 import {readFileSync} from 'fs';
 
 const AGENT_SOURCE = readFileSync(require.resolve('../src/lib/bleak_agent'), "utf8");
