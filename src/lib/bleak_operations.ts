@@ -128,19 +128,19 @@ class NextOperation extends Operation {
   }
 }
 
-/*class DelayOperation extends Operation {
+class DelayOperation extends Operation {
   constructor(private readonly _delay: number) {
     super();
   }
 
   public get description(): string {
-    return `Waiting ${this._delay} ms before proceeding.`;
+    return `Waiting ${this._delay} ms before proceeding`;
   }
 
   public _run(): Promise<void> {
     return wait(this._delay);
   }
-}*/
+}
 
 class TakeHeapSnapshotOperation extends Operation {
   constructor(timeout: number, private _snapshotCb: SnapshotCb) {
@@ -209,9 +209,14 @@ abstract class CompositeOperation extends Operation {
 class StepOperation extends CompositeOperation {
   constructor(config: BLeakConfig, stepType: StepType, id: number) {
     super();
-    this.children.push(
-      new CheckOperation(config.timeout, stepType, id),
-      new NextOperation(config.timeout, stepType, id));
+    this.children.push(new CheckOperation(config.timeout, stepType, id));
+    if (config.postCheckSleep) {
+      this.children.push(new DelayOperation(config.postCheckSleep));
+    }
+    this.children.push(new NextOperation(config.timeout, stepType, id));
+    if (config.postNextSleep) {
+      this.children.push(new DelayOperation(config.postNextSleep));
+    }
   }
 
   public get description() { return ''; }
@@ -258,15 +263,21 @@ class ProgramRunOperation extends CompositeOperation {
     if (takeInitialSnapshot && snapshotCb) {
       this.children.push(
         // Make sure we're at step 0 before taking the snapshot.
-        new CheckOperation(config.timeout, 'loop', 0),
-        new TakeHeapSnapshotOperation(config.timeout, snapshotCb));
+        new CheckOperation(config.timeout, 'loop', 0));
+      if (config.postCheckSleep) {
+        this.children.push(new DelayOperation(config.postCheckSleep));
+      }
+      this.children.push(new TakeHeapSnapshotOperation(config.timeout, snapshotCb));
     }
     for (let i = 0; i < iterations; i++) {
       this.children.push(
         new StepSeriesOperation(config, 'loop'),
         // Make sure we're at step 0 before taking the snapshot.
-        new CheckOperation(config.timeout, 'loop', 0),
+        new CheckOperation(config.timeout, 'loop', 0)
       );
+      if (config.postCheckSleep) {
+        this.children.push(new DelayOperation(config.postCheckSleep));
+      }
       if (snapshotCb) {
         this.children.push(
           new TakeHeapSnapshotOperation(config.timeout, snapshotCb)

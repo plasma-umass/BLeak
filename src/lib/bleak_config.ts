@@ -10,6 +10,8 @@ const DEFAULT_CONFIG: IBLeakConfig = {
   login: [],
   setup: [],
   loop: [],
+  postCheckSleep: 1000,
+  postNextSleep: 0,
   timeout: 10 * 60 * 1000, // 10 minutes
   rewrite: (url, type, data, fixes) => data
 };
@@ -19,7 +21,7 @@ function getConfigFromSource(configSource: string): IBLeakConfig {
   const m = { exports: {} };
   // CommonJS emulation
   try {
-    const exportsObj = new Function('exports', 'module', `${configSource}\nreturn exports;`)(m.exports, m);
+    const exportsObj = new Function('exports', 'module', `${configSource}\nreturn module.exports ? module.exports : exports;`)(m.exports, m);
     return Object.assign({}, DEFAULT_CONFIG, exportsObj);
   } catch (e) {
     throw new Error(`Unable to run configuration file: ${e}`);
@@ -63,6 +65,8 @@ export default class BLeakConfig implements IBLeakConfig {
     raw.setup.forEach((s, i) => checkStep('setup', i, s));
     checkNumber('timeout', raw.timeout);
     checkFunction('rewrite', raw.rewrite);
+    checkNumber('postCheckSleep', raw.postCheckSleep);
+    checkNumber('postNextSleep', raw.postNextSleep);
     return new BLeakConfig(raw, configSource);
   }
 
@@ -76,6 +80,8 @@ export default class BLeakConfig implements IBLeakConfig {
   public readonly login: Step[];
   public readonly setup: Step[];
   public readonly timeout: number;
+  public readonly postCheckSleep: number;
+  public readonly postNextSleep: number;
   public readonly rewrite: (url: string, type: string, source: Buffer, fixes: number[]) => Buffer;
 
   private constructor(raw: IBLeakConfig, private readonly _configSource: string) {
@@ -90,6 +96,8 @@ export default class BLeakConfig implements IBLeakConfig {
     this.setup = raw.setup;
     this.timeout = raw.timeout;
     this.rewrite = raw.rewrite;
+    this.postCheckSleep = raw.postCheckSleep;
+    this.postNextSleep = raw.postNextSleep;
   }
 
   public getBrowserInjection(): string {
@@ -98,24 +106,7 @@ export default class BLeakConfig implements IBLeakConfig {
   var module = { exports: {} };
   var exports = module.exports;
   ${this._configSource}
-  module.exports = exports = Object.assign({}, ${DEFAULT_CONFIG_STRING}, exports);
-  window.BLeakConfig = module.exports;
+  window.BLeakConfig = Object.assign({}, ${DEFAULT_CONFIG_STRING}, module.exports ? module.exports : exports);
 })();`;
-  }
-
-  public toJSON(): IBLeakConfig {
-    return {
-      url: this.url,
-      loop: this.loop,
-      iterations: this.iterations,
-      rankingEvaluationIterations: this.rankingEvaluationIterations,
-      rankingEvaluationRuns: this.rankingEvaluationRuns,
-      fixedLeaks: this.fixedLeaks,
-      fixMap: this.fixMap,
-      login: this.login,
-      setup: this.setup,
-      timeout: this.timeout,
-      rewrite: this.rewrite
-    };
   }
 }

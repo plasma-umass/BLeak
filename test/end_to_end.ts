@@ -307,6 +307,8 @@ describe('End-to-end Tests', function() {
           }
         ];
         exports.timeout = 30000;
+        exports.iterations = 3;
+        exports.postCheckSleep = 100;
       `, new NopProgressBar(), driver/*, (ss) => {
         const stream = createWriteStream(`${rootFilename}${i}.heapsnapshot`);
         ss.onSnapshotChunk = function(chunk, end) {

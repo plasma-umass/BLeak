@@ -3,7 +3,7 @@ import {Server as HTTPServer} from 'http';
 import ChromeDriver from '../src/lib/chrome_driver';
 import {equal as assertEqual} from 'assert';
 
-const HTTP_PORT = 8889;
+const HTTP_PORT = 8890;
 
 describe("Chrome Driver", function() {
   // 30 second timeout.

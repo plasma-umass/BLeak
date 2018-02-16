@@ -2,11 +2,15 @@
  * A BLeak configuration file.
  */
 export interface IBLeakConfig {
+  /** REQUIRED **/
+
   // URL to web page to check for memory leaks.
   url: string;
   // Runs your program in a loop. Each step has a "check" function, and a "next" function
   // to transition to the next step in the loop.
   loop: Step[];
+
+  /** OPTIONAL **/
 
   // Number of iterations to do
   iterations: number;
@@ -20,11 +24,17 @@ export interface IBLeakConfig {
   fixMap: {[leakRoot: string]: number};
   login: Step[];
   setup: Step[];
-
-  // (Optional) How long to wait for a step transition to finish before declaring an error.
-  // Default: 10 minutes.
+  // How long (in milliseconds) to wait for a step transition to finish before declaring an error.
+  // Default: 10 minutes (10 * 60 * 1000)
   timeout: number;
   rewrite: (url: string, type: string, source: Buffer, fixes: number[]) => Buffer;
+
+  // How long (in milliseconds) to wait between a check() returning 'true' and transitioning to the next step or taking a heap snapshot.
+  // Default: 1000
+  postCheckSleep: number;
+  // How long (in milliseconds) to wait between transitioning to the next step and running check() for the first time.
+  // Default: 0
+  postNextSleep: number;
 }
 
 export type StepType = "login" | "setup" | "loop";
