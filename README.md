@@ -117,8 +117,15 @@ exports = {
   setup: [
 
   ],
-  // (Optional) How long to wait for a state transition to finish before declaring an error.
-  timeout: 10000,
+  // (Optional) How long (in milliseconds) to wait for a state transition to finish before declaring an error.
+  // Defaults to 10 minutes
+  timeout: 10 * 60 * 1000,
+  // How long (in milliseconds) to wait between a check() returning 'true' and transitioning to the next step or taking a heap snapshot.
+  // Default: 1000
+  postCheckSleep: 1000,
+  // How long (in milliseconds) to wait between transitioning to the next step and running check() for the first time.
+  // Default: 0
+  postNextSleep: 0,
   // (Optional) An array of numerical IDs identifying leaks with fixes in your code. Used to
   // evaluate memory savings with different leak configurations and the effectiveness of bug fixes.
   // In the code, condition the fix on $$$SHOULDFIX$$$(ID), or add logic to `exports.rewrite` (see below),

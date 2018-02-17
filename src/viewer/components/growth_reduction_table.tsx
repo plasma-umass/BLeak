@@ -1,6 +1,6 @@
 import * as React from 'react';
 import BLeakResults from '../../lib/bleak_results';
-import {averageGrowthReduction, averageGrowth} from './heap_growth_graph';
+import {averageGrowth} from './heap_growth_graph';
 
 interface GrowthReductionTableProps {
   bleakResults: BLeakResults;
