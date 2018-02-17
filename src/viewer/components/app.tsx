@@ -1,11 +1,12 @@
 import * as React from 'react';
 import BLeakResults from '../../lib/bleak_results';
-import HeapGrowthGraph from './heap_growth_graph';
+import {default as HeapGrowthGraph, isRankingEvaluationComplete} from './heap_growth_graph';
 import LeakRootsAndStackTraces from './leak_roots_and_stack_traces';
 import SourceCodeViewer from './source_code_view';
 import SourceFileManager from '../model/source_file_manager';
 import Location from '../model/location';
 import StackTraceManager from '../model/stack_trace_manager';
+import GrowthReductionTable from './growth_reduction_table';
 
 const enum ViewState {
   WAIT_FOR_FILE,
@@ -94,6 +95,7 @@ export default class App extends React.Component<{}, AppState> {
   }
 
   public render() {
+    const rankEvalComplete = this.state.state === ViewState.DISPLAYING_FILE && isRankingEvaluationComplete(this.state.bleakResults);
     return <div>
       <nav className="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
         <a className="navbar-brand" href="/">BLeak Results Viewer</a>
@@ -122,10 +124,14 @@ export default class App extends React.Component<{}, AppState> {
         : ''}
         {this.state.state === ViewState.DISPLAYING_FILE ? <div key="bleakResults">
           <div className="row">
-            <div className="col-sm">
+            <div className={rankEvalComplete ? "col-sm-7" : "col-sm"}>
               <h3>Live Heap Size</h3>
               <HeapGrowthGraph key="heap_growth" bleakResults={this.state.bleakResults} />
             </div>
+            {rankEvalComplete ? <div key="rankingEvalTable" className="col-sm-5">
+              <h3>Growth Reduction for Top Leaks Fixed</h3>
+              <GrowthReductionTable bleakResults={this.state.bleakResults} />
+            </div> : ''}
           </div>
           <div className="row">
             <div className="col-sm-5">

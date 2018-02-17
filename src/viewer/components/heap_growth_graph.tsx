@@ -60,7 +60,7 @@ function distillResults(results: BLeakResults): Line[] {
   return [getLine('No Leaks Fixed', zeroLeaksFixed), getLine('All Leaks Fixed', allLeaksFixed)];
 }
 
-function isRankingEvaluationComplete(results: BLeakResults): boolean {
+export function isRankingEvaluationComplete(results: BLeakResults): boolean {
   const numLeaks = results.rankingEvaluation.leakShare.length;
   try {
     const zeroLeaksFixed = results.rankingEvaluation.leakShare[0];
@@ -84,7 +84,7 @@ interface HeapGrowthGraphState {
   growthReductionPercentSe: number;
 }
 
-function averageGrowth(data: SnapshotSizeSummary[][]): { mean: number, se: number } {
+export function averageGrowth(data: SnapshotSizeSummary[][]): { mean: number, se: number } {
   // HS => Growth
   const growthData = data.map((d, i) => d.slice(1).map((d, j) => (d.totalSize - data[i][j].totalSize) / BYTES_PER_MB));
   // Growth => Avg Growth
@@ -99,7 +99,7 @@ function averageGrowth(data: SnapshotSizeSummary[][]): { mean: number, se: numbe
   };
 }
 
-function averageGrowthReduction(avgGrowthNoFixed: { mean: number, se: number}, allFixed: SnapshotSizeSummary[][]): { mean: number, se: number, percent: number, percentSe: number } {
+export function averageGrowthReduction(avgGrowthNoFixed: { mean: number, se: number}, allFixed: SnapshotSizeSummary[][]): { mean: number, se: number, percent: number, percentSe: number } {
   const avgGrowthAllFixed = averageGrowth(allFixed);
   const growthReduction = avgGrowthNoFixed.mean - avgGrowthAllFixed.mean;
   const growthReductionSe = Math.sqrt(Math.pow(avgGrowthAllFixed.se, 2) + Math.pow(avgGrowthNoFixed.se, 2));
