@@ -15,10 +15,15 @@ body {
   display: none;
 }
 
-.line {
+
+.plot path, .plot line, line.plot_0, line.plot_1 {
   fill: none;
-  stroke: steelblue;
+  stroke: black;
   stroke-width: 2px;
+}
+
+.plot_1 line.line, .plot_1 path, line.plot_1 {
+  stroke-dasharray: 5,5;
 }
 
 /* Tooltips displayed on points */
@@ -31,18 +36,24 @@ body {
   z-index: 100;
 }
 
-.series circle {
+.plot circle {
   stroke: none;
 }
 
-.series path {
+.plot g.data-point:hover circle {
+  fill: gray;
   stroke-width: 2;
-  fill: none;
 }
 
-.series circle.highlight {
+.plot g.data-point:hover line {
+  stroke: gray;
+  stroke-width: 3px;
+}
+
+.legend rect {
   fill: white;
-  stroke-width: 2;
+  stroke: black;
+  opacity: 0.8;
 }
 
 .leak-root-list .card {
