@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import * as yargs from 'yargs';
 import RunCommand from './commands/run';
 import FindGrowingPaths from './commands/find_growing_paths';

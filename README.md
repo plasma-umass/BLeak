@@ -40,10 +40,10 @@ yarn test
 
 1. **Build** BLeak (see above).
 1. **Write** a *configuration file* for your web application (see below).
-2. **Run** `node build/node/src/cli/bleak.js run --config path/to/config.js --out path/to/where/you/want/output`
+2. **Run** `./bleak run --config path/to/config.js --out path/to/where/you/want/output`
     * The output directory should be unique for this specific run of BLeak, otherwise it will overwrite files in the directory. It will be created if needed.
 3. **Wait.** BLeak typically runs in <10 minutes, but its speed depends on the number of states in your loop and the speed of your web application.
-4. **Run the BLeak Results Viewer** by running `node build/node/src/cli/bleak.js viewer` and navigating to http://localhost:8889/ in a web browser. Upload `path/to/where/you/want/output/bleak_results.json` to the web application to view the results!
+4. **Run the BLeak Results Viewer** by running `./bleak viewer` and navigating to http://localhost:8889/ in a web browser. Upload `path/to/where/you/want/output/bleak_results.json` to the web application to view the results!
     * Alternatively, BLeak prints out a report in `bleak_report.log` in the same directory, but the results viewer presents additional information not captured in that log file.
 
 ## Configuration File
