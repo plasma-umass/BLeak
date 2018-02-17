@@ -29,7 +29,7 @@ export default class ProgressProgressBar implements IProgressBar {
     }
   }
   public setOperationCount(count: number): void {
-    this._bar = new ProgressBar('[:bar] :percent [:current/:total] :elapseds/:etas :msg', {
+    this._bar = new ProgressBar('[:bar] :percent [:current/:total] :elapseds (ETA :etas) :msg', {
       complete: '=',
       incomplete: ' ',
       width: 20,

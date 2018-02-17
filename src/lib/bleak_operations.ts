@@ -120,7 +120,7 @@ class NextOperation extends Operation {
   }
 
   public get description(): string {
-    return `Advancing to next state (${this._stepType}[${this._id}].next())`;
+    return `Advancing to next state ${this._stepType}[${this._id}].next()`;
   }
 
   public async _run(opSt: OperationState): Promise<void> {
@@ -252,8 +252,9 @@ class ProgramRunOperation extends CompositeOperation {
     if (runLogin && config.login.length > 0) {
       this.children.push(
         new StepSeriesOperation(config, 'login'),
-        new NavigateOperation(config.timeout, config.url));
-      // TODO: Delay here? 1000 previously.
+        new NavigateOperation(config.timeout, config.url),
+        new DelayOperation(1000)
+      );
     }
     if (config.setup.length > 0) {
       this.children.push(
@@ -541,7 +542,8 @@ export class EvaluateRankingMetricsOperation extends CompositeOperation {
           config: config.getBrowserInjection()
         }),
         new NavigateOperation(config.timeout, config.url),
-        new StepSeriesOperation(config, 'login')
+        new StepSeriesOperation(config, 'login'),
+        new DelayOperation(1000)
       );
     }
     for (const rankingConfig of configs) {
