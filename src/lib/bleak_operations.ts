@@ -253,7 +253,7 @@ class ProgramRunOperation extends CompositeOperation {
       this.children.push(
         new StepSeriesOperation(config, 'login'),
         new NavigateOperation(config.timeout, config.url),
-        new DelayOperation(1000)
+        new DelayOperation(5000)
       );
     }
     if (config.setup.length > 0) {
@@ -543,7 +543,7 @@ export class EvaluateRankingMetricsOperation extends CompositeOperation {
         }),
         new NavigateOperation(config.timeout, config.url),
         new StepSeriesOperation(config, 'login'),
-        new DelayOperation(1000)
+        new DelayOperation(5000)
       );
     }
     for (const rankingConfig of configs) {
