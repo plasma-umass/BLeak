@@ -12,16 +12,12 @@ interface GrowthReductionTableState {
   transitiveClosureSize: number[];
 }
 
-/**
- * Growth re- duction by metric after  xing quartiles of top ranked leaks.
- */
-
 export default class GrowthReductionTable extends React.Component<GrowthReductionTableProps, GrowthReductionTableState> {
   public componentWillMount() {
     const rankEval = this.props.bleakResults.rankingEvaluation;
-    const numLeaks = rankEval.leakShare[0].length;
+    const numLeaks = rankEval.leakShare.length;
     const rankings: ('leakShare' | 'retainedSize' | 'transitiveClosureSize')[] = ['leakShare', 'retainedSize', 'transitiveClosureSize']
-    const qs = [Math.ceil(numLeaks * 0.25), Math.ceil(numLeaks * 0.5), Math.ceil(numLeaks * 0.75)];
+    const qs = [Math.floor(numLeaks * 0.25), Math.floor(numLeaks * 0.5), Math.floor(numLeaks * 0.75)];
     const state: GrowthReductionTableState = {
       leakShare: null,
       retainedSize: null,

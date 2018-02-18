@@ -11,6 +11,7 @@ interface CommandLineArgs {
   debug: boolean;
   headless: boolean;
   chromeSize: string;
+  'resume-after-failure': boolean;
 }
 
 const EvaluateMetrics: CommandModule = {
@@ -41,9 +42,14 @@ const EvaluateMetrics: CommandModule = {
       type: 'string',
       default: '1920x1080',
       describe: 'Specifies the size of the Chrome browser window'
+    },
+    'resume-after-failure': {
+      type: 'boolean',
+      default: false,
+      describe: 'If a failure occurs, automatically resume the process until it completes'
     }
   },
-  handler: async (args: CommandLineArgs) => {
+  handler: async function handler(args: CommandLineArgs) {
     let width: number, height: number;
     {
       const chromeSize = /^([0-9]+)x([0-9]+)$/.exec(args.chromeSize);
@@ -78,7 +84,18 @@ const EvaluateMetrics: CommandModule = {
       writeFileSync(args.results, Buffer.from(JSON.stringify(results), 'utf8'));
     }).then(shutDown).catch((e) => {
       progressBar.error(`${e}`);
-      shutDown();
+      if (args['resume-after-failure']) {
+        progressBar.log(`Resuming...`);
+        shuttingDown = true;
+        chromeDriver.shutdown().then(() => {
+          handler(args);
+        }).catch(() => {
+          handler(args);
+        });
+      } else {
+        progressBar.error(`${e}`);
+        shutDown();
+      }
     });
   }
 };
