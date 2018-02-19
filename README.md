@@ -126,6 +126,9 @@ exports = {
   // How long (in milliseconds) to wait between transitioning to the next step and running check() for the first time.
   // Default: 0
   postNextSleep: 0,
+  // How long (in milliseconds) to wait between submitting login credentials and reloading the page for a run.
+  // Default: 5000
+  postLoginSleep: 5000,
   // (Optional) An array of numerical IDs identifying leaks with fixes in your code. Used to
   // evaluate memory savings with different leak configurations and the effectiveness of bug fixes.
   // In the code, condition the fix on $$$SHOULDFIX$$$(ID), or add logic to `exports.rewrite` (see below),

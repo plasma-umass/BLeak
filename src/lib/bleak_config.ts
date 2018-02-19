@@ -12,6 +12,7 @@ const DEFAULT_CONFIG: IBLeakConfig = {
   loop: [],
   postCheckSleep: 1000,
   postNextSleep: 0,
+  postLoginSleep: 5000,
   timeout: 10 * 60 * 1000, // 10 minutes
   rewrite: (url, type, data, fixes) => data
 };
@@ -67,6 +68,7 @@ export default class BLeakConfig implements IBLeakConfig {
     checkFunction('rewrite', raw.rewrite);
     checkNumber('postCheckSleep', raw.postCheckSleep);
     checkNumber('postNextSleep', raw.postNextSleep);
+    checkNumber('postLoginSleep', raw.postLoginSleep);
     return new BLeakConfig(raw, configSource);
   }
 
@@ -82,6 +84,7 @@ export default class BLeakConfig implements IBLeakConfig {
   public readonly timeout: number;
   public readonly postCheckSleep: number;
   public readonly postNextSleep: number;
+  public readonly postLoginSleep: number;
   public readonly rewrite: (url: string, type: string, source: Buffer, fixes: number[]) => Buffer;
 
   private constructor(raw: IBLeakConfig, private readonly _configSource: string) {
@@ -98,6 +101,7 @@ export default class BLeakConfig implements IBLeakConfig {
     this.rewrite = raw.rewrite;
     this.postCheckSleep = raw.postCheckSleep;
     this.postNextSleep = raw.postNextSleep;
+    this.postLoginSleep = raw.postLoginSleep;
   }
 
   public getBrowserInjection(): string {

@@ -35,6 +35,9 @@ export interface IBLeakConfig {
   // How long (in milliseconds) to wait between transitioning to the next step and running check() for the first time.
   // Default: 0
   postNextSleep: number;
+  // How long (in milliseconds) to wait between submitting login credentials and reloading the page for a run.
+  // Default: 5000
+  postLoginSleep: number;
 }
 
 export type StepType = "login" | "setup" | "loop";
