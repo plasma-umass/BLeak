@@ -90,8 +90,8 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: nu
 }
 
 export default class ChromeDriver {
-  public static async Launch(log: Log, headless: boolean, width: number, height: number, quiet: boolean = true): Promise<ChromeDriver> {
-    const mitmProxy = await MITMProxy.Create(undefined, quiet);
+  public static async Launch(log: Log, headless: boolean, width: number, height: number, interceptPaths: string[] = [], quiet: boolean = true): Promise<ChromeDriver> {
+    const mitmProxy = await MITMProxy.Create(undefined, interceptPaths, quiet);
     // Tell mitmProxy to stash data requested through the proxy.
     mitmProxy.stashEnabled = true;
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
@@ -119,7 +119,7 @@ export default class ChromeDriver {
     // Disable service workers
     await network.setBypassServiceWorker({ bypass: true });
 
-    const driver = new ChromeDriver(log, headless, width, height, quiet, mitmProxy, chromeProcess, page, runtime, heapProfiler, chromeConsole);
+    const driver = new ChromeDriver(log, headless, width, height, interceptPaths, quiet, mitmProxy, chromeProcess, page, runtime, heapProfiler, chromeConsole);
 
     return driver;
   }
@@ -136,9 +136,10 @@ export default class ChromeDriver {
   private _shutdown: boolean = false;
   private _width: number;
   private _height: number;
+  private _interceptPaths: string[];
   private _quiet: boolean;
 
-  private constructor(log: Log, headless: boolean, width: number, height: number, quiet: boolean, mitmProxy: MITMProxy, process: ChromeProcess, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, console: ChromeConsole) {
+  private constructor(log: Log, headless: boolean, width: number, height: number, interceptPaths: string[], quiet: boolean, mitmProxy: MITMProxy, process: ChromeProcess, page: ChromePage, runtime: ChromeRuntime, heapProfiler: ChromeHeapProfiler, console: ChromeConsole) {
     this._log = log;
     this._headless = headless;
     this.mitmProxy = mitmProxy;
@@ -149,6 +150,7 @@ export default class ChromeDriver {
     this._console = console;
     this._width = width;
     this._height = height;
+    this._interceptPaths = interceptPaths;
     this._quiet = quiet;
 
     this._console.messageAdded = (evt) => {
@@ -173,7 +175,7 @@ export default class ChromeDriver {
 
   public async relaunch(): Promise<ChromeDriver> {
     await this.shutdown();
-    const driver = await ChromeDriver.Launch(this._log, this._headless, this._width, this._height, this._quiet);
+    const driver = await ChromeDriver.Launch(this._log, this._headless, this._width, this._height, this._interceptPaths, this._quiet);
     driver.mitmProxy.cb = this.mitmProxy.cb;
     return driver;
   }

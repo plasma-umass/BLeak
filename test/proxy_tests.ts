@@ -54,7 +54,7 @@ describe('Proxy', function() {
   let httpServer: HTTPServer;
   before(async function() {
     httpServer = await createHTTPServer(FILES, HTTP_PORT);
-    proxy = await MITMProxy.Create(undefined, true);
+    proxy = await MITMProxy.Create(undefined, [], true);
   });
 
   async function requestFile(path: string, expected: Buffer): Promise<void> {
