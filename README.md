@@ -1,4 +1,4 @@
-# <img src="icon.svg" alt="BLeak" style="height: 1em;" /> BLeak
+# <img src="favicon.svg" alt="BLeak" style="height: 1em; vertical-align: bottom;" /> BLeak
 
 [![Build Status](https://travis-ci.org/plasma-umass/BLeak.svg?branch=master)](https://travis-ci.org/plasma-umass/BLeak)
 [![Build status](https://ci.appveyor.com/api/projects/status/b92sknh0pu38943q/branch/master?svg=true)](https://ci.appveyor.com/project/jvilk/bleak/branch/master)
@@ -48,7 +48,7 @@ yarn test
 
 ## Configuration File
 
-BLeak uses this configuration file to find memory leaks in the client-side of a web application.
+BLeak uses a configuration file to find memory leaks in the client-side of a web application. Only a few fields are required.
 
 ```javascript
 exports = {
@@ -120,13 +120,13 @@ exports = {
   // (Optional) How long (in milliseconds) to wait for a state transition to finish before declaring an error.
   // Defaults to 10 minutes
   timeout: 10 * 60 * 1000,
-  // How long (in milliseconds) to wait between a check() returning 'true' and transitioning to the next step or taking a heap snapshot.
+  // (Optional) How long (in milliseconds) to wait between a check() returning 'true' and transitioning to the next step or taking a heap snapshot.
   // Default: 1000
   postCheckSleep: 1000,
-  // How long (in milliseconds) to wait between transitioning to the next step and running check() for the first time.
+  // (Optional) How long (in milliseconds) to wait between transitioning to the next step and running check() for the first time.
   // Default: 0
   postNextSleep: 0,
-  // How long (in milliseconds) to wait between submitting login credentials and reloading the page for a run.
+  // (Optional) How long (in milliseconds) to wait between submitting login credentials and reloading the page for a run.
   // Default: 5000
   postLoginSleep: 5000,
   // (Optional) An array of numerical IDs identifying leaks with fixes in your code. Used to
