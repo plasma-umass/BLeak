@@ -1,7 +1,7 @@
 import {CommandModule} from 'yargs';
 import * as express from 'express';
 import {createServer} from 'http';
-import {resolve} from 'path';
+import {resolve, join} from 'path';
 import {existsSync, readFileSync} from 'fs';
 
 interface CommandLineArgs {
@@ -29,7 +29,7 @@ function findPath(): string {
     }
     p = resolve(p, '..');
   }
-  return p;
+  return join(p, 'dist', 'viewer');
 }
 
 const Viewer: CommandModule = {
