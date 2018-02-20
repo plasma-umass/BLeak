@@ -1,4 +1,4 @@
-# BLeak v1.0.0
+# BLeak v1.0.1
 
 [![Build Status](https://travis-ci.org/plasma-umass/BLeak.svg?branch=master)](https://travis-ci.org/plasma-umass/BLeak)
 [![Build status](https://ci.appveyor.com/api/projects/status/b92sknh0pu38943q/branch/master?svg=true)](https://ci.appveyor.com/project/jvilk/bleak/branch/master)
@@ -7,8 +7,6 @@
 BLeak automatically finds, ranks, and diagnoses memory leaks in the client-side of web applications.
 
 BLeak uses a short developer-provided script to drive the application in a loop through specific visual states (e.g., the inbox view and email view of a mail client) as an oracle to find memory leaks. In our experience, BLeak's precision is often **100%** (e.g., no false positives), and fixing the leaks it finds reduces heap growth by **94%** on average on a corpus of real production web apps.
-
-BLeak is an active research project of the [PLASMA lab](https://plasma.cs.umass.edu/) at the University of Massachusetts Amherst, and should be considered experimental software. We appreciate pull requests and bug reports, but note that we have not polished the software artifact for general use yet.
 
 For more information please see the [preprint of our academic paper](https://github.com/plasma-umass/BLeak/blob/master/paper.pdf), which will appear at PLDI 2018.
 
@@ -19,32 +17,24 @@ The following must be installed for BLeak to work:
 * [mitmproxy](https://mitmproxy.org/)
 * Python 3.6 or greater
   * Our mitmproxy plugin uses new Python async features
-* [Yarn](https://yarnpkg.com/en/docs/install) package manager
-  * NPM *may* work, but we do not test against it
 
-## Building
+## Installing
 
 ```
-# Install NPM dependencies (only need to run once)
-yarn install
-# Build BLeak
-yarn run build
+npm install -g bleak-detector
 ```
 
-## Testing
+After installing, you should be able to run `bleak` from the commandl ine.
 
-```
-yarn test
-```
 
 ## Using
 
 1. **Build** BLeak (see above).
 1. **Write** a *configuration file* for your web application (see below).
-2. **Run** `./bleak run --config path/to/config.js --out path/to/where/you/want/output`
+2. **Run** `bleak run --config path/to/config.js --out path/to/where/you/want/output`
     * The output directory should be unique for this specific run of BLeak, otherwise it will overwrite files in the directory. It will be created if needed.
 3. **Wait.** BLeak typically runs in <10 minutes, but its speed depends on the number of states in your loop and the speed of your web application.
-4. **Run the BLeak Results Viewer** by running `./bleak viewer` and navigating to http://localhost:8889/ in a web browser. Upload `path/to/where/you/want/output/bleak_results.json` to the web application to view the results!
+4. **Run the BLeak Results Viewer** by running `bleak viewer` and navigating to http://localhost:8889/ in a web browser. Upload `path/to/where/you/want/output/bleak_results.json` to the web application to view the results!
     * Alternatively, BLeak prints out a report in `bleak_report.log` in the same directory, but the results viewer presents additional information not captured in that log file.
 
 ## Configuration File
@@ -162,3 +152,31 @@ exports = {
   }
 };
 ```
+
+## Developing
+
+Interested in fixing bugs or building on BLeak? Excellent! Read below on how to build BLeak from source and run our unit tests.
+
+### Prerequisites
+
+* [Yarn](https://yarnpkg.com/en/docs/install) package manager
+  * NPM *may* work, but we do not test against it
+
+### Building
+
+```
+# Install NPM dependencies (only need to run once)
+yarn install
+# Build BLeak
+yarn run build
+```
+
+### Testing
+
+```
+yarn test
+```
+
+### Debugging Tips
+
+The bleak executable (runnable via `./bleak` once built) has a number of useful debug commands. For example, use `proxy-session` to debug issues with BLeak's proxy / diagnoses phase.
