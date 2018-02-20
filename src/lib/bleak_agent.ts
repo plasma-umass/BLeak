@@ -728,11 +728,13 @@ declare function importScripts(s: string): void;
 
     // Capture writes of children.
     const children = tree.children;
-    const instrumentFunction = switchToRegularTree ? instrumentTree : instrumentDOMTree;
-    const len = children.length;
-    for (let i = 0; i < len; i++) {
-      const child = children[i];
-      instrumentFunction(accessString, obj, child, stackTrace);
+    if (children) {
+      const instrumentFunction = switchToRegularTree ? instrumentTree : instrumentDOMTree;
+      const len = children.length;
+      for (let i = 0; i < len; i++) {
+        const child = children[i];
+        instrumentFunction(accessString, obj, child, stackTrace);
+      }
     }
   }
 
@@ -749,10 +751,12 @@ declare function importScripts(s: string): void;
 
     // Capture writes of children.
     const children = tree.children;
-    const len = children.length;
-    for (let i = 0; i < len; i++) {
-      const child = children[i];
-      instrumentTree(accessString, obj, child, stackTrace);
+    if (children) {
+      const len = children.length;
+      for (let i = 0; i < len; i++) {
+        const child = children[i];
+        instrumentTree(accessString, obj, child, stackTrace);
+      }
     }
   }
 
@@ -788,8 +792,10 @@ declare function importScripts(s: string): void;
       }
 
       const children = path.children;
-      for (const child of children) {
-        getStackTraces(obj, child, stacksMap);
+      if (children) {
+        for (const child of children) {
+          getStackTraces(obj, child, stacksMap);
+        }
       }
     }
   }
@@ -828,10 +834,12 @@ declare function importScripts(s: string): void;
     // Capture writes of children.
     const children = path.children;
     const getStackTracesFunction = switchToRegularTree ? getStackTraces : getDOMStackTraces;
-    const len = children.length;
-    for (let i = 0; i < len; i++) {
-      const child = children[i];
-      getStackTracesFunction(obj, child, stacksMap);
+    if (children) {
+      const len = children.length;
+      for (let i = 0; i < len; i++) {
+        const child = children[i];
+        getStackTracesFunction(obj, child, stacksMap);
+      }
     }
   }
 
