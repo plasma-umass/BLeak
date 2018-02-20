@@ -41,3 +41,15 @@ Function.prototype.bind = function bind(this: Function, that: any, ...partArgs: 
   }
   return bound;
 };
+
+// We use a script that launches Chrome for us, but disables the Notifications feature
+// that some apps depends on. Chrome disables the feature by removing the object, breaking
+// these apps.
+// So we define a skeleton that says 'denied', which is really what Chrome should be doing...
+// Make sure we're running in the main browser thread...
+if (typeof(window) !== "undefined") {
+  (window as any)['Notification'] = {
+    permission: 'denied',
+    requestPermission: function() { return Promise.resolve('denied'); }
+  };
+}
