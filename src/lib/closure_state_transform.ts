@@ -2172,7 +2172,7 @@ function tryJSTransform(filename: string, source: string, transform: (filename: 
           sourceMaps: true,
           // Disable modules to disable global "use strict"; declaration
           // https://stackoverflow.com/a/39225403
-          presets: [["es2015", { "modules": false }]]
+          presets: [["env", { "modules": false }]]
         });
         const conversionSourceMap = new SourceMapGenerator({
           file: filename
