@@ -4,6 +4,7 @@ import {generate as generateJavaScript} from 'astring';
 import {SourceMapGenerator, SourceMapConsumer, RawSourceMap} from 'source-map';
 import {transform as buble} from 'buble';
 import {transform as babel} from 'babel-core';
+import {dirname} from 'path';
 
 /**
  * Fake AST node that contains multiple statements that must be
@@ -2165,6 +2166,9 @@ function tryJSTransform(filename: string, source: string, transform: (filename: 
     } catch (e) {
       try {
         // Might be even crazier ES2015! Use Babel (SLOWEST PATH)
+        // Babel wants to know the exact location of this preset plugin.
+        // I really don't like Babel's (un)usability.
+        const envPath = dirname(require.resolve('babel-preset-env/package.json'));
         const transformed = babel(source, {
           sourceMapTarget: filename,
           sourceFileName: filename,
@@ -2172,7 +2176,7 @@ function tryJSTransform(filename: string, source: string, transform: (filename: 
           sourceMaps: true,
           // Disable modules to disable global "use strict"; declaration
           // https://stackoverflow.com/a/39225403
-          presets: [["env", { "modules": false }]]
+          presets: [[envPath, { "modules": false }]]
         });
         const conversionSourceMap = new SourceMapGenerator({
           file: filename
