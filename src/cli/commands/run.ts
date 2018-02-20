@@ -106,7 +106,6 @@ const Run: CommandModule = {
       writeFileSync(join(args.out, 'bleak_results.json'), JSON.stringify(results));
       const resultsLog = TextReporter(results);
       writeFileSync(join(args.out, 'bleak_report.log'), resultsLog);
-      console.log(resultsLog);
       console.log(`Results can be found in ${args.out}`);
       await shutDown();
     }
