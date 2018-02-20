@@ -538,7 +538,7 @@ declare function importScripts(s: string): void;
       //function LOG(s: string) {
         // logToConsole(`${accessStr}: ${s}`);
       //}
-      obj.$$$PROXY$$$ = new Proxy(obj, {
+      Object.defineProperty(obj, '$$$PROXY$$$', { value: new Proxy(obj, {
         defineProperty: function(target, property, descriptor): boolean {
           if (!disableProxies) {
             // Capture a stack trace.
@@ -563,7 +563,7 @@ declare function importScripts(s: string): void;
           // LOG(`deleteProperty`);
           return Reflect.deleteProperty(target, property);
         }
-      });
+      }), enumerable: false, configurable: true, writable: true });
     }
     return obj.$$$PROXY$$$;
   }
