@@ -1,4 +1,4 @@
-# BLeak
+# <img src="icon.svg" alt="BLeak" style="height: 1em;" /> BLeak
 
 [![Build Status](https://travis-ci.org/plasma-umass/BLeak.svg?branch=master)](https://travis-ci.org/plasma-umass/BLeak)
 [![Build status](https://ci.appveyor.com/api/projects/status/b92sknh0pu38943q/branch/master?svg=true)](https://ci.appveyor.com/project/jvilk/bleak/branch/master)

@@ -98,7 +98,7 @@ export default class App extends React.Component<{}, AppState> {
     const rankEvalComplete = this.state.state === ViewState.DISPLAYING_FILE && isRankingEvaluationComplete(this.state.bleakResults);
     return <div>
       <nav className="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
-        <a className="navbar-brand" href="/">BLeak Results Viewer</a>
+        <a className="navbar-brand" href="/"><img src="icon.svg" className="icon" /> BLeak Results Viewer</a>
       </nav>
 
       <main role="main" className="container-fluid">
