@@ -1,12 +1,15 @@
 import {CommandModule} from 'yargs';
 import * as express from 'express';
 import {createServer} from 'http';
-import {resolve, join} from 'path';
+import {resolve, join, dirname} from 'path';
 import {existsSync, readFileSync} from 'fs';
 
 interface CommandLineArgs {
   port: number;
 }
+
+// Easiest way to get the folder of a Node module, wherever it may reside.
+const DEVTOOLS_FRONTEND_DIR = dirname(require.resolve('chrome-devtools-frontend/package.json'));
 
 function findPath(): string {
   let p = resolve(__dirname, '..');
@@ -45,6 +48,7 @@ const Viewer: CommandModule = {
   handler: (args: CommandLineArgs) => {
     const port = args.port;
     const app = express();
+    app.use('/chrome-devtools-frontend', express.static(DEVTOOLS_FRONTEND_DIR));
     app.use(express.static(findPath()));
     createServer(app).listen(port, function() {
       console.log(`Visit the viewer in your favorite web browser at http://localhost:${port}/ (CTRL+C to close)`);

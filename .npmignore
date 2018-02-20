@@ -7,3 +7,6 @@ tsconfig.node.json
 yarn.lock
 /bleak
 /benchmarks
+/test
+/scripts
+/html

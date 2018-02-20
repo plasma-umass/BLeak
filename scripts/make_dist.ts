@@ -72,7 +72,6 @@ async function main(): Promise<void> {
 			});
 			promises.push(copy(path.resolve('node_modules', 'd3', 'build', 'd3.min.js'), path.join(distFolder, 'viewer', 'd3.min.js')));
 			promises.push(copy(path.resolve('node_modules', 'react-treeview', 'react-treeview.css'), path.join(distFolder, 'viewer', 'react-treeview.css')));
-			promises.push(copyDir(path.resolve('node_modules', 'chrome-devtools-frontend'), path.join(distFolder, 'viewer', 'chrome-devtools-frontend')));
 
 			resolve(Promise.all(promises) as Promise<any>);
 		});
