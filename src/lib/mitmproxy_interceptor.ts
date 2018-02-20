@@ -13,6 +13,8 @@ function defaultRewrite(url: string, type: string, data: Buffer): Buffer {
 
 export const DEFAULT_AGENT_PATH = require.resolve('../lib/bleak_agent');
 export const DEFAULT_AGENT_URL = `/bleak_agent.js`;
+export const DEFAULT_AGENT_TRANSFORM_PATH = require.resolve('../lib/bleak_agent_transform');
+export const DEFAULT_AGENT_TRANSFORM_URL = `/bleak_agent_transform.js`;
 export const DEFAULT_BABEL_POLYFILL_URL = `/bleak_polyfill.js`;
 export const DEFAULT_BABEL_POLYFILL_PATH = require.resolve('babel-polyfill/dist/polyfill');
 
@@ -45,8 +47,8 @@ const DEFAULT_VALUES = {
  */
 export default function getInterceptor(config: InterceptorConfig): Interceptor {
   config = Object.assign({}, DEFAULT_VALUES, config);
-  const agentTransformURL = `${config.agentUrl.slice(0, -3)}_transform.js`;
-  const agentTransformPath = `${config.agentPath.slice(0, -3)}_transform.js`;
+  const agentTransformURL = DEFAULT_AGENT_TRANSFORM_URL;
+  const agentTransformPath = DEFAULT_AGENT_TRANSFORM_PATH;
   const parsedInjection = parseHTML(`<script type="text/javascript" src="${config.agentUrl}"></script>
   <script type="text/javascript" src="${agentTransformURL}"></script>
     <script type="text/javascript">

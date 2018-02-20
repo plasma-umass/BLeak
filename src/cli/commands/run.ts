@@ -6,7 +6,7 @@ import TextReporter from '../../lib/text_reporter';
 import {createGzip} from 'zlib';
 import ProgressProgressBar from '../../lib/progress_progress_bar';
 import {CommandModule} from 'yargs';
-import {DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL} from '../../lib/mitmproxy_interceptor';
+import {DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL} from '../../lib/mitmproxy_interceptor';
 
 interface CommandLineArgs {
   out: string;
@@ -55,7 +55,7 @@ const Run: CommandModule = {
     async function main() {
       const configFileSource = readFileSync(args.config).toString();
       writeFileSync(join(args.out, 'config.js'), configFileSource);
-      let chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, ['/eval', DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL], !args.debug);
+      let chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, ['/eval', DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL], !args.debug);
 
       let screenshotTimer: NodeJS.Timer | null = null;
       if (args['take-screenshots'] > -1) {
