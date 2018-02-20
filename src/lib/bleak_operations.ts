@@ -490,7 +490,7 @@ export class EvaluateRankingMetricsOperation extends CompositeOperation {
       const str = PathToString(results.leaks[leakId].paths[0]);
       const fixId = config.fixMap[str];
       if (fixId === undefined || fixId === null) {
-        throw new Error(`Unable to find leak ID for ${str}.`);
+        throw new Error(`Unable to find fix ID for ${str}.`);
       }
       return fixId;
     }
