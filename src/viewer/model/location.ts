@@ -12,15 +12,19 @@ export default class Location {
    * @param forOriginal If 'true', this location corresponds to a location in the original non-formatted file.
    */
   constructor(
-    public readonly file: SourceFile,
+    public readonly file: SourceFile | null,
     // 1-indexed line
     public readonly line: number,
     // 1-indexed column
     public readonly column: number,
     public readonly forOriginal: boolean) {}
 
+  public get url(): string {
+    return this.file ? this.file.url : "<anonymous>";
+  }
+
   public get key(): string {
-    return `${this.file.url}:${this.line}:${this.column}:${this.forOriginal}`;
+    return `${this.url}:${this.line}:${this.column}:${this.forOriginal}`;
   }
 
   /**
@@ -55,7 +59,7 @@ export default class Location {
    * file.
    */
   public getOriginalLocation(): Location {
-    if (this.forOriginal) {
+    if (this.forOriginal || !this.file) {
       return this;
     }
     return this.file.mapping.formattedToOriginal(this);

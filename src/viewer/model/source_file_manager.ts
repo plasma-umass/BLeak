@@ -42,8 +42,6 @@ export default class SourceFileManager {
     });
   }
 
-  private static _nullSourceFile = new SourceFile('<anonymous>', '', '', new FormatterSourceMapping([], [], {formatted:[], original:[]}))
-
   private _sourceFiles: {[url: string]: SourceFile} = Object.create(null);
 
   public addSourceFile(url: string, source: string, formattedSource: string, mapping: FormatterSourceMapping): void {
@@ -55,9 +53,6 @@ export default class SourceFileManager {
   }
 
   public getSourceFile(url: string): SourceFile {
-    if (url === null) {
-      return SourceFileManager._nullSourceFile;
-    }
     return this._sourceFiles[url];
   }
 }

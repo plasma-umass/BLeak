@@ -161,7 +161,7 @@ body {
 .leak_line {
   position: absolute;
   background-color: red;
-  z-index: 99;
+  z-index: 98;
 }
 
 .leak_line_selected {

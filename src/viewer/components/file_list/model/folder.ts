@@ -66,9 +66,18 @@ export default class Folder {
 
   /**
    * Returns true if this folder contains the given file.
-   * @param url
+   * @param file
    */
   public hasFile(file: SourceFile): boolean {
-    return this.files.indexOf(file) !== -1;
+    const hasFile = this.files.indexOf(file) !== -1;
+    if (hasFile) {
+      return hasFile;
+    }
+    for (const folder of this.folders) {
+      if (folder.hasFile(file)) {
+        return true;
+      }
+    }
+    return false;
   }
 }

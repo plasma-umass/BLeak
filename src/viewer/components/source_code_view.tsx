@@ -31,6 +31,42 @@ class EditorFileState {
   constructor(public location: Location, public prettyPrinted: boolean) {}
 }
 
+class CharStream {
+  private _source: AceAjax.Document = null;
+  private _lineText: string = null;
+  private _startLocation: Location = null;
+  private _line: number = -1;
+  private _column: number = -1;
+
+  public init(source: AceAjax.Document, location: Location): void {
+    this._source = source;
+    this._startLocation = location;
+    this._line = location.lineZeroIndexed;
+    this._column = location.columnZeroIndexed;
+    this._lineText = source.getLine(this._line);
+  }
+
+  public EOF(): boolean {
+    return this._line >= this._source.getLength();
+  }
+
+  public nextChar(): string {
+    this._column++;
+    if (this._column >= this._lineText.length) {
+      this._line++;
+      this._column = 0;
+      this._lineText = this._source.getLine(this._line);
+    }
+    return this._lineText[this._column];
+  }
+
+  public toRange(): AceAjax.Range {
+    return new Range(this._startLocation.lineZeroIndexed, this._startLocation.column, this._line, this._column + 1);
+  }
+}
+
+const CHAR_STREAM = new CharStream();
+
 export default class SourceCodeView extends React.Component<SourceCodeViewProps, SourceCodeViewState> {
   constructor(props: SourceCodeViewProps, context?: any) {
     super(props, context);
@@ -81,7 +117,6 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
     const session = editor.getSession();
     const frames = this.state.highlightedFrames;
 
-
     // Display annotations for file.
     const annotations = frames.map((f): AceAnnotation => {
       const ogLocation = f.getOriginalLocation();
@@ -103,22 +138,22 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
     }
 
     const doc = session.getDocument();
-    const file = this.state.openFile;
-    const fileSource = prettyPrint ? file.formattedSource : file.source;
 
     // Display markers.
     frames.forEach((f) => {
       const location = prettyPrint ? f.getFormattedLocation() : f.getOriginalLocation();
       const displayed = f.equal(editorState.location);
-      const index = doc.positionToIndex(location.toAceEditorLocation(), 0);
       let parensDeep = 0;
       let inString = false;
       let stringChar: string = null;
       let nextEscaped = false;
-      let end = index;
+      let onlyWhitespace = true;
+      CHAR_STREAM.init(doc, location);
+
+      // Hacky heuristic to figure out what to highlight.
       outerLoop:
-      for (end; end < fileSource.length; end++) {
-        const c = fileSource[end];
+      while (!CHAR_STREAM.EOF()) {
+        const c = CHAR_STREAM.nextChar();
         if (inString) {
           if (nextEscaped) {
             nextEscaped = false;
@@ -143,32 +178,36 @@ export default class SourceCodeView extends React.Component<SourceCodeViewProps,
           if (parensDeep === 0) {
             // Break outer loop.
             // We reached the end of a function call.
-            end++; // Include paren in highlight.
             break outerLoop;
           }
         } else {
           switch (c) {
             case '"':
             case "'":
+              onlyWhitespace = false;
               inString = true;
               stringChar = c;
               break;
             case '(':
+              onlyWhitespace = false;
               parensDeep = 1;
               break;
             case ';':
             case ',':
             case ':':
+              onlyWhitespace = false;
+              // FALL-THRU!
             case '\r':
             case '\n':
               // End of statement.
-              break outerLoop;
+              if (!onlyWhitespace) {
+                break outerLoop;
+              }
+              break;
           }
         }
       }
-      const endPos = doc.indexToPosition(end, 0);
-      const range: AceAjax.Range = new Range(location.lineZeroIndexed, location.column, endPos.row, endPos.column);
-      session.addMarker(range, displayed ? 'leak_line_selected' : 'leak_line', 'someType', false);
+      session.addMarker(CHAR_STREAM.toRange(), displayed ? 'leak_line_selected' : 'leak_line', 'someType', false);
     });
   }
 

@@ -17,14 +17,16 @@ function formatUrl(url: string): string {
   }
 }
 
+function nop() {}
+
 export default function StackFrameComponent(p: StackFrameComponentProps) {
   const f = p.frame;
-  const url = formatUrl(f.file.url);
+  const url = formatUrl(f.url);
   const line = f.line;
   const col = f.column;
   const location = p.selectedLocation;
   const selected = location.file === f.file && location.line === line && location.column === col;
-  return <button type="button" className={"list-group-item list-group-item-action" + (selected ? " selected" : "")} onClick={p.onStackFrameSelect.bind(null, p.frame)}>
+  return <button type="button" className={"list-group-item list-group-item-action" + (selected ? " selected" : "")} onClick={p.frame.file ? p.onStackFrameSelect.bind(null, p.frame) : nop}>
     <span className="stack-frame"><span>{f.name}</span> <span>{url}</span><span>:{line}:{col}</span></span>
   </button>;
 }
