@@ -1,7 +1,8 @@
-# <img src="html/favicon.svg" alt="BLeak" height="24px" /> BLeak
+# <img src="html/favicon.svg" alt="BLeak" height="24px" /> BLeak v1.0.0
 
 [![Build Status](https://travis-ci.org/plasma-umass/BLeak.svg?branch=master)](https://travis-ci.org/plasma-umass/BLeak)
 [![Build status](https://ci.appveyor.com/api/projects/status/b92sknh0pu38943q/branch/master?svg=true)](https://ci.appveyor.com/project/jvilk/bleak/branch/master)
+[![npm version](https://badge.fury.io/js/bleak-detector.svg)](https://www.npmjs.com/package/bleak-detector)
 
 BLeak automatically finds, ranks, and diagnoses memory leaks in the client-side of web applications.
 
