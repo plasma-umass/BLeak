@@ -1,4 +1,4 @@
-# <img src="html/favicon.svg" alt="BLeak" height="24px" /> BLeak v1.0.0
+# <img src="https://raw.githubusercontent.com/plasma-umass/BLeak/master/html/favicon.svg" alt="BLeak" height="24px" /> BLeak v1.0.0
 
 [![Build Status](https://travis-ci.org/plasma-umass/BLeak.svg?branch=master)](https://travis-ci.org/plasma-umass/BLeak)
 [![Build status](https://ci.appveyor.com/api/projects/status/b92sknh0pu38943q/branch/master?svg=true)](https://ci.appveyor.com/project/jvilk/bleak/branch/master)
