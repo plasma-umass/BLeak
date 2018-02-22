@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-require('./build/node/src/cli/bleak.js');
+require('./dist/node/cli/bleak.js');
