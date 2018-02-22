@@ -60,7 +60,7 @@ const EvaluateMetrics: CommandModule = {
       height = parseInt(chromeSize[2], 10);
     }
     const progressBar = new ProgressProgressBar(args.debug);
-    const chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height);
+    const chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, [], !args.debug);
     const configFileSource = readFileSync(args.config).toString();
     const results = BLeakResults.FromJSON(JSON.parse(readFileSync(args.results, 'utf8')));
 

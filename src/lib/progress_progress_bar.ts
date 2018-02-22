@@ -37,19 +37,27 @@ export default class ProgressProgressBar implements IProgressBar {
     });
   }
   public debug(data: string): void {
-    if (this._bar && this._debug) {
-      this._bar.interrupt(`[DEBUG] ${data}`);
+    if (this._debug) {
+      if (this._bar) {
+        this._bar.interrupt(`[DEBUG] ${data}`);
+      } else {
+        console.debug(data);
+      }
     }
   }
   public log(data: string): void {
     if (this._bar) {
       this._bar.interrupt(data);
+    } else {
+      console.log(data);
     }
   }
   public error(data: string): void {
     if (this._bar) {
       // TODO: Red.
       this._bar.interrupt(data);
+    } else {
+      console.error(data);
     }
   }
 }
