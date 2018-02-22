@@ -4,7 +4,7 @@ import {OneBitArray, TwoBitArray} from '../common/util';
 import LeakRoot from './leak_root';
 
 /**
- * Represents a link in a heap path. Specified as a simple class to make it quick to consturct and JSONable.
+ * Represents a link in a heap path. Specified as a simple class to make it quick to construct and JSONable.
  * TODO: Better terminology?
  */
 class PathSegment implements IPathSegment {

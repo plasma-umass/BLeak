@@ -21,7 +21,12 @@ function getLine(name: string, sss: SnapshotSizeSummary[][]): Line {
   for (let i = 0; i < numDataPoints; i++) {
     const values = sss.map((ss) => ss[i].totalSize / BYTES_PER_MB);
     rv.value.push(mean(values));
-    rv.se.push(deviation(values) / Math.sqrt(values.length));
+    if (values.length > 1) {
+      rv.se.push(deviation(values) / Math.sqrt(values.length));
+    }
+  }
+  if (rv.se.length === 0) {
+    rv.se = undefined;
   }
   return rv;
 }
@@ -77,14 +82,14 @@ export function isRankingEvaluationComplete(results: BLeakResults): boolean {
 
 interface HeapGrowthGraphState {
   averageGrowth: number;
-  averageGrowthSe: number;
+  averageGrowthSe?: number;
   growthReduction: number;
-  growthReductionSe: number;
+  growthReductionSe?: number;
   growthReductionPercent: number;
-  growthReductionPercentSe: number;
+  growthReductionPercentSe?: number;
 }
 
-export function averageGrowth(data: SnapshotSizeSummary[][]): { mean: number, se: number } {
+export function averageGrowth(data: SnapshotSizeSummary[][]): { mean: number, se?: number } {
   // HS => Growth
   const growthData = data.map((d, i) => d.slice(1).map((d, j) => (d.totalSize - data[i][j].totalSize) / BYTES_PER_MB));
   // Growth => Avg Growth
@@ -93,24 +98,38 @@ export function averageGrowth(data: SnapshotSizeSummary[][]): { mean: number, se
   for (let i = 0; i < iterations; i++) {
     avgGrowths.push(mean(growthData.map((d) => d[i])));
   }
+  const se = deviation(avgGrowths.slice(4)) / Math.sqrt(avgGrowths.length - 4);
+  const meanData = mean(avgGrowths.slice(4));
+  if (isNaN(se)) {
+    return {
+      mean: meanData
+    };
+  }
   return {
-    mean: mean(avgGrowths.slice(4)),
-    se: deviation(avgGrowths.slice(4)) / Math.sqrt(avgGrowths.length - 4)
+    mean: meanData,
+    se
   };
 }
 
-export function averageGrowthReduction(avgGrowthNoFixed: { mean: number, se: number}, allFixed: SnapshotSizeSummary[][]): { mean: number, se: number, percent: number, percentSe: number } {
+export function averageGrowthReduction(avgGrowthNoFixed: { mean: number, se?: number}, allFixed: SnapshotSizeSummary[][]): { mean: number, se?: number, percent: number, percentSe?: number } {
   const avgGrowthAllFixed = averageGrowth(allFixed);
   const growthReduction = avgGrowthNoFixed.mean - avgGrowthAllFixed.mean;
-  const growthReductionSe = Math.sqrt(Math.pow(avgGrowthAllFixed.se, 2) + Math.pow(avgGrowthNoFixed.se, 2));
   const percent = 100 * (growthReduction / avgGrowthNoFixed.mean);
-  const percentSe = 100 * Math.abs((avgGrowthNoFixed.mean - avgGrowthAllFixed.mean) / avgGrowthNoFixed.mean) * Math.sqrt(Math.pow(growthReductionSe / growthReduction, 2) + Math.pow(avgGrowthNoFixed.se / avgGrowthNoFixed.mean, 2));
-  return {
-    mean: growthReduction,
-    se: growthReductionSe,
-    percent,
-    percentSe
-  };
+  if (avgGrowthNoFixed.se !== undefined) {
+    const growthReductionSe = Math.sqrt(Math.pow(avgGrowthAllFixed.se, 2) + Math.pow(avgGrowthNoFixed.se, 2));
+    const percentSe = 100 * Math.abs((avgGrowthNoFixed.mean - avgGrowthAllFixed.mean) / avgGrowthNoFixed.mean) * Math.sqrt(Math.pow(growthReductionSe / growthReduction, 2) + Math.pow(avgGrowthNoFixed.se / avgGrowthNoFixed.mean, 2));
+    return {
+      mean: growthReduction,
+      se: growthReductionSe,
+      percent,
+      percentSe
+    };
+  } else {
+    return {
+      mean: growthReduction,
+      percent
+    };
+  }
 }
 
 // TODO: Support toggling different size stats, not just totalSize.
@@ -377,7 +396,7 @@ export default class HeapGrowthGraph extends React.Component<HeapGrowthGraphProp
         <div key="heap_stats">
           <b>Average Growth:</b> {this._presentStat(this.state.averageGrowth, 'MB / round trip', this.state.averageGrowthSe)} <br />
           {this.state.growthReduction ? <span><b>Growth Reduction:</b> {this._presentStat(this.state.growthReductionPercent, '%', this.state.growthReductionPercentSe)} ({this._presentStat(this.state.growthReduction, 'MB / round trip', this.state.growthReductionSe)})<br /></span> : ''}
-          (The above stats ignore the impact of first 5 heap snapshots, which are typically noisy due to applicaton startup + JavaScript engine warmup)
+          (The above stats ignore the impact of first 5 heap snapshots, which are typically noisy due to application startup + JavaScript engine warmup)
         </div>
       : ''}
       <div ref="d3_div" className="heap-growth-graph">

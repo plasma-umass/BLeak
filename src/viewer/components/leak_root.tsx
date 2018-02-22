@@ -55,6 +55,9 @@ export default class LeakRootComponent extends React.Component<LeakRootComponent
               </div>;
             })}
           </div>
+          <div className={lr.stacks.length == 0 ? "" : "hidden"}>
+            <b>No stack traces recorded!</b> This could indicate a bug in BLeak. If your application is publicly available, please file a bug report <a href="https://github.com/plasma-umass/bleak">on GitHub</a> with your configuration file so we can look into the problem.
+          </div>
         </div>
       </div>
     </div>;
