@@ -47,7 +47,7 @@ export default class App extends React.Component<{}, AppState> {
     if (files.length > 0) {
       this.setState({
         state: ViewState.PROCESSING_FILE,
-        progress: 0,
+        progress: 10,
         progressMessage: "Reading in file...",
         errorMessage: null
       });
@@ -57,7 +57,7 @@ export default class App extends React.Component<{}, AppState> {
         try {
           const bleakResults = BLeakResults.FromJSON(JSON.parse((e.target as FileReader).result as string));
           const sourceFileManager = await SourceFileManager.FromBLeakResults(bleakResults, (completed, total) => {
-            const percent = (completed / total) * 100;
+            const percent = 10 + (completed / total) * 90;
             this.setState({
               progress: percent,
               progressMessage: `${completed} of ${total} source files formatted...`
@@ -109,18 +109,18 @@ export default class App extends React.Component<{}, AppState> {
             <p className="lead">Upload bleak_results.json from a BLeak run to view the results.</p>
             <hr className="my-4" />
             <form className={"needs-validation" + (this.state.errorMessage ? " was-validated" : "")}>
-              <div className="form-group">
-                <input ref="file_select" disabled={this.state.state === ViewState.PROCESSING_FILE} type="file" className={"form-control form-control-file" + (this.state.errorMessage ? " is-invalid" : "")} id="bleakResultsUpload" accept=".json" />
-                <div className="invalid-feedback">{this.state.errorMessage}</div>
-              </div>
+              {this.state.state === ViewState.PROCESSING_FILE ?
+                <div className="progress" key="bleakProgress">
+                  <div className="progress-bar" role="progressbar" style={{width: `${this.state.progress.toFixed(0)}%` }} aria-valuenow={this.state.progress} aria-valuemin={0} aria-valuemax={100}>{this.state.progressMessage}</div>
+                </div> :
+                <div key="bleakUploadForm" className="form-group">
+                  <input ref="file_select" type="file" className={"form-control form-control-file" + (this.state.errorMessage ? " is-invalid" : "")} id="bleakResultsUpload" accept=".json" />
+                  <div className="invalid-feedback">{this.state.errorMessage}</div>
+                </div>}
             </form>
             <p className="lead">
               <button type="submit" className="btn btn-primary" disabled={this.state.state === ViewState.PROCESSING_FILE} onClick={this._onFileSelect.bind(this)}>Submit</button>
             </p>
-            {this.state.state === ViewState.PROCESSING_FILE ?
-              <div className="progress" key="bleakProgress">
-                <div className="progress-bar" role="progressbar" style={{width: `${this.state.progress.toFixed(0)}%` }} aria-valuenow={this.state.progress} aria-valuemin={0} aria-valuemax={100}>{this.state.progressMessage}</div>
-              </div> : ''}
           </div>
         : ''}
         {this.state.state === ViewState.DISPLAYING_FILE ? <div key="bleakResults">
