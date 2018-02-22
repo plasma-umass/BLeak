@@ -23,7 +23,14 @@ export default class GrowthReductionTable extends React.Component<GrowthReductio
       retainedSize: null,
       transitiveClosureSize: null
     };
-    const zeroPoint = averageGrowth(rankEval.leakShare[0]).mean;
+    // Check if zero point is same or different across rankings.
+    // Hack for legacy airbnb data.
+    let zeroPointData = rankEval.leakShare[0];
+    if (zeroPointData[0][0].totalSize !== rankEval.retainedSize[0][0][0].totalSize) {
+      // Different data, so can use.
+      zeroPointData = [].concat(rankEval.leakShare[0], rankEval.retainedSize[0], rankEval.transitiveClosureSize[0]);
+    }
+    const zeroPoint = averageGrowth(zeroPointData).mean;
     rankings.forEach((ranking) => {
       state[ranking] = qs.map((q) => (zeroPoint - averageGrowth(rankEval[ranking][q]).mean) * 1024);
     });

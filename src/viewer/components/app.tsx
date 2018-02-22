@@ -7,6 +7,7 @@ import SourceFileManager from '../model/source_file_manager';
 import Location from '../model/location';
 import StackTraceManager from '../model/stack_trace_manager';
 import GrowthReductionTable from './growth_reduction_table';
+import GrowthReductionGraph from './growth_reduction_graph';
 
 const enum ViewState {
   WAIT_FOR_FILE,
@@ -130,6 +131,7 @@ export default class App extends React.Component<{}, AppState> {
             </div>
             {rankEvalComplete ? <div key="rankingEvalTable" className="col-sm-5">
               <h3>Growth Reduction for Top Leaks Fixed</h3>
+              <GrowthReductionGraph bleakResults={this.state.bleakResults} />
               <GrowthReductionTable bleakResults={this.state.bleakResults} />
             </div> : ''}
           </div>

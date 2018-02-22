@@ -78,7 +78,7 @@ async function main(): Promise<void> {
 	});
 }
 
-const WATCH_GRANULARITY = 500;
+const WATCH_GRANULARITY = 2000;
 function watch(): void {
 	let lastChangeTimestamp = 0;
 	let isBuilding = false;

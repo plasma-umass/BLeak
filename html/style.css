@@ -16,7 +16,7 @@ body {
 }
 
 
-.plot path, .plot line, line.plot_0, line.plot_1 {
+.plot path, .plot line, line.plot_0, line.plot_1, line.plot_2 {
   fill: none;
   stroke: black;
   stroke-width: 2px;
@@ -24,6 +24,11 @@ body {
 
 .plot_1 line.line, .plot_1 path, line.plot_1 {
   stroke-dasharray: 5,5;
+}
+
+.plot_2 line.line, .plot_2 path, line.plot_2 {
+  stroke-linecap: round;
+  stroke-dasharray: 1,5;
 }
 
 /* Tooltips displayed on points */
