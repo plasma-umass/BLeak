@@ -4,6 +4,7 @@ import ChromeDriver from '../../lib/chrome_driver';
 import ProgressProgressBar from '../../lib/progress_progress_bar';
 import {readFileSync, writeFileSync} from 'fs';
 import BLeakResults from '../../lib/bleak_results';
+import {DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL} from '../../lib/mitmproxy_interceptor';
 
 interface CommandLineArgs {
   config: string;
@@ -60,7 +61,7 @@ const EvaluateMetrics: CommandModule = {
       height = parseInt(chromeSize[2], 10);
     }
     const progressBar = new ProgressProgressBar(args.debug);
-    const chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, [], !args.debug);
+    const chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, [DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL], !args.debug);
     const configFileSource = readFileSync(args.config).toString();
     const results = BLeakResults.FromJSON(JSON.parse(readFileSync(args.results, 'utf8')));
 
