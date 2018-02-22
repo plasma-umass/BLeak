@@ -1,0 +1,56 @@
+{
+    "extensions": [
+        {
+            "type": "@SourceFrame.LineDecorator",
+            "className": "PerfUI.LineLevelProfile.LineDecorator",
+            "decoratorType": "performance"
+        },
+        {
+            "type": "setting",
+            "category": "Performance",
+            "title": "Flamechart mouse wheel action:",
+            "settingName": "flamechartMouseWheelAction",
+            "settingType": "enum",
+            "defaultValue": "zoom",
+            "options": [
+                {
+                    "title": "Scroll",
+                    "text": "Scroll",
+                    "value": "scroll"
+                },
+                {
+                    "title": "Zoom",
+                    "text": "Zoom",
+                    "value": "zoom"
+                }
+            ]
+        }
+    ],
+    "dependencies": [
+        "ui",
+        "sdk",
+        "bindings",
+        "source_frame",
+        "text_editor"
+    ],
+    "scripts": [
+        "LineLevelProfile.js",
+        "FilmStripView.js",
+        "ChartViewport.js",
+        "FlameChart.js",
+        "NetworkPriorities.js",
+        "OverviewGrid.js",
+        "PieChart.js",
+        "TimelineGrid.js",
+        "TimelineOverviewPane.js"
+    ],
+    "resources": [
+        "chartViewport.css",
+        "filmStripView.css",
+        "flameChart.css",
+        "overviewGrid.css",
+        "pieChart.css",
+        "timelineGrid.css",
+        "timelineOverviewInfo.css"
+    ]
+}

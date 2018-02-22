@@ -1,0 +1,21 @@
+/*
+ * Copyright 2017 The Chromium Authors. All rights reserved.
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file.
+ */
+
+.overview-info:not(:empty) {
+    display: flex;
+    background: white;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.1);
+    padding: 3px;
+}
+
+.overview-info .frame .time {
+    display: none;
+}
+
+.overview-info .frame .thumbnail img {
+    max-width: 50vw;
+    max-height: 50vh;
+}

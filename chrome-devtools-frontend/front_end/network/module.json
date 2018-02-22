@@ -1,0 +1,165 @@
+{
+    "extensions": [
+        {
+            "type": "view",
+            "location": "panel",
+            "id": "network",
+            "title": "Network",
+            "order": 40,
+            "className": "Network.NetworkPanel"
+        },
+        {
+            "type": "@UI.ContextMenu.Provider",
+            "contextTypes": [
+                "SDK.NetworkRequest",
+                "SDK.Resource",
+                "Workspace.UISourceCode"
+            ],
+            "className": "Network.NetworkPanel.ContextMenuProvider"
+        },
+        {
+            "type": "@Common.Revealer",
+            "contextTypes": [
+                "SDK.NetworkRequest"
+            ],
+            "className": "Network.NetworkPanel.RequestRevealer"
+        },
+        {
+            "type": "setting",
+            "category": "Network",
+            "title": "Color-code resource types",
+            "settingName": "networkColorCodeResourceTypes",
+            "settingType": "boolean",
+            "defaultValue": false,
+            "tags": "color code, resource type",
+            "options": [
+                {
+                    "value": true,
+                    "title": "Color code by resource type"
+                },
+                {
+                    "value": false,
+                    "title": "Use default colors"
+                }
+            ]
+        },
+        {
+            "type": "setting",
+            "category": "Network",
+            "title": "Group network log by frame",
+            "settingName": "network.group-by-frame",
+            "settingType": "boolean",
+            "defaultValue": false,
+            "tags": "network, frame, group",
+            "options": [
+                {
+                    "value": true,
+                    "title": "Group network log items by frame"
+                },
+                {
+                    "value": false,
+                    "title": "Don't group network log items by frame"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "network.toggle-recording",
+            "iconClass": "largeicon-start-recording",
+            "toggledIconClass": "largeicon-stop-recording",
+            "toggleWithRedColor": true,
+            "contextTypes": [
+                "Network.NetworkPanel"
+            ],
+            "className": "Network.NetworkPanel.RecordActionDelegate",
+            "options": [
+                {
+                    "value": true,
+                    "title": "Record network log"
+                },
+                {
+                    "value": false,
+                    "title": "Stop recording network log"
+                }
+            ],
+            "bindings": [
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "Ctrl+E"
+                },
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+E"
+                }
+            ]
+        },
+        {
+            "type": "view",
+            "location": "drawer-view",
+            "id": "network.blocked-urls",
+            "title": "Request blocking",
+            "persistence": "closeable",
+            "order": 60,
+            "className": "Network.BlockedURLsPane"
+        },
+        {
+            "type": "view",
+            "location": "drawer-view",
+            "id": "network.config",
+            "title": "Network conditions",
+            "persistence": "closeable",
+            "order": 40,
+            "className": "Network.NetworkConfigView",
+            "tags": "disk cache, network throttling, useragent, user agent"
+        }
+    ],
+    "dependencies": [
+        "source_frame",
+        "components",
+        "perf_ui",
+        "cookie_table",
+        "data_grid",
+        "network_log",
+        "product_registry",
+        "mobile_throttling",
+        "har_importer",
+        "persistence"
+    ],
+    "scripts": [
+        "BlockedURLsPane.js",
+        "EventSourceMessagesView.js",
+        "HARWriter.js",
+        "NetworkConfigView.js",
+        "NetworkDataGridNode.js",
+        "NetworkItemView.js",
+        "NetworkTimeCalculator.js",
+        "NetworkLogView.js",
+        "NetworkLogViewColumns.js",
+        "NetworkFrameGrouper.js",
+        "NetworkManageCustomHeadersView.js",
+        "NetworkOverview.js",
+        "NetworkWaterfallColumn.js",
+        "RequestCookiesView.js",
+        "RequestHeadersView.js",
+        "RequestHTMLView.js",
+        "RequestResponseView.js",
+        "RequestPreviewView.js",
+        "RequestTimingView.js",
+        "ResourceWebSocketFrameView.js",
+        "NetworkPanel.js"
+    ],
+    "resources": [
+        "blockedURLsPane.css",
+        "eventSourceMessagesView.css",
+        "networkConfigView.css",
+        "networkLogView.css",
+        "networkManageCustomHeadersView.css",
+        "networkPanel.css",
+        "networkTimingTable.css",
+        "networkWaterfallColumn.css",
+        "requestCookiesView.css",
+        "requestHeadersTree.css",
+        "requestHeadersView.css",
+        "webSocketFrameView.css"
+    ]
+}

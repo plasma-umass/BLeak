@@ -1,0 +1,34 @@
+{
+    "extensions": [
+        {
+            "type": "view",
+            "location": "panel",
+            "id": "audits2",
+            "title": "Audits",
+            "order": 90,
+            "className": "Audits2.Audits2Panel"
+        }
+    ],
+    "dependencies": [
+        "components",
+        "emulation",
+        "sdk",
+        "services",
+        "ui"
+    ],
+    "scripts": [
+        "lighthouse/renderer/util.js",
+        "lighthouse/renderer/dom.js",
+        "lighthouse/renderer/category-renderer.js",
+        "lighthouse/renderer/details-renderer.js",
+        "lighthouse/renderer/crc-details-renderer.js",
+        "lighthouse/renderer/report-renderer.js",
+        "Audits2Panel.js"
+    ],
+    "resources": [
+        "audits2Dialog.css",
+        "audits2Panel.css",
+        "lighthouse/report-styles.css",
+        "lighthouse/templates.html"
+    ]
+}
