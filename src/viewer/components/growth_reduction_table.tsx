@@ -37,7 +37,26 @@ export default class GrowthReductionTable extends React.Component<GrowthReductio
     this.setState(state);
   }
   public render() {
-    return <table className="table">
+    const top = [0,1,2].map((i) => Math.max(this.state.leakShare[i], this.state.retainedSize[i], this.state.transitiveClosureSize[i]));
+    function withinOnePercent(a: number, b: number): boolean {
+      // Handle case where a is negative.
+      return (a + Math.abs(0.01 * a)) >= b;
+    }
+    const state = this.state;
+    function cell(metric: 'leakShare' | 'retainedSize' | 'transitiveClosureSize', i: number) {
+      return <td style={ withinOnePercent(state[metric][i], top[i]) ? { fontWeight: 'bold' } : {} }>{state[metric][i].toFixed(2)} KB</td>;
+    }
+
+    function row(metric: 'leakShare' | 'retainedSize' | 'transitiveClosureSize', title: string) {
+      return <tr>
+        <th scope="row">{title}</th>
+        {cell(metric, 0)}
+        {cell(metric, 1)}
+        {cell(metric, 2)}
+      </tr>;
+    }
+
+    return <div><table className="table">
       <thead>
         <tr>
           <th scope="col">Metric</th>
@@ -47,25 +66,10 @@ export default class GrowthReductionTable extends React.Component<GrowthReductio
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <th scope="row">LeakShare</th>
-          <td>{this.state.leakShare[0].toFixed(2)} KB</td>
-          <td>{this.state.leakShare[1].toFixed(2)} KB</td>
-          <td>{this.state.leakShare[2].toFixed(2)} KB</td>
-        </tr>
-        <tr>
-          <th scope="row">Retained Size</th>
-          <td>{this.state.retainedSize[0].toFixed(2)} KB</td>
-          <td>{this.state.retainedSize[1].toFixed(2)} KB</td>
-          <td>{this.state.retainedSize[2].toFixed(2)} KB</td>
-        </tr>
-        <tr>
-          <th scope="row">Transitive Closure Size</th>
-          <td>{this.state.transitiveClosureSize[0].toFixed(2)} KB</td>
-          <td>{this.state.transitiveClosureSize[1].toFixed(2)} KB</td>
-          <td>{this.state.transitiveClosureSize[2].toFixed(2)} KB</td>
-        </tr>
+        {row('leakShare', 'LeakShare')}
+        {row('retainedSize', 'Retained Size')}
+        {row('transitiveClosureSize', 'Transitive Closure Size')}
       </tbody>
-    </table>
+    </table><p><b>Bold</b> indicates greatest reduction (±1%).</p></div>
   }
 }

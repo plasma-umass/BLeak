@@ -122,7 +122,7 @@ export default class GrowthReductionGraph extends React.Component<GrowthReductio
 
     const svg = d3Select(d3div).append<SVGElement>("svg");
     const svgStyle = getComputedStyle(svg.node());
-    const margins = {left: 95, right: 20, top: 10, bottom: 35};
+    const margins = {left: 65, right: 20, top: 10, bottom: 35};
     const svgHeight = parseFloat(svgStyle.height);
     const svgWidth = parseFloat(svgStyle.width);
     const radius = 3;
@@ -300,11 +300,11 @@ export default class GrowthReductionGraph extends React.Component<GrowthReductio
     g.append('text')
       .attr('class', 'ytitle')
       .attr('x', -1 * (plotHeight >> 1)) // x and y are flipped because of rotation
-      .attr('y', -50) // Approximate width of y-axis
+      .attr('y', -60) // Approximate width of y-axis
       .attr('transform', 'rotate(-90)')
       .style('text-anchor', 'middle')
       .style('alignment-baseline', 'central')
-      .text('Growth Reduction Over Base Case');
+      .text('Growth Reduction');
 
 
     if (lines.length > 1) {
