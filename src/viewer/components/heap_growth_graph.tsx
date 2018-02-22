@@ -337,7 +337,7 @@ export default class HeapGrowthGraph extends React.Component<HeapGrowthGraphProp
     g.append('text')
       .attr('class', 'ytitle')
       .attr('x', -1 * (plotHeight >> 1)) // x and y are flipped because of rotation
-      .attr('y', -60) // Approximate width of y-axis
+      .attr('y', -68) // Approximate width of y-axis
       .attr('transform', 'rotate(-90)')
       .style('text-anchor', 'middle')
       .style('alignment-baseline', 'central')
