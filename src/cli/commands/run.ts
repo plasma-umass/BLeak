@@ -7,6 +7,7 @@ import {createGzip} from 'zlib';
 import ProgressProgressBar from '../../lib/progress_progress_bar';
 import {CommandModule} from 'yargs';
 import {DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL} from '../../lib/mitmproxy_interceptor';
+import BLeakResults from '../../lib/bleak_results';
 
 interface CommandLineArgs {
   out: string;
@@ -54,6 +55,16 @@ const Run: CommandModule = {
 
     async function main() {
       const configFileSource = readFileSync(args.config).toString();
+      const bleakResultsOutput = join(args.out, 'bleak_results.json');
+      let bleakResults: BLeakResults | null;
+      if (existsSync(bleakResultsOutput)) {
+        console.log(`Resuming using data from ${bleakResultsOutput}`);
+        try {
+          bleakResults = BLeakResults.FromJSON(JSON.parse(readFileSync(bleakResultsOutput, { encoding: 'utf8 '})));
+        } catch (e) {
+          throw new Error(`File at ${bleakResultsOutput} exists, but is not a valid BLeak results file: ${e}`);
+        }
+      }
       writeFileSync(join(args.out, 'config.js'), configFileSource);
       let chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, ['/eval', DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL], !args.debug);
 
@@ -102,8 +113,8 @@ const Run: CommandModule = {
           };
         }
         return Promise.resolve();
-      });
-      writeFileSync(join(args.out, 'bleak_results.json'), JSON.stringify(results));
+      }, bleakResults);
+      writeFileSync(bleakResultsOutput, JSON.stringify(results));
       const resultsLog = TextReporter(results);
       writeFileSync(join(args.out, 'bleak_report.log'), resultsLog);
       console.log(`Results can be found in ${args.out}`);

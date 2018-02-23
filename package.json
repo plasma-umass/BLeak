@@ -20,7 +20,9 @@
     "run:benchmark": "node --max-old-space-size=8192 build/node/benchmarks/benchmark.js",
     "make_dist": "node build/node/scripts/make_dist.js",
     "make_dist:watch": "node build/node/scripts/make_dist.js --watch",
-    "prepare": "npm-run-all build"
+    "prepare": "npm-run-all build",
+    "test:travis": "npm-run-all -s test coveralls",
+    "coveralls": "nyc report --reporter=text-lcov | ./node_modules/.bin/coveralls"
   },
   "repository": {
     "type": "git",
@@ -61,6 +63,7 @@
     "@types/yargs": "~11.0.0",
     "benchmark": "^2.1.4",
     "brace": "^0.11.0",
+    "coveralls": "^3.0.0",
     "d3": "^4.13.0",
     "microtime": "^2.1.6",
     "mocha": "^3.2.0",

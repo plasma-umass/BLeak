@@ -16,9 +16,9 @@ export class BLeakDetector {
    * @param progressBar A progress bar, to which BLeak will print information about its progress.
    * @param driver The Chrome driver.
    */
-  public static async FindLeaks(configSource: string, progressBar: IProgressBar, driver: ChromeDriver, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb): Promise<BLeakResults> {
+  public static async FindLeaks(configSource: string, progressBar: IProgressBar, driver: ChromeDriver, snapshotCb: (sn: HeapSnapshotParser) => Promise<void> = defaultSnapshotCb, bleakResults?: BLeakResults): Promise<BLeakResults> {
     const detector = new BLeakDetector(driver, progressBar, configSource, snapshotCb);
-    return detector.findAndDiagnoseLeaks();
+    return detector.findAndDiagnoseLeaks(bleakResults);
   }
 
   /**
@@ -54,10 +54,13 @@ export class BLeakDetector {
    * Locates memory leaks on the page and diagnoses them. This is the end-to-end
    * BLeak algorithm.
    */
-  public async findAndDiagnoseLeaks(): Promise<BLeakResults> {
+  public async findAndDiagnoseLeaks(bleakResults?: BLeakResults): Promise<BLeakResults> {
     const op = new FindAndDiagnoseLeaks(this._config, this._snapshotCb);
     this._progressBar.setOperationCount(op.size());
     const os = new OperationState(this._driver, this._progressBar, this._config);
+    if (bleakResults) {
+      os.results = bleakResults;
+    }
     await op.run(os);
     return os.results;
   }

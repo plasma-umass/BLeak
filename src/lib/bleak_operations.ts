@@ -314,6 +314,10 @@ class FindLeaks extends CompositeOperation {
 
   public get description() { return 'Locating leaks'; }
 
+  public skip(opSt: OperationState): boolean {
+    return !!opSt.results;
+  }
+
   protected async _run(opSt: OperationState): Promise<void> {
     await super._run(opSt);
     opSt.results = new BLeakResults(this._growthTracker.findLeakPaths(), undefined, undefined, this._heapSnapshotSizeStats);

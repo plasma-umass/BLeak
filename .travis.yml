@@ -41,4 +41,4 @@ install:
   - pip install mitmproxy
   - yarn install
 script:
-  - yarn test
+  - yarn run test:travis
