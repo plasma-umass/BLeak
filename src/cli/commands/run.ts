@@ -60,7 +60,7 @@ const Run: CommandModule = {
       if (existsSync(bleakResultsOutput)) {
         console.log(`Resuming using data from ${bleakResultsOutput}`);
         try {
-          bleakResults = BLeakResults.FromJSON(JSON.parse(readFileSync(bleakResultsOutput, { encoding: 'utf8 '})));
+          bleakResults = BLeakResults.FromJSON(JSON.parse(readFileSync(bleakResultsOutput).toString()));
         } catch (e) {
           throw new Error(`File at ${bleakResultsOutput} exists, but is not a valid BLeak results file: ${e}`);
         }
@@ -99,7 +99,7 @@ const Run: CommandModule = {
         shutDown();
       });
       let i = 0;
-      const results = await BLeak.FindLeaks(configFileSource, progressBar, chromeDriver, (sn) => {
+      BLeak.FindLeaks(configFileSource, progressBar, chromeDriver, (sn) => {
         if (args.snapshot) {
           const str = createWriteStream(join(args.out, 'snapshots', 'leak_detection', `snapshot_${i}.heapsnapshot.gz`));
           i++;
@@ -113,12 +113,16 @@ const Run: CommandModule = {
           };
         }
         return Promise.resolve();
-      }, bleakResults);
-      writeFileSync(bleakResultsOutput, JSON.stringify(results));
-      const resultsLog = TextReporter(results);
-      writeFileSync(join(args.out, 'bleak_report.log'), resultsLog);
-      console.log(`Results can be found in ${args.out}`);
-      await shutDown();
+      }, bleakResults).then((results) => {
+        writeFileSync(bleakResultsOutput, JSON.stringify(results));
+        const resultsLog = TextReporter(results);
+        writeFileSync(join(args.out, 'bleak_report.log'), resultsLog);
+        console.log(`Results can be found in ${args.out}`);
+        return shutDown();
+      }).catch((e) => {
+        progressBar.error(`${e}`);
+        return shutDown();
+      });
     }
 
     main();

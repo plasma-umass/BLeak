@@ -61,7 +61,7 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: nu
         chromePath = childProcess.execSync(`which chromium`).toString().trim();
       }
       if (chromePath === "") {
-        throw new Error(`Unable to find a Google Chrome or Chromium installation.`)
+        return Promise.reject(`Unable to find a Google Chrome or Chromium installation.`)
       }
       return session.spawnBrowser("exact", Object.assign({
         executablePath: chromePath
@@ -81,11 +81,11 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: nu
           }, baseOptions));
         } catch (e) {}
       }
-      throw new Error(`Unable to find a Chrome installation`);
+      return Promise.reject(`Unable to find a Chrome installation`);
     }
     default:
       // Esoteric options
-      throw new Error(`Unsupported platform: ${platform()}`);
+      return Promise.reject(`Unsupported platform: ${platform()}`);
   }
 }
 
@@ -185,7 +185,7 @@ export default class ChromeDriver {
     const f = await this._page.navigate({ url });
     while (!this._loadedFrames.has(f.frameId)) {
       if (this._shutdown) {
-        throw new Error(`Cannot navigate to URL; Chrome has shut down.`);
+        return Promise.reject(`Cannot navigate to URL; Chrome has shut down.`);
       }
       await wait(5);
     }
@@ -195,7 +195,7 @@ export default class ChromeDriver {
     const e = await this._runtime.evaluate({ expression, returnByValue: true });
     this._log.debug(`${expression} => ${JSON.stringify(e.result.value)}`);
     if (e.exceptionDetails) {
-      throw new Error(exceptionDetailsToString(e.exceptionDetails));
+      return Promise.reject(exceptionDetailsToString(e.exceptionDetails));
     }
     return e.result.value;
   }
