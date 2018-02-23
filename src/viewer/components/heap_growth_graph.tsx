@@ -98,8 +98,8 @@ export function averageGrowth(data: SnapshotSizeSummary[][]): { mean: number, se
   for (let i = 0; i < iterations; i++) {
     avgGrowths.push(mean(growthData.map((d) => d[i])));
   }
-  const se = deviation(avgGrowths.slice(4)) / Math.sqrt(avgGrowths.length - 4);
-  const meanData = mean(avgGrowths.slice(4));
+  const se = deviation(avgGrowths.slice(5)) / Math.sqrt(avgGrowths.length - 5);
+  const meanData = mean(avgGrowths.slice(5));
   if (isNaN(se)) {
     return {
       mean: meanData
