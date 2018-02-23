@@ -306,7 +306,7 @@ export default class GrowthReductionGraph extends React.Component<GrowthReductio
     g.append('text')
       .attr('class', 'ytitle')
       .attr('x', -1 * (plotHeight >> 1)) // x and y are flipped because of rotation
-      .attr('y', -60) // Approximate width of y-axis
+      .attr('y', -58) // Approximate width of y-axis
       .attr('transform', 'rotate(-90)')
       .style('text-anchor', 'middle')
       .style('alignment-baseline', 'central')
