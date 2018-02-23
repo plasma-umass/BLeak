@@ -140,7 +140,20 @@ export default class HeapGrowthGraph extends React.Component<HeapGrowthGraphProp
     if (this._hasHeapStats()) {
       if (isRankingEvaluationComplete(this.props.bleakResults)) {
         const rankingEval = this.props.bleakResults.rankingEvaluation;
-        const zeroMean = averageGrowth(rankingEval.leakShare[0]);
+        // Check if zero point is same or different across rankings.
+        // Hack for legacy airbnb data, which has different data for the "no
+        // fixes" run across the three metrics (which we leverage to give us
+        // tighter error bars on that number / repro the numbers in the paper).
+        //
+        // On all data produced by BLeak moving forward, the data for the "no fixes"
+        // run is the same / shared across metrics -- so we just use the data reported
+        // for one metric as the base case.
+        let zeroPointData = rankingEval.leakShare[0];
+        if (zeroPointData[0][0].totalSize !== rankingEval.retainedSize[0][0][0].totalSize) {
+          // Different data across metrics, so can use.
+          zeroPointData = [].concat(rankingEval.leakShare[0], rankingEval.retainedSize[0], rankingEval.transitiveClosureSize[0]);
+        }
+        const zeroMean = averageGrowth(zeroPointData);
         const growthReduction = averageGrowthReduction(zeroMean, rankingEval.leakShare[rankingEval.leakShare.length - 1]);
         this.setState({
           averageGrowth: zeroMean.mean,

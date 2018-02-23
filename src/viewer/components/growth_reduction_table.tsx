@@ -24,7 +24,13 @@ export default class GrowthReductionTable extends React.Component<GrowthReductio
       transitiveClosureSize: null
     };
     // Check if zero point is same or different across rankings.
-    // Hack for legacy airbnb data.
+    // Hack for legacy airbnb data, which has different data for the "no
+    // fixes" run across the three metrics (which we leverage to give us
+    // tighter error bars on that number / repro the numbers in the paper).
+    //
+    // On all data produced by BLeak moving forward, the data for the "no fixes"
+    // run is the same / shared across metrics -- so we just use the data reported
+    // for one metric as the base case.
     let zeroPointData = rankEval.leakShare[0];
     if (zeroPointData[0][0].totalSize !== rankEval.retainedSize[0][0][0].totalSize) {
       // Different data, so can use.
