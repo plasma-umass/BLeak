@@ -15,7 +15,8 @@ For more information please see the [preprint of our academic paper](https://git
 
 The following must be installed for BLeak to work:
 
-* [mitmproxy](https://mitmproxy.org/)
+* [mitmproxy](https://mitmproxy.org/) V2
+  * Note: BLeak does not yet work with the recently-released V3.
 * Python 3.6 or greater
   * Our mitmproxy plugin uses new Python async features
 
