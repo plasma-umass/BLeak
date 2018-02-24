@@ -38,7 +38,7 @@ install:
     fi
   - nvm install 8
   - nvm use 8
-  - pip install mitmproxy
+  - pip install mitmproxy==2.0.2
   - yarn install
 script:
   - yarn run test:travis
