@@ -76,8 +76,10 @@ const EvaluateMetrics: CommandModule = {
       process.exit(0);
     }
     // Shut down gracefully on CTRL+C.
-    process.on('SIGINT', async function() {
+    process.on('SIGINT', async function sigintHandler() {
       progressBar.log(`CTRL+C received.`);
+      // Fix memory leak when resume-after-failure is active.
+      process.removeListener('SIGINT', sigintHandler);
       shutDown();
     });
 
