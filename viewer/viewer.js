@@ -2038,8 +2038,8 @@ function averageGrowth(data) {
     for (var i = 0; i < iterations; i++) {
         _loop_2(i);
     }
-    var se = d3.deviation(avgGrowths.slice(4)) / Math.sqrt(avgGrowths.length - 4);
-    var meanData = d3.mean(avgGrowths.slice(4));
+    var se = d3.deviation(avgGrowths.slice(5)) / Math.sqrt(avgGrowths.length - 5);
+    var meanData = d3.mean(avgGrowths.slice(5));
     if (isNaN(se)) {
         return {
             mean: meanData
@@ -2083,7 +2083,20 @@ var HeapGrowthGraph = /** @class */ (function (_super) {
         if (this._hasHeapStats()) {
             if (isRankingEvaluationComplete(this.props.bleakResults)) {
                 var rankingEval = this.props.bleakResults.rankingEvaluation;
-                var zeroMean = averageGrowth(rankingEval.leakShare[0]);
+                // Check if zero point is same or different across rankings.
+                // Hack for legacy airbnb data, which has different data for the "no
+                // fixes" run across the three metrics (which we leverage to give us
+                // tighter error bars on that number / repro the numbers in the paper).
+                //
+                // On all data produced by BLeak moving forward, the data for the "no fixes"
+                // run is the same / shared across metrics -- so we just use the data reported
+                // for one metric as the base case.
+                var zeroPointData = rankingEval.leakShare[0];
+                if (zeroPointData[0][0].totalSize !== rankingEval.retainedSize[0][0][0].totalSize) {
+                    // Different data across metrics, so can use.
+                    zeroPointData = [].concat(rankingEval.leakShare[0], rankingEval.retainedSize[0], rankingEval.transitiveClosureSize[0]);
+                }
+                var zeroMean = averageGrowth(zeroPointData);
                 var growthReduction = averageGrowthReduction(zeroMean, rankingEval.leakShare[rankingEval.leakShare.length - 1]);
                 this.setState({
                     averageGrowth: zeroMean.mean,
@@ -2256,7 +2269,7 @@ var HeapGrowthGraph = /** @class */ (function (_super) {
         g.append('text')
             .attr('class', 'ytitle')
             .attr('x', -1 * (plotHeight >> 1)) // x and y are flipped because of rotation
-            .attr('y', -50) // Approximate width of y-axis
+            .attr('y', -58) // Approximate width of y-axis
             .attr('transform', 'rotate(-90)')
             .style('text-anchor', 'middle')
             .style('alignment-baseline', 'central')
@@ -29888,7 +29901,13 @@ var GrowthReductionTable = /** @class */ (function (_super) {
             transitiveClosureSize: null
         };
         // Check if zero point is same or different across rankings.
-        // Hack for legacy airbnb data.
+        // Hack for legacy airbnb data, which has different data for the "no
+        // fixes" run across the three metrics (which we leverage to give us
+        // tighter error bars on that number / repro the numbers in the paper).
+        //
+        // On all data produced by BLeak moving forward, the data for the "no fixes"
+        // run is the same / shared across metrics -- so we just use the data reported
+        // for one metric as the base case.
         var zeroPointData = rankEval.leakShare[0];
         if (zeroPointData[0][0].totalSize !== rankEval.retainedSize[0][0][0].totalSize) {
             // Different data, so can use.
@@ -30006,7 +30025,13 @@ var GrowthReductionGraph = /** @class */ (function (_super) {
         var rankings = ['leakShare', 'retainedSize', 'transitiveClosureSize'];
         var rankEval = this.props.bleakResults.rankingEvaluation;
         // Check if zero point is same or different across rankings.
-        // Hack for legacy airbnb data.
+        // Hack for legacy airbnb data, which has different data for the "no
+        // fixes" run across the three metrics (which we leverage to give us
+        // tighter error bars on that number / repro the numbers in the paper).
+        //
+        // On all data produced by BLeak moving forward, the data for the "no fixes"
+        // run is the same / shared across metrics -- so we just use the data reported
+        // for one metric as the base case.
         var zeroPointData = rankEval.leakShare[0];
         if (zeroPointData[0][0].totalSize !== rankEval.retainedSize[0][0][0].totalSize) {
             // Different data, so can use.
@@ -30154,7 +30179,7 @@ var GrowthReductionGraph = /** @class */ (function (_super) {
         g.append('text')
             .attr('class', 'ytitle')
             .attr('x', -1 * (plotHeight >> 1)) // x and y are flipped because of rotation
-            .attr('y', -60) // Approximate width of y-axis
+            .attr('y', -58) // Approximate width of y-axis
             .attr('transform', 'rotate(-90)')
             .style('text-anchor', 'middle')
             .style('alignment-baseline', 'central')
@@ -30219,6 +30244,84 @@ var App = /** @class */ (function (_super) {
         };
         return _this;
     }
+    App.prototype._tryDisplayFile = function (result, startingPercent) {
+        return __awaiter(this, void 0, void 0, function () {
+            var _this = this;
+            var bleakResults, sourceFileManager, sourceFiles, stackTraces;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        bleakResults = BLeakResults.FromJSON(JSON.parse(result));
+                        return [4 /*yield*/, SourceFileManager.FromBLeakResults(bleakResults, function (completed, total) {
+                                var percent = startingPercent + (completed / total) * (100 - startingPercent);
+                                _this.setState({
+                                    progress: percent,
+                                    progressMessage: completed + " of " + total + " source files formatted..."
+                                });
+                            })];
+                    case 1:
+                        sourceFileManager = _a.sent();
+                        sourceFiles = sourceFileManager.getSourceFiles();
+                        stackTraces = StackTraceManager.FromBLeakResults(sourceFileManager, bleakResults);
+                        this.setState({
+                            state: 2 /* DISPLAYING_FILE */,
+                            bleakResults: bleakResults,
+                            sourceFileManager: sourceFileManager,
+                            stackTraces: stackTraces,
+                            selectedLocation: new Location(sourceFiles[0], 1, 1, true)
+                        });
+                        return [2 /*return*/];
+                }
+            });
+        });
+    };
+    App.prototype._loadFromUrl = function (url) {
+        var _this = this;
+        this.setState({
+            state: 1 /* PROCESSING_FILE */,
+            progress: 10,
+            progressMessage: "Downloading results file ...",
+            errorMessage: null
+        });
+        // 40%
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url);
+        xhr.onprogress = function (e) {
+            var p = e.loaded / e.total;
+            _this.setState({ progress: 10 + (p * 40) });
+        };
+        xhr.onload = function (e) { return __awaiter(_this, void 0, void 0, function () {
+            return __generator(this, function (_a) {
+                try {
+                    this.setState({ progress: 50 });
+                    this._tryDisplayFile(xhr.responseText, 50);
+                }
+                catch (e) {
+                    this.setState({
+                        state: 0 /* WAIT_FOR_FILE */,
+                        errorMessage: "" + e
+                    });
+                }
+                return [2 /*return*/];
+            });
+        }); };
+        xhr.onerror = function (e) {
+            _this.setState({
+                state: 0 /* WAIT_FOR_FILE */,
+                errorMessage: "" + e
+            });
+        };
+        xhr.send();
+    };
+    App.prototype.componentDidMount = function () {
+        // Check for url parameter.
+        var hash = window.location.hash;
+        var urlIndex = hash.indexOf('url=');
+        if (urlIndex !== -1) {
+            var url = hash.slice(urlIndex + 4);
+            this._loadFromUrl(url);
+        }
+    };
     App.prototype._onFileSelect = function () {
         var _this = this;
         var input = this.refs['file_select'];
@@ -30233,41 +30336,17 @@ var App = /** @class */ (function (_super) {
             var file = files[0];
             var reader = new FileReader();
             reader.onload = function (e) { return __awaiter(_this, void 0, void 0, function () {
-                var _this = this;
-                var bleakResults, sourceFileManager, sourceFiles, stackTraces, e_1;
                 return __generator(this, function (_a) {
-                    switch (_a.label) {
-                        case 0:
-                            _a.trys.push([0, 2, , 3]);
-                            bleakResults = BLeakResults.FromJSON(JSON.parse(e.target.result));
-                            return [4 /*yield*/, SourceFileManager.FromBLeakResults(bleakResults, function (completed, total) {
-                                    var percent = 10 + (completed / total) * 90;
-                                    _this.setState({
-                                        progress: percent,
-                                        progressMessage: completed + " of " + total + " source files formatted..."
-                                    });
-                                })];
-                        case 1:
-                            sourceFileManager = _a.sent();
-                            sourceFiles = sourceFileManager.getSourceFiles();
-                            stackTraces = StackTraceManager.FromBLeakResults(sourceFileManager, bleakResults);
-                            this.setState({
-                                state: 2 /* DISPLAYING_FILE */,
-                                bleakResults: bleakResults,
-                                sourceFileManager: sourceFileManager,
-                                stackTraces: stackTraces,
-                                selectedLocation: new Location(sourceFiles[0], 1, 1, true)
-                            });
-                            return [3 /*break*/, 3];
-                        case 2:
-                            e_1 = _a.sent();
-                            this.setState({
-                                state: 0 /* WAIT_FOR_FILE */,
-                                errorMessage: "" + e_1
-                            });
-                            return [3 /*break*/, 3];
-                        case 3: return [2 /*return*/];
+                    try {
+                        this._tryDisplayFile(e.target.result, 10);
                     }
+                    catch (e) {
+                        this.setState({
+                            state: 0 /* WAIT_FOR_FILE */,
+                            errorMessage: "" + e
+                        });
+                    }
+                    return [2 /*return*/];
                 });
             }); };
             reader.readAsText(file);
