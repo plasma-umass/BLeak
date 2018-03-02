@@ -1,6 +1,6 @@
 {
   "name": "bleak-detector",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Automatically finds memory leaks in single page web applications.",
   "bin": {
     "bleak": "./dist/node/cli/bleak.js"
