@@ -13,6 +13,6 @@ export default class TimeLog {
   }
 
   public toJSON(): any {
-    return JSON.stringify(this._log);
+    return this._log;
   }
 }
