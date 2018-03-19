@@ -76,9 +76,9 @@ export default function getInterceptor(config: InterceptorConfig): Interceptor {
         // Special eval handler!
         response.statusCode = 200;
         response.clearHeaders();
-        const body: { scope: string, source: string } = JSON.parse(f.requestBody.toString());
+        const body: { scope: string, source: string, strictMode: boolean } = JSON.parse(f.requestBody.toString());
         if (config.rewrite) {
-          f.setResponseBody(Buffer.from(exposeClosureState(`eval-${Math.random()}.js`, body.source, config.agentUrl, config.polyfillUrl, body.scope), 'utf8'));
+          f.setResponseBody(Buffer.from(exposeClosureState(`eval-${Math.random()}.js`, body.source, config.agentUrl, config.polyfillUrl, body.scope, body.strictMode), 'utf8'));
         } else if (!config.disableAllRewrites) {
           f.setResponseBody(Buffer.from(ensureES5(`eval-${Math.random()}.js`, body.source, config.agentUrl, config.polyfillUrl, body.scope), 'utf8'));
         } else {

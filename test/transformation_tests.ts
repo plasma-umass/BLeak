@@ -14,8 +14,8 @@ class XHRShim {
   public open() {}
   public setRequestHeader() {}
   public send(data: string) {
-    const d: { scope: string, source: string } = JSON.parse(data);
-    this.responseText = exposeClosureState(`eval-${Math.random()}.js`, d.source, DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, d.scope);
+    const d: { scope: string, source: string, strictMode: boolean } = JSON.parse(data);
+    this.responseText = exposeClosureState(`eval-${Math.random()}.js`, d.source, DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, d.scope, d.strictMode);
   }
 }
 
@@ -433,6 +433,55 @@ describe('Transformations', function() {
       assertEqual(module.fcn(), 5);
       assertEqual(module.assign(7), 7);
       assertEqual(module.fcn(), 7);
+    });
+
+    it(`works when variables are incorrectly reinitialized`, function() {
+      const module = instrumentModule<{fcn: () => any, assign: (v: any) => any}>(`
+        var l;
+        l = 4;
+        var l;
+        exports.fcn = function() {
+          return l;
+        };`);
+      assertEqual(module.fcn(), 4);
+    });
+
+    it(`works when arguments are incorrectly reinitialized`, function() {
+      const module = instrumentModule<{fcn: (v: any) => any, assign: (v: any) => any}>(`
+        exports.fcn = function(l) {
+          var l;
+          // Make sure l gets captured.
+          return (function() {
+            return l;
+          })();
+        };`);
+      assertEqual(module.fcn(4), 4);
+    });
+
+    it(`works with indirect evals`, function() {
+      const module = instrumentModule<{fcn: (v: any) => any, assign: (v: any) => any}>(`
+        var indirectEval = eval;
+        exports.fcn = function(l) {
+          var l = 4;
+          indirectEval("var l = 5");
+          // Make sure l gets captured.
+          return (function() {
+            return l;
+          })();
+        };`);
+      assertEqual(module.fcn(4), 4);
+      assertEqual((global as any).l, 5);
+    });
+
+    it(`works with eval that defines global functions`, function() {
+      const module = instrumentModule<{fcn: () => any, assign: (v: any) => any}>(`
+        var indirectEval = eval;
+        exports.fcn = function() {
+          indirectEval("function foo() { return 4; } function bar() { return arguments[0]; }");
+        };`);
+      module.fcn();
+      assertEqual((global as any).foo(), 4);
+      assertEqual((global as any).bar(5), 5);
     });
 
     // instrument a global variable and get stack traces

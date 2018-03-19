@@ -30,7 +30,8 @@ interface Window {
   $$$EQ$$$(a: any, b: any): boolean;
   $$$SHOULDFIX$$$(n: number): boolean;
   $$$GLOBAL$$$: Window;
-  $$$REWRITE_EVAL$$$(scope: any, source: string): any;
+  $$$REWRITE_EVAL$$$(scope: any, strictMode: boolean, source: string): any;
+  $$$GLOBAL_EVAL$$$(source: string): any;
   $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function;
   $$$OBJECT_EXPRESSION$$$(obj: object, scope: Scope): object;
   $$$CREATE_WITH_SCOPE$$$(withObj: Object, scope: Scope): Scope;
@@ -87,6 +88,8 @@ declare function importScripts(s: string): void;
   ROOT.$$$SHOULDFIX$$$ = $$$SHOULDFIX$$$;
   ROOT.$$$GLOBAL$$$ = ROOT;
   ROOT.$$$REWRITE_EVAL$$$ = $$$REWRITE_EVAL$$$;
+  // Disable strict mode eval, as indirect evals in strict and non-strict mode can create global vars.
+  ROOT.$$$GLOBAL_EVAL$$$ = $$$REWRITE_EVAL$$$.bind(null, ROOT, false);
   ROOT.$$$FUNCTION_EXPRESSION$$$ = $$$FUNCTION_EXPRESSION$$$;
   ROOT.$$$OBJECT_EXPRESSION$$$ = $$$OBJECT_EXPRESSION$$$;
   ROOT.$$$CREATE_WITH_SCOPE$$$ = $$$CREATE_WITH_SCOPE$$$;
@@ -218,6 +221,27 @@ declare function importScripts(s: string): void;
     }
   }
 
+  /**
+   * Applies a write to the given scope. Used in `eval()` to avoid storing/transmitting
+   * metadata for particular scope objects.
+   *
+   * Searches the scope chain for the given `key`. If found, it overwrites the value on
+   * the relevant scope in the scope chain.
+   *
+   * If not found, defines a global variable `key`.
+   * @param target
+   * @param key
+   * @param value
+   */
+  function applyWriteNonStrict(target: Scope, key: string, value: any): boolean {
+    if (applyWrite(target, key, value)) {
+      return true;
+    } else {
+      (ROOT as any)[key] = value;
+      return true;
+    }
+  }
+
   // Sentinel
   const PROP_NOT_FOUND = {};
 
@@ -238,18 +262,20 @@ declare function importScripts(s: string): void;
   // Reuseable eval() function. Does not have a polluted scope.
   const EVAL_FCN = new Function('scope', '$$$SRC$$$', 'return eval($$$SRC$$$);');
   // Caches compiled eval statements from server to reduce synchronous XHRs.
-  const EVAL_CACHE = new Map<string, { e: string, ts: number }>();
-  const EVAL_CACHE_LIMIT = 100;
+  const NONSTRICT_EVAL_CACHE = new Map<string, { e: string, ts: number }>();
+  const NONSTRICT_EVAL_CACHE_LIMIT = 100;
+  const STRICT_EVAL_CACHE = new Map<string, { e: string, ts: number }>();
+  const STRICT_EVAL_CACHE_LIMIT = 100;
 
   /**
    * Removes the 10 items from EVAL_CACHE that were least recently used.
    */
-  function trimEvalCache() {
+  function trimEvalCache(evalCache: Map<string, { e: string, ts: number }>) {
     const items: {e: string, ts: number}[] = [];
-    EVAL_CACHE.forEach((i) => items.push(i));
+    evalCache.forEach((i) => items.push(i));
     items.sort((a, b) => a.ts - b.ts);
     items.slice(0, 10).forEach((i) => {
-      EVAL_CACHE.delete(i.e);
+      evalCache.delete(i.e);
     });
   }
 
@@ -257,19 +283,22 @@ declare function importScripts(s: string): void;
    * Sends text passed to `eval` to the server for rewriting,
    * and then evaluates the new string.
    * @param scope The context in which eval was called.
+   * @param strictMode If true, the eval was called in a strict mode context.
    * @param text The JavaScript code to eval.
    */
-  function $$$REWRITE_EVAL$$$(scope: any, source: string): any {
-    let cache = EVAL_CACHE.get(source);
+  function $$$REWRITE_EVAL$$$(scope: any, strictMode: boolean, source: string): any {
+    const evalCache = strictMode ? STRICT_EVAL_CACHE : NONSTRICT_EVAL_CACHE;
+    const evalCacheLimit = strictMode ? STRICT_EVAL_CACHE_LIMIT : NONSTRICT_EVAL_CACHE_LIMIT;
+    let cache = evalCache.get(source);
     if (!cache) {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/eval', false);
       xhr.setRequestHeader("Content-type", "application/json");
-      xhr.send(JSON.stringify({ scope: "scope", source }));
+      xhr.send(JSON.stringify({ scope: "scope", source, strictMode }));
       cache = { e: xhr.responseText, ts: 0 };
-      EVAL_CACHE.set(source, cache);
-      if (EVAL_CACHE.size > EVAL_CACHE_LIMIT) {
-        trimEvalCache();
+      evalCache.set(source, cache);
+      if (evalCache.size > evalCacheLimit) {
+        trimEvalCache(evalCache);
       }
     }
     // Update timestamp
@@ -277,7 +306,7 @@ declare function importScripts(s: string): void;
     return EVAL_FCN(new Proxy(scope, {
       // Appropriately relay writes to first scope with the given variable name.
       // Otherwise, it'll overwrite the property on the outermost scope!
-      set: applyWrite
+      set: strictMode ? applyWrite : applyWriteNonStrict
     }), cache.e);
   }
 

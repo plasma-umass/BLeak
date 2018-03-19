@@ -601,14 +601,50 @@ interface IScope {
 
 class GlobalScope implements IScope {
   public scopeIdentifier: string;
-  constructor(scopeIdentifier = "$$$GLOBAL$$$") {
+  private _defineFunctionDeclsOnScope: boolean;
+  constructor(scopeIdentifier = "$$$GLOBAL$$$", defineFunctionDeclsOnScope: boolean = false) {
     this.scopeIdentifier = scopeIdentifier;
+    this._defineFunctionDeclsOnScope = defineFunctionDeclsOnScope;
   }
 
   protected _vars = new Map<string, Variable>();
   public defineVariable(name: string, type: VarType): void {
     // Make all global variables closed over.
     this._vars.set(name, new Variable(type, true));
+  }
+  public prelude(): ExpressionStatement[] {
+    const rv: ExpressionStatement[] = [];
+    if (this._defineFunctionDeclsOnScope) {
+      // scopeidentifier.foo
+      this._vars.forEach((v, name) => {
+        if (v.type === VarType.FUNCTION_DECL) {
+          rv.push({
+            "type": "ExpressionStatement",
+            "expression": {
+              "type": "AssignmentExpression",
+              "operator": "=",
+              "left": {
+                "type": "MemberExpression",
+                "computed": false,
+                "object": {
+                  "type": "Identifier",
+                  "name": this.scopeIdentifier
+                },
+                "property": {
+                  "type": "Identifier",
+                  "name": name
+                }
+              },
+              "right": {
+                "type": "Identifier",
+                "name": name
+              }
+            }
+          });
+        }
+      });
+    }
+    return rv;
   }
   public maybeCloseOverVariable(name: string): void {}
   public evalFound(): void {}
@@ -648,6 +684,10 @@ class GlobalScope implements IScope {
  */
 class ProxyScope extends GlobalScope {
   public shouldMoveTo(name: string): string {
+    // "arguments" is a special-case.
+    if (name === "arguments" && !this._vars.has(name)) {
+      return null;
+    }
     return this.scopeIdentifier;
   }
 }
@@ -698,9 +738,14 @@ class BlockScope implements IScope  {
   }
 
   public defineVariable(name: string, type: VarType): void {
-    if (type === VarType.VAR && !this.isFunctionScope) {
-      // VAR types must be defined in the top-most scope of a function.
-      return this.parent.defineVariable(name, type);
+    if (type === VarType.VAR) {
+      if (!this.isFunctionScope) {
+        // VAR types must be defined in the top-most scope of a function.
+        return this.parent.defineVariable(name, type);
+      } else if (this._vars.has(name)) {
+        // Redeclaring a variable is a no-op.
+        return;
+      }
     }
 //    if (this._vars.has(name)) {
       // Merge.
@@ -1775,6 +1820,9 @@ class ScopeCreationVisitor extends Visitor {
 
   protected _insertScopeCreationAndFunctionScopeAssignments(n: Node[], isProgram: boolean): Node[] {
     let mods: Node[] = this._scope instanceof BlockScope && this._scope.hasClosedOverVariables ? [this._scope.getScopeCreationStatement()] : [];
+    if (this._scope instanceof GlobalScope) {
+      mods = mods.concat(this._scope.prelude());
+    }
     if (isProgram) {
       const insertions = [getAgentInsertion(this._agentUrl)];
       if (this._polyfillUrl !== null) {
@@ -1811,6 +1859,15 @@ class ScopeCreationVisitor extends Visitor {
   }
 
   public Identifier(i: Identifier): Identifier | MemberExpression {
+    if (i.name === 'eval') {
+      // Optimistically rewrite to be an eval reference, which autoevals code in the global
+      // scope.
+      return {
+        type: "Identifier",
+        name: "$$$GLOBAL_EVAL$$$",
+        loc: i.loc
+      };
+    }
     const to = this._scope.shouldMoveTo(i.name);
     if (to) {
       return {
@@ -1849,7 +1906,10 @@ class ScopeCreationVisitor extends Visitor {
           type: "AssignmentExpression",
           operator: "=",
           left: newId,
-          right: decl.init ? decl.init : { type: "Identifier", name: "undefined", loc: decl.loc },
+          // var Foo => $$$GLOBAL$$$.Foo = ;$$$GLOBAL$$$.Foo;
+          // Prevents issues where code re-defines variable multiple times.
+          // (Subsequent redefinitions are NOPs)
+          right: (decl.init ? decl.init : newId),//{ type: "Identifier", name: "undefined", loc: decl.loc },
           loc: decl.loc
         },
         loc: decl.loc
@@ -1946,8 +2006,13 @@ class ScopeCreationVisitor extends Visitor {
     const scopeId = this._scope.scopeIdentifier;
     switch (callee.type) {
       case "Identifier":
-        if (callee.name === "eval") {
+        if (callee.name === "$$$GLOBAL_EVAL$$$") {
           callee.name = "$$$REWRITE_EVAL$$$";
+          rv.arguments.unshift({
+            "type": "Literal",
+            "value": this._strictMode,
+            "raw": "true"
+          });
           rv.arguments.unshift({
             type: "Identifier",
             name: scopeId
@@ -2096,7 +2161,7 @@ class ScopeCreationVisitor extends Visitor {
   // Shortcomings: ++ to arguments.
 }
 
-function exposeClosureStateInternal(filename: string, source: string, sourceMap: SourceMapGenerator, agentUrl: string, polyfillUrl: string, evalScopeName?: string): string {
+function exposeClosureStateInternal(filename: string, source: string, sourceMap: SourceMapGenerator, agentUrl: string, polyfillUrl: string, evalScopeName?: string, strictMode?: boolean): string {
   let ast = parseJavaScript(source, { loc: true });
   {
     const firstStatement = ast.body[0];
@@ -2110,8 +2175,16 @@ function exposeClosureStateInternal(filename: string, source: string, sourceMap:
 
   const map = new Map<Program | BlockStatement, BlockScope>();
   const symbols = new Set<string>();
+  let globalScope = undefined;
+  if (evalScopeName) {
+    globalScope = new ProxyScope(evalScopeName, strictMode === false);
+    // In strict mode, newly defined variables cannot escape.
+    if (strictMode) {
+      globalScope = new BlockScope(globalScope, true);
+    }
+  }
   ast = ScopeCreationVisitor.Visit(
-    EscapeAnalysisVisitor.Visit(ScopeScanningVisitor.Visit(ast, map, symbols, evalScopeName ? new BlockScope(new ProxyScope(evalScopeName), true) : undefined), map), map, symbols, agentUrl, polyfillUrl);
+    EscapeAnalysisVisitor.Visit(ScopeScanningVisitor.Visit(ast, map, symbols, globalScope), map), map, symbols, agentUrl, polyfillUrl);
   return generateJavaScript(ast, { sourceMap });
 }
 
@@ -2225,9 +2298,9 @@ export function ensureES5(filename: string, source: string, agentUrl="bleak_agen
  *
  * @param source Source of the JavaScript file.
  */
-export function exposeClosureState(filename: string, source: string, agentUrl="bleak_agent.js", polyfillUrl="bleak_polyfill.js", evalScopeName?: string): string {
+export function exposeClosureState(filename: string, source: string, agentUrl="bleak_agent.js", polyfillUrl="bleak_polyfill.js", evalScopeName?: string, strictMode?: boolean): string {
   return tryJSTransform(filename, source, (filename, source, sourceMap, needsBabel) => {
-    return exposeClosureStateInternal(filename, source, sourceMap, agentUrl, needsBabel ? polyfillUrl : null, evalScopeName)
+    return exposeClosureStateInternal(filename, source, sourceMap, agentUrl, needsBabel ? polyfillUrl : null, evalScopeName, strictMode)
   });
 }
 

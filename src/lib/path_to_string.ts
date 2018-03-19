@@ -158,6 +158,10 @@ const PS = new PathStream();
 export default function pathToString(p: IPath): string {
   PS.setPath(p);
   const segment = PS.peek();
+  if (!segment) {
+    // Empty path -- window object is growing.
+    return "window";
+  }
   if (segment.type === PathSegmentType.DOM_TREE) {
     PS.print("document");
     PS.advance();
