@@ -695,18 +695,6 @@ declare function importScripts(s: string): void;
     }
   }
 
-  // Need:
-  // - DOM set proxies
-  //   -> Invalidate / refresh when changed
-  // - Fast checker of node.
-
-  // Operations can impact:
-  // - Current node
-  // - Parent node
-  // - Child nodes
-  // Update target node & all children.
-  //
-
   function instrumentDOMTree(rootAccessString: string, root: any, tree: IPathTree, stackTrace: string = null): void {
     // For now: Simply crawl to the node(s) and instrument regularly from there. Don't try to plant getters/setters.
     // $$DOM - - - - - -> root [regular subtree]
@@ -900,8 +888,9 @@ declare function importScripts(s: string): void;
   }
 
   if (IS_WINDOW || IS_WORKER) {
-    // Disable these in NodeJS.
+    // Disable these in NodeJS -- where we run unit tests.
 
+    // TODO: BLeak currently does not properly diagnose leaks in code / DOM nodes planted via document.write.
     /*const documentWrite = Document.prototype.write;
     Document.prototype.write = function(this: Document, str: string): void {
       const xhr = new XMLHttpRequest();
@@ -1101,7 +1090,6 @@ declare function importScripts(s: string): void;
       };
     })(Array.prototype.splice);
 
-    // Make indexOf use $$$SEQ$$$
     Array.prototype.indexOf = function(this: Array<any>, searchElement, fromIndexArg?: number): any {
       let fromIndex = fromIndexArg || 0;
       // If the provided index value is a negative number, it is taken as the offset from the end of the array.
@@ -1157,7 +1145,7 @@ declare function importScripts(s: string): void;
 
     // TODO: Sort, reverse, ...
 
-    // Deterministic Math.random(), so jQuery variable is deterministic.
+    // Deterministic Math.random(), so jQuery variable name is deterministic across runs.
     // From https://gist.github.com/mathiasbynens/5670917
     Math.random = (function() {
       let seed = 0x2F6E2B1;
@@ -1173,54 +1161,11 @@ declare function importScripts(s: string): void;
       };
     }());
 
-    // Deterministic Date.now(), so YUI variable is deterministic.
+    // Deterministic Date.now(), so YUI variable name is deterministic across runs.
     let dateNowCount = 0;
     Date.now = Date.prototype.getTime = function() {
       return 1516992512425 + (dateNowCount++);
     };
-
-    // interface Count {get: number; set: number; invoked: number }
-
-    /**
-     * [DEBUG] Installs a counter on a particular object property.
-     * @param obj
-     * @param property
-     * @param key
-     * @param countMap
-     */
-    /*function countPropertyAccesses(obj: any, property: string, key: string, countMap: Map<string, Count>): void {
-      let count: Count = { get: 0, set: 0, invoked: 0};
-      const original = Object.getOwnPropertyDescriptor(obj, property);
-      try {
-        Object.defineProperty(obj, property, {
-          get: function() {
-            count.get++;
-            const value = original.get ? original.get.apply(this) : original.value;
-            if (typeof(value) === "function") {
-              return function(this: any) {
-                count.invoked++;
-                return value.apply(this, arguments);
-              };
-            } else {
-              return value;
-            }
-          },
-          set: function(v) {
-            count.set++;
-            if (original.set) {
-              return original.set.call(this, v);
-            } else if (original.writable) {
-              original.value = v;
-            }
-            // Otherwise: NOP.
-          },
-          configurable: true
-        });
-        countMap.set(key, count);
-      } catch (e) {
-        logToConsole(`Unable to instrument ${key}`);
-      }
-    }*/
 
     /**
      * Interposes on a particular API to return proxy objects for objects with proxies and unwrap arguments that are proxies.
@@ -1291,13 +1236,10 @@ declare function importScripts(s: string): void;
           });
         });
 
-      //const countMap = new Map<string, Count>();
       [[Node.prototype, "Node"], [Element.prototype, "Element"], [HTMLElement.prototype, "HTMLElement"],
       [Document.prototype, "Document"], [HTMLCanvasElement.prototype, "HTMLCanvasElement"],
       [NodeList.prototype, "NodeList"]]
         .forEach((v) => Object.keys(v[0]).forEach((k) => proxyInterposition(v[0], k, `${v[1]}.${k}`)));
-
-      // TODO: Remove instrumentation when element moved?
 
       const $$$REINSTRUMENT$$$ = function(this: Node | NodeList): void {
         if (this.$$$TREE$$$) {
@@ -1652,90 +1594,8 @@ declare function importScripts(s: string): void;
           remove.call(this);
         }
       };
-      // Element:
-      // **SPECIAL**: dataset - modifies properties on DOM object through object!!!!
-      // -> throw exception if used.
 
-      // SVGElement:
-      // dataset: Throw exception if used
+      // TODO: Support Element/SVGElement.dataset, which modifies properties on DOM object.
     }
-
-
-
-    /*(<any> root)['$$PRINTCOUNTS$$'] = function(): void {
-      logToConsole(`API,GetCount,InvokedCount,SetCount`);
-      countMap.forEach((v, k) => {
-        if (v.get + v.set + v.invoked > 0) {
-          logToConsole(`${k},${v.get},${v.invoked},${v.set}`);
-        }
-      });
-    };*/
-
-    // Goal:
-    // - Attach unique IDs to all HTML tags in the DOM corresponding to their location post-body-load.
-    // - On update: Update IDs.
-    // - Insertion to scope modifies all IDs in scope.
-
-    // Possibilities:
-    // - Node is only in DOM.
-    //   - Instrument DOM location.
-    // - Node is only in heap.
-    //   - Instrument node object.
-    // - Node is in both.
-    //   - Instrument both.
-
-    // Regardless:
-    // - Need to *unwrap* arguments
-    // - Need to *wrap* return values
-
-    // Node:
-    // nodeValue: Not important?
-    // textContent: Pass it a string. Replaces content.
-    // appendChild: Passed a Node. Modifies DOM.
-    // insertBefore: Takes Nodes. Modifies DOM.
-    // isEqualNode: Takes a Node.
-    // isSameNode: Takes a Node.
-    // normalize: Removes things from DOM.
-    // removeChild: Removes a child.
-    // replaceChild: Replaces a child.
-
-    // Element:
-    // innerHTML
-    // outerHTML
-    // insertAdjacentElement
-    // insertAdjacentHTML
-    // insertAdjacentText
-    // remove
-    // **SPECIAL**: dataset - modifies properties on DOM object through object!!!!
-    // -> throw exception if used.
-
-    // SVGElement:
-    // dataset: Throw exception if used
-
-    // On properties:
-    // - Document.prototype
-    // - Element.prototype
-    // - MediaQueryList.prototype
-    // - FileReader.prototype
-    // - HTMLBodyElement
-    // - HTMLElement
-    // - HTMLFrameSetElement
-    // - AudioTrackList? TextTrack? TextTrackCue? TextTrackList? VideoTrackList?
-    // - ApplicationCache
-    // - EventSource
-    // - SVGAnimationElement
-    // - SVGElement
-    // - Performance?
-    // - Worker?
-    // - XMLHttpRequest
-    // - XMLHttpRequestEventTarget
-    // - WebSocket
-    // - IDBDatabase
-    // - IDBOpenDBRequest
-    // - IDBRequest
-    // - IDBTransaction
-    // - window.[property] (Special)
-
-
   }
 })();
