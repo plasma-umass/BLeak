@@ -81,7 +81,9 @@ class NavigateOperation extends Operation {
   }
 
   protected _run(opSt: OperationState): Promise<void> {
-    return opSt.chromeDriver.navigateTo(this._url);
+    return opSt.progressBar.timeEvent(OperationType.NAVIGATE, () => {
+      return opSt.chromeDriver.navigateTo(this._url);
+    });
   }
 }
 

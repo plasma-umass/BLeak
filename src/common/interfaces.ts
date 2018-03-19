@@ -332,7 +332,9 @@ export const enum OperationType {
   // source code.
   GET_GROWTH_STACKS = "GetGrowthStacks",
   // BLeak is sleeping.
-  SLEEP = "Sleep"
+  SLEEP = "Sleep",
+  // BLeak is navigating to a webpage and waiting for it to load.
+  NAVIGATE = "Navigate"
 }
 
 /**

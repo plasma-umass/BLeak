@@ -6,6 +6,7 @@ import ProxySession from './commands/proxy_session';
 import TransformJavaScript from './commands/transform_javascript';
 import Viewer from './commands/viewer';
 import EvaluateMetrics from './commands/evaluate-metrics';
+import ProcessTimeLog from './commands/process_time_log';
 
 yargs.command(RunCommand)
      .command(FindGrowingPaths)
@@ -13,5 +14,6 @@ yargs.command(RunCommand)
      .command(TransformJavaScript)
      .command(Viewer)
      .command(EvaluateMetrics)
+     .command(ProcessTimeLog)
      .demandCommand(1)
      .help('help').argv;
