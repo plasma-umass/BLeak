@@ -17,6 +17,7 @@ interface CommandLineArgs {
   debug: boolean;
   'take-screenshots': number;
   chromeSize: string;
+  'produce-time-log': boolean;
 }
 
 const Run: CommandModule = {
@@ -48,7 +49,7 @@ const Run: CommandModule = {
       }
     }
 
-    const progressBar = new ProgressProgressBar(args.debug);
+    const progressBar = new ProgressProgressBar(args.debug, args['produce-time-log']);
     // Add stack traces to Node warnings.
     // https://stackoverflow.com/a/38482688
     process.on('warning', (e: Error) => progressBar.error(e.stack));
@@ -117,6 +118,9 @@ const Run: CommandModule = {
         writeFileSync(bleakResultsOutput, JSON.stringify(results));
         const resultsLog = TextReporter(results);
         writeFileSync(join(args.out, 'bleak_report.log'), resultsLog);
+        if (args['produce-time-log']) {
+          writeFileSync(join(args.out, 'time_log.json'), JSON.stringify(progressBar.getTimeLog()));
+        }
         console.log(`Results can be found in ${args.out}`);
         return shutDown();
       }).catch((e) => {
@@ -162,6 +166,11 @@ const Run: CommandModule = {
       type: 'string',
       default: '1920x1080',
       describe: 'Specifies the size of the Chrome browser window'
+    },
+    'produce-time-log': {
+      type: 'boolean',
+      default: false,
+      describe: '[DEBUG] If set, produces a JSON time log to measure BLeak\'s overhead.'
     }
   }
 };

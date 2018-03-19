@@ -45,7 +45,7 @@ const TransformJavaScript: CommandModule = {
     }
 
     const flag = args.overwrite ? 'w' : 'wx';
-    const progressBar = new ProgressProgressBar(false);
+    const progressBar = new ProgressProgressBar(false, false);
     function transformFile(from: string, src: string, to: string): void {
       progressBar.updateDescription(`Transforming ${from}...`)
       const transformed = args['nop-transform'] ? nopTransform(from, src) : exposeClosureState(from, src);

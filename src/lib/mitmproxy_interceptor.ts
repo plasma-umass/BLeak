@@ -1,7 +1,7 @@
 import {parseHTML, exposeClosureState, injectIntoHead, ensureES5} from './transformations';
 import {readFileSync} from 'fs';
 import {Interceptor, InterceptedHTTPMessage} from 'mitmproxy';
-import {Log} from '../common/interfaces';
+import {Log, OperationType} from '../common/interfaces';
 
 function identJSTransform(f: string, s: string) {
   return s;
@@ -65,7 +65,8 @@ export default function getInterceptor(config: InterceptorConfig): Interceptor {
   const agentData = readFileSync(config.agentPath);
   const agentTransformData = readFileSync(agentTransformPath);
   const polyfillData = readFileSync(config.polyfillPath);
-  return (f: InterceptedHTTPMessage): void => {
+  const log = config.log;
+  function interceptor(f: InterceptedHTTPMessage): void {
     const response = f.response;
     const request = f.request;
     const method = f.request.method;
@@ -78,9 +79,13 @@ export default function getInterceptor(config: InterceptorConfig): Interceptor {
         response.clearHeaders();
         const body: { scope: string, source: string, strictMode: boolean } = JSON.parse(f.requestBody.toString());
         if (config.rewrite) {
-          f.setResponseBody(Buffer.from(exposeClosureState(`eval-${Math.random()}.js`, body.source, config.agentUrl, config.polyfillUrl, body.scope, body.strictMode), 'utf8'));
+          log.timeEvent(OperationType.PROXY_EVAL_DIAGNOSIS_REWRITE, () => {
+            f.setResponseBody(Buffer.from(exposeClosureState(`eval-${Math.random()}.js`, body.source, config.agentUrl, config.polyfillUrl, body.scope, body.strictMode), 'utf8'));
+          });
         } else if (!config.disableAllRewrites) {
-          f.setResponseBody(Buffer.from(ensureES5(`eval-${Math.random()}.js`, body.source, config.agentUrl, config.polyfillUrl, body.scope), 'utf8'));
+          log.timeEvent(OperationType.PROXY_EVAL_REWRITE, () => {
+            f.setResponseBody(Buffer.from(ensureES5(`eval-${Math.random()}.js`, body.source, config.agentUrl, config.polyfillUrl, body.scope), 'utf8'));
+          });
         } else {
           f.setResponseBody(Buffer.from(body.source, 'utf8'));
         }
@@ -107,7 +112,9 @@ export default function getInterceptor(config: InterceptorConfig): Interceptor {
         response.statusCode = 200;
         response.clearHeaders();
         if (config.rewrite) {
-          f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, agentTransformData.toString("utf8"), config.agentUrl, config.polyfillUrl), 'utf8'));
+          log.timeEvent(OperationType.PROXY_DIAGNOSIS_REWRITE, () => {
+            f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, agentTransformData.toString("utf8"), config.agentUrl, config.polyfillUrl), 'utf8'));
+          });
         } else {
           f.setResponseBody(agentTransformData);
         }
@@ -128,9 +135,9 @@ export default function getInterceptor(config: InterceptorConfig): Interceptor {
 
     switch (mime) {
       case 'text/html':
-      //if (f.status === 200) {
-        f.setResponseBody(Buffer.from(injectIntoHead(url.pathname, f.responseBody.toString("utf8"), parsedInjection, config.rewrite ? exposeClosureState : identJSTransform), 'utf8'));
-        //}
+        log.timeEvent(OperationType.PROXY_HTML_REWRITE, () => {
+          f.setResponseBody(Buffer.from(injectIntoHead(url.pathname, f.responseBody.toString("utf8"), parsedInjection, config.rewrite ? exposeClosureState : identJSTransform), 'utf8'));
+        });
         break;
       case 'text/javascript':
       case 'application/javascript':
@@ -139,13 +146,22 @@ export default function getInterceptor(config: InterceptorConfig): Interceptor {
         if (response.statusCode === 200) {
           if (config.rewrite) {
             config.log.debug(`Rewriting ${request.rawUrl}...`);
-            f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, f.responseBody.toString("utf8"), config.agentUrl, config.polyfillUrl), 'utf8'));
+            log.timeEvent(OperationType.PROXY_DIAGNOSIS_REWRITE, () => {
+              f.setResponseBody(Buffer.from(exposeClosureState(url.pathname, f.responseBody.toString("utf8"), config.agentUrl, config.polyfillUrl), 'utf8'));
+            });
           } else if (!config.disableAllRewrites) {
-            config.log.debug(`ES5ing ${request.rawUrl}...`)
-            f.setResponseBody(Buffer.from(ensureES5(url.pathname, f.responseBody.toString("utf8"), config.agentUrl, config.polyfillUrl), 'utf8'));
+            config.log.debug(`ES5ing ${request.rawUrl}...`);
+            log.timeEvent(OperationType.PROXY_REWRITE, () => {
+              f.setResponseBody(Buffer.from(ensureES5(url.pathname, f.responseBody.toString("utf8"), config.agentUrl, config.polyfillUrl), 'utf8'));
+            });
           }
         }
         break;
     }
+  }
+  return function(e: InterceptedHTTPMessage) {
+    log.timeEvent(OperationType.PROXY_RUNNING, () => {
+      interceptor(e);
+    });
   };
 }

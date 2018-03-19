@@ -1,4 +1,4 @@
-import {SnapshotEdgeType, SnapshotNodeType, SnapshotSizeSummary, ILeakRoot, IPath, GrowthStatus} from '../common/interfaces';
+import {SnapshotEdgeType, SnapshotNodeType, SnapshotSizeSummary, ILeakRoot, IPath, GrowthStatus, Log, OperationType} from '../common/interfaces';
 import {default as HeapSnapshotParser, DataTypes} from './heap_snapshot_parser';
 import {OneBitArray, TwoBitArray} from '../common/util';
 import LeakRoot from './leak_root';
@@ -266,15 +266,17 @@ export class HeapGrowthTracker {
   public _leakRefs: Uint16Array = null;
   public _nonLeakVisits: OneBitArray = null;
 
-  public async addSnapshot(parser: HeapSnapshotParser): Promise<void> {
-    const heap = await HeapGraph.Construct(parser, this._stringMap);
+  public async addSnapshot(parser: HeapSnapshotParser, log: Log): Promise<void> {
+    const heap = await HeapGraph.Construct(parser, log, this._stringMap);
     const growthStatus = new TwoBitArray(heap.nodeCount);
     if (this._heap !== null) {
-      // Initialize all new nodes to 'NOT_GROWING'.
-      // We only want to consider stable heap paths present from the first snapshot.
-      growthStatus.fill(GrowthStatus.NOT_GROWING);
-      // Merge graphs.
-      propagateGrowth(this._heap, this._growthStatus, heap, growthStatus);
+      log.timeEvent(OperationType.PROPAGATE_GROWTH, () => {
+        // Initialize all new nodes to 'NOT_GROWING'.
+        // We only want to consider stable heap paths present from the first snapshot.
+        growthStatus.fill(GrowthStatus.NOT_GROWING);
+        // Merge graphs.
+        propagateGrowth(this._heap, this._growthStatus, heap, growthStatus);
+      });
     }
     // Keep new graph.
     this._heap = heap;
@@ -292,7 +294,7 @@ export class HeapGrowthTracker {
    * Returns paths through the heap to leaking nodes, along with multiple different types of scores to help
    * developers prioritize them, grouped by the leak root responsible.
    */
-  public findLeakPaths(): LeakRoot[] {
+  public findLeakPaths(log: Log): LeakRoot[] {
     // A map from growing nodes to heap paths that reference them.
     const growthPaths = new Map<NodeIndex, Edge[][]>();
 
@@ -317,77 +319,78 @@ export class HeapGrowthTracker {
       return nonWeakFilter(n, e) && shouldTraverse(e, true);
     }
 
-    // Get the growing paths. Ignore paths through the DOM, as we mirror those in JavaScript.
-    // (See Section 5.3.2 in the paper, "Exposing Hidden State")
-    this._heap.visitGlobalEdges((e, getPath) => {
-      if (this._growthStatus.get(e.toIndex) === GrowthStatus.GROWING) {
-        addPath(getPath());
-      }
-    }, filterNoDom);
+    log.timeEvent(OperationType.FIND_LEAK_PATHS, () => {
+      // Get the growing paths. Ignore paths through the DOM, as we mirror those in JavaScript.
+      // (See Section 5.3.2 in the paper, "Exposing Hidden State")
+      this._heap.visitGlobalEdges((e, getPath) => {
+        if (this._growthStatus.get(e.toIndex) === GrowthStatus.GROWING) {
+          addPath(getPath());
+        }
+      }, filterNoDom);
+    });
 
     // Now, calculate growth metrics!
+    return log.timeEvent(OperationType.CALCULATE_METRICS, () => {
+      // Mark items that are reachable by non-leaks.
+      const nonleakVisitBits = new OneBitArray(this._heap.nodeCount);
+      this._heap.visitUserRoots((n) => {
+        nonleakVisitBits.set(n.nodeIndex, true);
+      }, (n, e) => {
+        // Filter out edges to growing objects.
+        // Traverse the DOM this time.
+        return filterIncludeDom(n, e) && !growthPaths.has(e.toIndex);
+      });
 
-    // Mark items that are reachable by non-leaks.
-    const nonleakVisitBits = new OneBitArray(this._heap.nodeCount);
-    this._heap.visitUserRoots((n) => {
-      nonleakVisitBits.set(n.nodeIndex, true);
-    }, (n, e) => {
-      // Filter out edges to growing objects.
-      // Traverse the DOM this time.
-      return filterIncludeDom(n, e) && !growthPaths.has(e.toIndex);
+      // Filter out items that are reachable from non-leaks.
+      function nonLeakFilter(n: Node, e: Edge): boolean {
+        return filterIncludeDom(n, e) && !nonleakVisitBits.get(e.toIndex);
+      }
+
+      // Increment visit counter for each heap item reachable from a leak.
+      // Used by LeakShare.
+      const leakReferences = new Uint16Array(this._heap.nodeCount);
+      growthPaths.forEach((paths, growthNodeIndex) => {
+        bfsVisitor(this._heap, [growthNodeIndex], (n) => {
+          leakReferences[n.nodeIndex]++;
+        }, nonLeakFilter);
+      });
+
+      // Calculate final growth metrics (LeakShare, Retained Size, Transitive Closure Size)
+      // for each LeakPath, and construct LeakRoot objects representing each LeakRoot.
+      let rv = new Array<LeakRoot>();
+      growthPaths.forEach((paths, growthNodeIndex) => {
+        let retainedSize = 0;
+        let leakShare = 0;
+        let transitiveClosureSize = 0;
+        let ownedObjects = 0;
+        bfsVisitor(this._heap, [growthNodeIndex], (n) => {
+          const refCount = leakReferences[n.nodeIndex];
+          if (refCount === 1) {
+            // A refCount of 1 means the heap item is uniquely referenced by this leak,
+            // so it contributes to retainedSize.
+            retainedSize += n.size;
+            ownedObjects++;
+          }
+          leakShare += n.size / refCount;
+        }, nonLeakFilter);
+
+        // Transitive closure size, for comparison to related work.
+        bfsVisitor(this._heap, [growthNodeIndex], (n) => {
+          transitiveClosureSize += n.size;
+        }, filterIncludeDom);
+
+        rv.push(new LeakRoot(growthNodeIndex, paths.map(edgePathToPath), {
+          retainedSize,
+          leakShare,
+          transitiveClosureSize,
+          ownedObjects
+        }));
+      });
+      // DEBUG
+      this._leakRefs = leakReferences;
+      this._nonLeakVisits = nonleakVisitBits;
+      return rv;
     });
-
-    // Filter out items that are reachable from non-leaks.
-    function nonLeakFilter(n: Node, e: Edge): boolean {
-      return filterIncludeDom(n, e) && !nonleakVisitBits.get(e.toIndex);
-    }
-
-    // Increment visit counter for each heap item reachable from a leak.
-    // Used by LeakShare.
-    const leakReferences = new Uint16Array(this._heap.nodeCount);
-    growthPaths.forEach((paths, growthNodeIndex) => {
-      bfsVisitor(this._heap, [growthNodeIndex], (n) => {
-        leakReferences[n.nodeIndex]++;
-      }, nonLeakFilter);
-    });
-
-    // Calculate final growth metrics (LeakShare, Retained Size, Transitive Closure Size)
-    // for each LeakPath, and construct LeakRoot objects representing each LeakRoot.
-    let rv = new Array<LeakRoot>();
-    growthPaths.forEach((paths, growthNodeIndex) => {
-      let retainedSize = 0;
-      let leakShare = 0;
-      let transitiveClosureSize = 0;
-      let ownedObjects = 0;
-      bfsVisitor(this._heap, [growthNodeIndex], (n) => {
-        const refCount = leakReferences[n.nodeIndex];
-        if (refCount === 1) {
-          // A refCount of 1 means the heap item is uniquely referenced by this leak,
-          // so it contributes to retainedSize.
-          retainedSize += n.size;
-          ownedObjects++;
-        }
-        leakShare += n.size / refCount;
-      }, nonLeakFilter);
-
-      // Transitive closure size, for comparison to related work.
-      bfsVisitor(this._heap, [growthNodeIndex], (n) => {
-        transitiveClosureSize += n.size;
-      }, filterIncludeDom);
-
-      rv.push(new LeakRoot(growthNodeIndex, paths.map(edgePathToPath), {
-        retainedSize,
-        leakShare,
-        transitiveClosureSize,
-        ownedObjects
-      }));
-    });
-
-    // DEBUG
-    this._leakRefs = leakReferences;
-    this._nonLeakVisits = nonleakVisitBits;
-
-    return rv;
   }
 
   public isGrowing(nodeIndex: number): boolean {
@@ -634,119 +637,121 @@ class Node {
  * Represents a heap snapshot / heap graph.
  */
 export class HeapGraph {
-  public static async Construct(parser: HeapSnapshotParser, stringMap: StringMap = new StringMap()): Promise<HeapGraph> {
-    const firstChunk = await parser.read();
-    if (firstChunk.type !== DataTypes.SNAPSHOT) {
-      throw new Error(`First chunk does not contain snapshot property.`);
-    }
-    const snapshotInfo = firstChunk.data;
-    const meta = snapshotInfo.meta;
-    const nodeFields = meta.node_fields;
-    const nodeLength = nodeFields.length;
-    const rootNodeIndex = (snapshotInfo.root_index ? snapshotInfo.root_index / nodeLength : 0) as NodeIndex;
-    const nodeCount = snapshotInfo.node_count;
-    const edgeCount = snapshotInfo.edge_count;
-    const nodeTypes = new Uint8Array(nodeCount);
-    const nodeNames = new Uint32Array(nodeCount);
-    const nodeSizes = new Uint32Array(nodeCount);
-    const firstEdgeIndexes = new Uint32Array(nodeCount + 1);
-    const edgeTypes = new Uint8Array(edgeCount);
-    const edgeNamesOrIndexes = new Uint32Array(edgeCount);
-    const edgeToNodes = new Uint32Array(edgeCount);
+  public static async Construct(parser: HeapSnapshotParser, log: Log, stringMap: StringMap = new StringMap()): Promise<HeapGraph> {
+    return log.timeEvent(OperationType.HEAP_SNAPSHOT_PARSE, async () => {
+      const firstChunk = await parser.read();
+      if (firstChunk.type !== DataTypes.SNAPSHOT) {
+        throw new Error(`First chunk does not contain snapshot property.`);
+      }
+      const snapshotInfo = firstChunk.data;
+      const meta = snapshotInfo.meta;
+      const nodeFields = meta.node_fields;
+      const nodeLength = nodeFields.length;
+      const rootNodeIndex = (snapshotInfo.root_index ? snapshotInfo.root_index / nodeLength : 0) as NodeIndex;
+      const nodeCount = snapshotInfo.node_count;
+      const edgeCount = snapshotInfo.edge_count;
+      const nodeTypes = new Uint8Array(nodeCount);
+      const nodeNames = new Uint32Array(nodeCount);
+      const nodeSizes = new Uint32Array(nodeCount);
+      const firstEdgeIndexes = new Uint32Array(nodeCount + 1);
+      const edgeTypes = new Uint8Array(edgeCount);
+      const edgeNamesOrIndexes = new Uint32Array(edgeCount);
+      const edgeToNodes = new Uint32Array(edgeCount);
 
-    {
-      const nodeTypeOffset = nodeFields.indexOf("type");
-      const nodeNameOffset = nodeFields.indexOf("name");
-      const nodeSelfSizeOffset = nodeFields.indexOf("self_size");
-      const nodeEdgeCountOffset = nodeFields.indexOf("edge_count");
-      const edgeFields = meta.edge_fields;
-      const edgeLength = edgeFields.length;
-      const edgeTypeOffset = edgeFields.indexOf("type");
-      const edgeNameOrIndexOffset = edgeFields.indexOf("name_or_index");
-      const edgeToNodeOffset = edgeFields.indexOf("to_node");
-      let strings: Array<string> = [];
+      {
+        const nodeTypeOffset = nodeFields.indexOf("type");
+        const nodeNameOffset = nodeFields.indexOf("name");
+        const nodeSelfSizeOffset = nodeFields.indexOf("self_size");
+        const nodeEdgeCountOffset = nodeFields.indexOf("edge_count");
+        const edgeFields = meta.edge_fields;
+        const edgeLength = edgeFields.length;
+        const edgeTypeOffset = edgeFields.indexOf("type");
+        const edgeNameOrIndexOffset = edgeFields.indexOf("name_or_index");
+        const edgeToNodeOffset = edgeFields.indexOf("to_node");
+        let strings: Array<string> = [];
 
-      let nodePtr = 0;
-      let edgePtr = 0;
-      let nextEdge = 0;
-      while (true) {
-        const chunk = await parser.read();
-        if (chunk === null) {
-          break;
-        }
-        switch (chunk.type) {
-          case DataTypes.NODES: {
-            const data = chunk.data;
-            const dataLen = data.length;
-            const dataNodeCount = dataLen / nodeLength;
-            if (dataLen % nodeLength !== 0) {
-              throw new Error(`Expected chunk to contain whole nodes. Instead, contained ${dataNodeCount} nodes.`);
-            }
-            // Copy data into our typed arrays.
-            for (let i = 0; i < dataNodeCount; i++) {
-              const dataBase = i * nodeLength;
-              const arrayBase = nodePtr + i;
-              nodeTypes[arrayBase] = data[dataBase + nodeTypeOffset];
-              nodeNames[arrayBase] = data[dataBase + nodeNameOffset];
-              nodeSizes[arrayBase] = data[dataBase + nodeSelfSizeOffset];
-              firstEdgeIndexes[arrayBase] = nextEdge;
-              nextEdge += data[dataBase + nodeEdgeCountOffset];
-            }
-            nodePtr += dataNodeCount;
+        let nodePtr = 0;
+        let edgePtr = 0;
+        let nextEdge = 0;
+        while (true) {
+          const chunk = await parser.read();
+          if (chunk === null) {
             break;
           }
-          case DataTypes.EDGES: {
-            const data = chunk.data;
-            const dataLen = data.length;
-            const dataEdgeCount = dataLen / edgeLength;
-            if (dataLen % edgeLength !== 0) {
-              throw new Error(`Expected chunk to contain whole nodes. Instead, contained ${dataEdgeCount} nodes.`);
+          switch (chunk.type) {
+            case DataTypes.NODES: {
+              const data = chunk.data;
+              const dataLen = data.length;
+              const dataNodeCount = dataLen / nodeLength;
+              if (dataLen % nodeLength !== 0) {
+                throw new Error(`Expected chunk to contain whole nodes. Instead, contained ${dataNodeCount} nodes.`);
+              }
+              // Copy data into our typed arrays.
+              for (let i = 0; i < dataNodeCount; i++) {
+                const dataBase = i * nodeLength;
+                const arrayBase = nodePtr + i;
+                nodeTypes[arrayBase] = data[dataBase + nodeTypeOffset];
+                nodeNames[arrayBase] = data[dataBase + nodeNameOffset];
+                nodeSizes[arrayBase] = data[dataBase + nodeSelfSizeOffset];
+                firstEdgeIndexes[arrayBase] = nextEdge;
+                nextEdge += data[dataBase + nodeEdgeCountOffset];
+              }
+              nodePtr += dataNodeCount;
+              break;
             }
-            // Copy data into our typed arrays.
-            for (let i = 0; i < dataEdgeCount; i++) {
-              const dataBase = i * edgeLength;
-              const arrayBase = edgePtr + i;
-              edgeTypes[arrayBase] = data[dataBase + edgeTypeOffset];
-              edgeNamesOrIndexes[arrayBase] = data[dataBase + edgeNameOrIndexOffset];
-              edgeToNodes[arrayBase] = data[dataBase + edgeToNodeOffset] / nodeLength;
+            case DataTypes.EDGES: {
+              const data = chunk.data;
+              const dataLen = data.length;
+              const dataEdgeCount = dataLen / edgeLength;
+              if (dataLen % edgeLength !== 0) {
+                throw new Error(`Expected chunk to contain whole nodes. Instead, contained ${dataEdgeCount} nodes.`);
+              }
+              // Copy data into our typed arrays.
+              for (let i = 0; i < dataEdgeCount; i++) {
+                const dataBase = i * edgeLength;
+                const arrayBase = edgePtr + i;
+                edgeTypes[arrayBase] = data[dataBase + edgeTypeOffset];
+                edgeNamesOrIndexes[arrayBase] = data[dataBase + edgeNameOrIndexOffset];
+                edgeToNodes[arrayBase] = data[dataBase + edgeToNodeOffset] / nodeLength;
+              }
+              edgePtr += dataEdgeCount;
+              break;
             }
-            edgePtr += dataEdgeCount;
-            break;
+            case DataTypes.STRINGS: {
+              strings = strings.concat(chunk.data);
+              break;
+            }
+            default:
+              throw new Error(`Unexpected snapshot chunk: ${chunk.type}.`);
           }
-          case DataTypes.STRINGS: {
-            strings = strings.concat(chunk.data);
-            break;
+        }
+        // Process edgeNameOrIndex now.
+        for (let i = 0; i < edgeCount; i++) {
+          const edgeType = edgeTypes[i];
+          switch(edgeType) {
+            case SnapshotEdgeType.Element: // Array element.
+            case SnapshotEdgeType.Hidden: // Hidden from developer, but influences in-memory size. Apparently has an index, not a name. Ignore for now.
+              break;
+            case SnapshotEdgeType.ContextVariable: // Function context. I think it has a name, like "context".
+            case SnapshotEdgeType.Internal: // Internal data structures that are not actionable to developers. Influence retained size. Ignore for now.
+            case SnapshotEdgeType.Shortcut: // Shortcut: Should be ignored; an internal detail.
+            case SnapshotEdgeType.Weak: // Weak reference: Doesn't hold onto memory.
+            case SnapshotEdgeType.Property: // Property on an object.
+              edgeNamesOrIndexes[i] = stringMap.get(strings[edgeNamesOrIndexes[i]]);
+              break;
+            default:
+              throw new Error(`Unrecognized edge type: ${edgeType}`);
           }
-          default:
-            throw new Error(`Unexpected snapshot chunk: ${chunk.type}.`);
+        }
+        firstEdgeIndexes[nodeCount] = edgeCount;
+        // Process nodeNames now.
+        for (let i = 0; i < nodeCount; i++) {
+          nodeNames[i] = stringMap.get(strings[nodeNames[i]]);
         }
       }
-      // Process edgeNameOrIndex now.
-      for (let i = 0; i < edgeCount; i++) {
-        const edgeType = edgeTypes[i];
-        switch(edgeType) {
-          case SnapshotEdgeType.Element: // Array element.
-          case SnapshotEdgeType.Hidden: // Hidden from developer, but influences in-memory size. Apparently has an index, not a name. Ignore for now.
-            break;
-          case SnapshotEdgeType.ContextVariable: // Function context. I think it has a name, like "context".
-          case SnapshotEdgeType.Internal: // Internal data structures that are not actionable to developers. Influence retained size. Ignore for now.
-          case SnapshotEdgeType.Shortcut: // Shortcut: Should be ignored; an internal detail.
-          case SnapshotEdgeType.Weak: // Weak reference: Doesn't hold onto memory.
-          case SnapshotEdgeType.Property: // Property on an object.
-            edgeNamesOrIndexes[i] = stringMap.get(strings[edgeNamesOrIndexes[i]]);
-            break;
-          default:
-            throw new Error(`Unrecognized edge type: ${edgeType}`);
-        }
-      }
-      firstEdgeIndexes[nodeCount] = edgeCount;
-      // Process nodeNames now.
-      for (let i = 0; i < nodeCount; i++) {
-        nodeNames[i] = stringMap.get(strings[nodeNames[i]]);
-      }
-    }
-    return new HeapGraph(stringMap, nodeTypes, nodeNames, nodeSizes,
-      firstEdgeIndexes, edgeTypes, edgeNamesOrIndexes, edgeToNodes, rootNodeIndex);
+      return new HeapGraph(stringMap, nodeTypes, nodeNames, nodeSizes,
+        firstEdgeIndexes, edgeTypes, edgeNamesOrIndexes, edgeToNodes, rootNodeIndex);
+    });
   }
 
   public readonly stringMap: StringMap;

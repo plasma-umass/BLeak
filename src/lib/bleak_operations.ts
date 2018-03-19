@@ -1,5 +1,5 @@
 import ChromeDriver from './chrome_driver';
-import {StepType, SnapshotSizeSummary, IProgressBar} from '../common/interfaces';
+import {StepType, SnapshotSizeSummary, IProgressBar, OperationType, Log} from '../common/interfaces';
 import BLeakConfig from './bleak_config';
 import {wait} from '../common/util';
 import HeapSnapshotParser from './heap_snapshot_parser';
@@ -8,8 +8,9 @@ import BLeakResults from './bleak_results';
 import {HeapGrowthTracker, HeapGraph, toPathTree} from './growth_graph';
 import StackFrameConverter from './stack_frame_converter';
 import PathToString from './path_to_string';
+import NopLog from '../common/nop_log';
 
-type SnapshotCb = (sn: HeapSnapshotParser) => Promise<void>;
+type SnapshotCb = (sn: HeapSnapshotParser, log: Log) => Promise<void>;
 
 export class OperationState {
   public results: BLeakResults = null;
@@ -101,14 +102,16 @@ class CheckOperation extends Operation {
   }
 
   public async _run(opSt: OperationState): Promise<void> {
-    // Wait until either the operation is canceled (timeout) or the check succeeds.
-    while (!this._cancelled) {
-      const success = await opSt.chromeDriver.runCode<boolean>(`typeof(BLeakConfig) !== "undefined" && BLeakConfig.${this._stepType}[${this._id}].check()`);
-      if (success) {
-        return;
+    return opSt.progressBar.timeEvent(OperationType.WAIT_FOR_PAGE, async () => {
+      // Wait until either the operation is canceled (timeout) or the check succeeds.
+      while (!this._cancelled) {
+        const success = await opSt.chromeDriver.runCode<boolean>(`typeof(BLeakConfig) !== "undefined" && BLeakConfig.${this._stepType}[${this._id}].check()`);
+        if (success) {
+          return;
+        }
+        await wait(100);
       }
-      await wait(100);
-    }
+    });
   }
 }
 
@@ -137,8 +140,10 @@ class DelayOperation extends Operation {
     return `Waiting ${this._delay} ms before proceeding`;
   }
 
-  public _run(): Promise<void> {
-    return wait(this._delay);
+  public _run(opSt: OperationState): Promise<void> {
+    return opSt.progressBar.timeEvent(OperationType.SLEEP, () => {
+      return wait(this._delay);
+    });
   }
 }
 
@@ -153,7 +158,7 @@ class TakeHeapSnapshotOperation extends Operation {
 
   public async _run(opSt: OperationState): Promise<void> {
     const sn = opSt.chromeDriver.takeHeapSnapshot();
-    return this._snapshotCb(sn);
+    return this._snapshotCb(sn, opSt.progressBar);
   }
 }
 
@@ -297,16 +302,16 @@ class FindLeaks extends CompositeOperation {
     super();
     this.children.push(
       new ConfigureProxyOperation({
-        log: null,
+        log: NopLog,
         rewrite: false,
         fixes: config.fixedLeaks,
         disableAllRewrites: false,
         fixRewriteFunction: config.rewrite,
         config: config.getBrowserInjection()
       }),
-      new ProgramRunOperation(config, true, config.iterations, false, async (sn: HeapSnapshotParser) => {
-        this._snapshotCb(sn);
-        await this._growthTracker.addSnapshot(sn);
+      new ProgramRunOperation(config, true, config.iterations, false, async (sn: HeapSnapshotParser, log: Log) => {
+        this._snapshotCb(sn, log);
+        await this._growthTracker.addSnapshot(sn, log);
         this._heapSnapshotSizeStats.push(this._growthTracker.getGraph().calculateSize());
       })
     );
@@ -319,8 +324,10 @@ class FindLeaks extends CompositeOperation {
   }
 
   protected async _run(opSt: OperationState): Promise<void> {
-    await super._run(opSt);
-    opSt.results = new BLeakResults(this._growthTracker.findLeakPaths(), undefined, undefined, this._heapSnapshotSizeStats);
+    return opSt.progressBar.timeEvent(OperationType.LEAK_IDENTIFICATION_AND_RANKING, async () => {
+      await super._run(opSt);
+      opSt.results = new BLeakResults(this._growthTracker.findLeakPaths(opSt.progressBar), undefined, undefined, this._heapSnapshotSizeStats);
+    });
   }
 }
 
@@ -332,13 +339,15 @@ class GetGrowthStacksOperation extends Operation {
   public get description() { return 'Retrieving stack traces'; }
 
   protected async _run(opSt: OperationState): Promise<void> {
-    const traces = await opSt.chromeDriver.runCode<GrowingStackTraces>(`window.$$$GET_STACK_TRACES$$$()`);
-    const growthStacks = StackFrameConverter.ConvertGrowthStacks(opSt.chromeDriver.mitmProxy, opSt.config.url, opSt.results, traces);
-    opSt.results.leaks.forEach((lr) => {
-      const index = lr.id;
-      const stacks = growthStacks[index] || [];
-      stacks.forEach((s) => {
-        lr.addStackTrace(s);
+    return opSt.progressBar.timeEvent(OperationType.GET_GROWTH_STACKS, async () => {
+      const traces = await opSt.chromeDriver.runCode<GrowingStackTraces>(`window.$$$GET_STACK_TRACES$$$()`);
+      const growthStacks = StackFrameConverter.ConvertGrowthStacks(opSt.chromeDriver.mitmProxy, opSt.config.url, opSt.results, traces);
+      opSt.results.leaks.forEach((lr) => {
+        const index = lr.id;
+        const stacks = growthStacks[index] || [];
+        stacks.forEach((s) => {
+          lr.addStackTrace(s);
+        });
       });
     });
   }
@@ -349,7 +358,7 @@ class DiagnoseLeaks extends CompositeOperation {
     super();
     this.children.push(
       new ConfigureProxyOperation({
-        log: null,
+        log: NopLog,
         rewrite: true,
         fixes: config.fixedLeaks,
         config: config.getBrowserInjection(),
@@ -371,8 +380,10 @@ class DiagnoseLeaks extends CompositeOperation {
   }
 
   protected async _run(opSt: OperationState): Promise<void> {
-    await super._run(opSt);
-    opSt.results = opSt.results.compact();
+    return opSt.progressBar.timeEvent(OperationType.LEAK_DIAGNOSES, async () => {
+      await super._run(opSt);
+      opSt.results = opSt.results.compact();
+    });
   }
 }
 
@@ -420,23 +431,23 @@ class EvaluateRankingMetricProgramRunOperation extends CompositeOperation {
       snapshotCb?: (ss: HeapSnapshotParser, metric: string, leaksFixed: number, iteration: number) => Promise<void>) {
     super();
     const buffer = this._buffer;
-    async function snapshotReport(sn: HeapSnapshotParser): Promise<void> {
-      const g = await HeapGraph.Construct(sn);
+    async function snapshotReport(sn: HeapSnapshotParser, log: Log): Promise<void> {
+      const g = await HeapGraph.Construct(sn, log);
       const size = g.calculateSize();
       buffer.push(size);
     }
     this.children.push(
       new ConfigureProxyOperation({
-        log: null,
+        log: NopLog,
         rewrite: false,
         fixes: _rankingEvalConfig.fixIds,
         disableAllRewrites: true,
         fixRewriteFunction: config.rewrite,
         config: config.getBrowserInjection()
       }),
-      new ProgramRunOperation(config, false, config.rankingEvaluationIterations, true, (sn) => {
+      new ProgramRunOperation(config, false, config.rankingEvaluationIterations, true, (sn, log) => {
         snapshotCb(sn, this._rankingEvalConfig.metrics(), this._rankingEvalConfig.fixIds.length, this._runNumber);
-        return snapshotReport(sn);
+        return snapshotReport(sn, log);
       })
     );
   }
@@ -538,7 +549,7 @@ export class EvaluateRankingMetricsOperation extends CompositeOperation {
     if (config.login) {
       this.children.push(
         new ConfigureProxyOperation({
-          log: null,
+          log: NopLog,
           rewrite: false,
           fixes: [],
           disableAllRewrites: true,

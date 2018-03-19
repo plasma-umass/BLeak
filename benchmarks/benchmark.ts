@@ -6,6 +6,7 @@ import {SnapshotSizeSummary} from '../src/common/interfaces';
 import {HeapGrowthTracker, HeapGraph} from '../src/lib/growth_graph';
 import {exposeClosureState} from '../src/lib/transformations';
 import HeapSnapshotParser from '../src/lib/heap_snapshot_parser';
+import ConsoleLog from '../src/common/console_log';
 
 const skipSnapshots = process.argv.indexOf("--skip-snapshots") !== -1;
 let loomioSnapshots: string[] = [];
@@ -40,13 +41,13 @@ function gunzipFile(file: string): string {
 async function getGrowthPaths(snapshots: string[]): Promise<any> {
   const builder = new HeapGrowthTracker();
   for (const snapshot of snapshots) {
-    await builder.addSnapshot(HeapSnapshotParser.FromString(snapshot));
+    await builder.addSnapshot(HeapSnapshotParser.FromString(snapshot), ConsoleLog);
   }
-  return builder.findLeakPaths();
+  return builder.findLeakPaths(ConsoleLog);
 }
 
 async function getHeapSize(snapshot: string): Promise<SnapshotSizeSummary> {
-  const graph = await HeapGraph.Construct(HeapSnapshotParser.FromString(snapshot));
+  const graph = await HeapGraph.Construct(HeapSnapshotParser.FromString(snapshot), ConsoleLog);
   return graph.calculateSize();
 }
 

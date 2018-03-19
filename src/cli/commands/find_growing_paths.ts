@@ -7,6 +7,7 @@ import {time} from '../../common/util';
 import HeapSnapshotParser from '../../lib/heap_snapshot_parser';
 import {createGunzip} from 'zlib';
 import {CommandModule} from 'yargs';
+import ConsoleLog from '../../common/console_log';
 
 function getHeapSnapshotParser(file: string): HeapSnapshotParser {
   const parser = new HeapSnapshotParser();
@@ -21,10 +22,10 @@ async function main(files: string[]) {
   const t = new HeapGrowthTracker();
   for (const file of files) {
     console.log(`Processing ${file}...`);
-    await t.addSnapshot(getHeapSnapshotParser(file));
+    await t.addSnapshot(getHeapSnapshotParser(file), ConsoleLog);
   }
 
-  const growth = time('Get Growing Objects', console, () => t.findLeakPaths());
+  const growth = time('Get Growing Objects', ConsoleLog, () => t.findLeakPaths(ConsoleLog));
   console.log(`Found ${growth.length} growing paths.`);
   console.log(``);
   console.log(`Report`);

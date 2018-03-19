@@ -1,3 +1,5 @@
+import TimeLog from './time_log';
+
 /**
  * A BLeak configuration file.
  */
@@ -288,6 +290,49 @@ export interface Log {
   log(data: string): void;
   // Print an error
   error(data: string): void;
+  // Runs the given function f. If time logging is enabled, inserts an
+  // event into the time log with the given operation type.
+  timeEvent<T>(operation: OperationType, f: () => T): T;
+  // Returns the time log.
+  getTimeLog(): TimeLog | null;
+}
+
+/**
+ * Operations that we measure overhead for.
+ */
+export const enum OperationType {
+  LEAK_IDENTIFICATION_AND_RANKING = "LeakIdentificationAndRanking",
+  LEAK_DIAGNOSES = "LeakDiagnoses",
+  // Called whenever the proxy code is running. Superset of all of the
+  // other proxy options.
+  PROXY_RUNNING = "ProxyRunning",
+  // The webpage issued an intercepted request via the proxy.
+  PROXY_REWRITE = "ProxyRewrite",
+  // The webpage issued an intercepted request via the proxy during diagnosis.
+  PROXY_DIAGNOSIS_REWRITE = "ProxyDiagnosisRewrite",
+  // The webpage ran eval().
+  PROXY_EVAL_REWRITE = "ProxyEvalRewrite",
+  // The webpage ran eval() during diagnosis.
+  PROXY_EVAL_DIAGNOSIS_REWRITE = "ProxyEvalDiagnosisRewrite",
+  // The webpage loaded HTML that the proxy is rewriting.
+  PROXY_HTML_REWRITE = "ProxyHTMLRewrite",
+  // BLeak is waiting for the webpage to get to a certain state.
+  WAIT_FOR_PAGE = "WaitForPage",
+  // BLeak is parsing a heap snapshot
+  HEAP_SNAPSHOT_PARSE = "HeapSnapshotParse",
+  // BLeak is running the PropagateGrowth algorithm
+  PROPAGATE_GROWTH = "PropagateGrowth",
+  // BLeak is running the FindLeakPaths algorithm
+  FIND_LEAK_PATHS = "FindLeakPaths",
+  // BLeak is running the CalculateLeakShare algorithm, along w/
+  // retained size and transitive closure size
+  CALCULATE_METRICS = "CalculateMetrics",
+  // BLeak is collecting stack traces from the webpage, and using
+  // source maps to translate them from the transformed code to the
+  // source code.
+  GET_GROWTH_STACKS = "GetGrowthStacks",
+  // BLeak is sleeping.
+  SLEEP = "Sleep"
 }
 
 /**

@@ -96,7 +96,7 @@ declare function importScripts(s: string): void;
   ROOT.$$$SERIALIZE_DOM$$$ = $$$SERIALIZE_DOM$$$;
 
   const r = /'/g;
-  // Some websites overwrite logToConsole.
+  // Some websites overwrite console.log, so grab a reference for debug logging.
   const console = ROOT.console ? ROOT.console : { log: (str: string) => {} };
   const consoleLog = console.log;
   function logToConsole(s: string) {
