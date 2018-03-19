@@ -85,7 +85,15 @@ export function toPathTree(leakroots: ILeakRoot[]): IPathTrees {
 
   leakroots.forEach((lr) => {
     lr.paths.forEach((p) => {
-      addPath(p, lr.id);
+      if (p.length === 0) {
+        // It's a root path! Instrument $$$GLOBAL$$$.
+        addPath([{
+          type: PathSegmentType.PROPERTY,
+          indexOrName: "$$$GLOBAL$$$"
+        }], lr.id);
+      } else {
+        addPath(p, lr.id);
+      }
     });
   });
 

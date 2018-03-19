@@ -237,7 +237,7 @@ declare function importScripts(s: string): void;
     if (applyWrite(target, key, value)) {
       return true;
     } else {
-      (ROOT as any)[key] = value;
+      (ROOT.$$$GLOBAL$$$ as any)[key] = value;
       return true;
     }
   }
@@ -578,8 +578,10 @@ declare function importScripts(s: string): void;
         },
         set: function(target, property, value, receiver): boolean {
           if (!disableProxies) {
-            // Capture a stack trace.
-            _addStackTrace(getProxyStackTraces(target), property);
+            if (!target.hasOwnProperty(property)) {
+              // Capture a stack trace.
+              _addStackTrace(getProxyStackTraces(target), property);
+            }
           }
           // LOG(`set`);
           return Reflect.set(target, property, value, target);
