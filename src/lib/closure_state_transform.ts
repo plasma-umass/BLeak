@@ -1517,7 +1517,7 @@ class ScopeScanningVisitor extends Visitor {
 
   public FunctionExpression(fe: FunctionExpression): FunctionExpression {
     if (fe.id) {
-      this._defineInNextBlock.push({type: VarType.CONST, name: fe.id.name });
+      this._defineInNextBlock.push({type: VarType.VAR, name: fe.id.name });
     }
     const args = fe.params;
     for (const arg of args) {

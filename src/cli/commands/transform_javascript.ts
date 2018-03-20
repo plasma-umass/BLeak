@@ -1,5 +1,5 @@
 import {readFileSync} from 'fs';
-import {exposeClosureState, nopTransform} from '../../lib/transformations';
+import {exposeClosureState, nopTransform, ensureES5} from '../../lib/transformations';
 import BLeakResults from '../../lib/bleak_results';
 import {CommandModule} from 'yargs';
 import {extname, basename, join} from 'path';
@@ -12,6 +12,7 @@ interface CommandLineArgs {
   out: string;
   overwrite: boolean;
   'nop-transform': boolean;
+  'es5-only': boolean;
 }
 
 const TransformJavaScript: CommandModule = {
@@ -37,6 +38,11 @@ const TransformJavaScript: CommandModule = {
       type: 'boolean',
       default: false,
       describe: `If true, BLeak does not transform the file, but appends a source map mapping the file to itself. Used for debugging BLeak's source map processing.`
+    },
+    'es5-only': {
+      type: 'boolean',
+      default: false,
+      describe: 'If true, only run the code through the ES5 transform.'
     }
   },
   handler: (args: CommandLineArgs) => {
@@ -48,7 +54,7 @@ const TransformJavaScript: CommandModule = {
     const progressBar = new ProgressProgressBar(false, false);
     function transformFile(from: string, src: string, to: string): void {
       progressBar.updateDescription(`Transforming ${from}...`)
-      const transformed = args['nop-transform'] ? nopTransform(from, src) : exposeClosureState(from, src);
+      const transformed = args['nop-transform'] ? nopTransform(from, src) : args['es5-only'] ? ensureES5(from, src) : exposeClosureState(from, src);
       progressBar.nextOperation();
       progressBar.updateDescription(`Writing ${from} to ${to}...`)
       writeFileSync(to, Buffer.from(transformed, 'utf8'), { flag });

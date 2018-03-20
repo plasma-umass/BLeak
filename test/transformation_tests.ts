@@ -487,11 +487,11 @@ describe('Transformations', function() {
     it(`works with named functions that have overriding local variables`, function() {
       const module = instrumentModule<{fcn: () => any, assign: (v: any) => any}>(`
         exports.fcn = function foo() {
-          var foo = 3; // <-- has no effect.
+          var foo = 3;
           // Close over to make sure it gets captured.
           return function() { return foo; };
         };`);
-      assertEqual(module.fcn()(), module.fcn);
+      assertEqual(module.fcn()(), 3);
     });
 
     // instrument a global variable and get stack traces
