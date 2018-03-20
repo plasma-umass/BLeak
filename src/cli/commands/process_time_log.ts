@@ -82,6 +82,7 @@ const ProcessTimeLog: CommandModule = {
     printSummaryOfOne(OperationType.HEAP_SNAPSHOT_PARSE);
     printSummaryOfOne(OperationType.PROPAGATE_GROWTH);
     printSummaryOfOne(OperationType.SLEEP);
+    printSummaryOfOne(OperationType.NAVIGATE);
     printSummaryOfOne(OperationType.PROXY_RUNNING);
     printSummary("ProxyRewriteProcessing", combineTypes([
       OperationType.PROXY_REWRITE,
@@ -90,6 +91,39 @@ const ProcessTimeLog: CommandModule = {
       OperationType.PROXY_EVAL_DIAGNOSIS_REWRITE,
       OperationType.PROXY_HTML_REWRITE
     ]));
+
+    const runtime = sum(combineTypes([
+      OperationType.LEAK_IDENTIFICATION_AND_RANKING,
+      OperationType.LEAK_DIAGNOSES]).map(duration));
+    const waiting = sum(combineTypes([
+      OperationType.WAIT_FOR_PAGE,
+      OperationType.NAVIGATE,
+      OperationType.SLEEP
+    ]).map(duration));
+    const proxyRunning = sum(entriesByType.get(OperationType.PROXY_RUNNING).map(duration));
+    const heapSnapshotTransmission = sum(entriesByType.get(OperationType.HEAP_SNAPSHOT_PARSE).map(duration));
+    const propagateGrowth = sum(entriesByType.get(OperationType.PROPAGATE_GROWTH).map(duration));
+    const calculateMetrics = sum(entriesByType.get(OperationType.CALCULATE_METRICS).map(duration));
+    const findLeakPaths = sum(entriesByType.get(OperationType.FIND_LEAK_PATHS).map(duration));
+    const getGrowthStacks = sum(entriesByType.get(OperationType.GET_GROWTH_STACKS).map(duration));
+    // Total time: LIAR + LD.
+
+    // Then print percentages.
+    // (WAIT_FOR_PAGE + NAVIGATE + SLEEP) - ProxyRunning
+
+    console.log(`------------------------------------`);
+    console.log(`activity,duration`);
+    function printColumn(activity: string, duration: number): void {
+      console.log(`${activity},${duration}`);
+    }
+    printColumn('Waiting', waiting-proxyRunning);
+    printColumn('Proxy', proxyRunning);
+    printColumn('Parsing heap snapshot', heapSnapshotTransmission);
+    printColumn('PropgateGrowth', propagateGrowth);
+    printColumn('Calculating metrics', calculateMetrics);
+    printColumn('FindLeakPaths', findLeakPaths);
+    printColumn('GetGrowthStacks', getGrowthStacks);
+    printColumn('Other', runtime - waiting - heapSnapshotTransmission - propagateGrowth - calculateMetrics - findLeakPaths - getGrowthStacks);
   }
 };
 

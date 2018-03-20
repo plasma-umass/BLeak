@@ -5,7 +5,7 @@ import ChromeDriver from '../src/lib/chrome_driver';
 import {readFileSync} from 'fs';
 import {equal as assertEqual} from 'assert';
 import NopProgressBar from '../src/lib/nop_progress_bar';
-import ConsoleLog from '../src/common/console_log';
+import NopLog from '../src/common/nop_log';
 
 const HTTP_PORT = 8875;
 const DEBUG = false;
@@ -277,7 +277,7 @@ describe('End-to-end Tests', function() {
       // Silence debug messages.
       console.debug = () => {};
     }
-    driver = await ChromeDriver.Launch(ConsoleLog, true, 1920, 1080);
+    driver = await ChromeDriver.Launch(NopLog, true, 1920, 1080);
   });
 
   function createStandardLeakTest(description: string, rootFilename: string, expected_line: number): void {

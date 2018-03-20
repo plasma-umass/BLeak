@@ -2,7 +2,7 @@ import createHTTPServer from './util/http_server';
 import {Server as HTTPServer} from 'http';
 import ChromeDriver from '../src/lib/chrome_driver';
 import {equal as assertEqual} from 'assert';
-import ConsoleLog from '../src/common/console_log';
+import NopLog from '../src/common/nop_log';
 
 const HTTP_PORT = 8890;
 
@@ -20,7 +20,7 @@ describe("Chrome Driver", function() {
     }, HTTP_PORT);
     // Silence debug messages.
     console.debug = () => {};
-    chromeDriver = await ChromeDriver.Launch(ConsoleLog, true, 1920, 1080);
+    chromeDriver = await ChromeDriver.Launch(NopLog, true, 1920, 1080);
   });
 
   it("Successfully loads a webpage", async function() {
