@@ -300,7 +300,7 @@ class ProgramRunOperation extends CompositeOperation {
 class FindLeaks extends CompositeOperation {
   private readonly _growthTracker = new HeapGrowthTracker();
   private _heapSnapshotSizeStats: SnapshotSizeSummary[] = [];
-  constructor(config: BLeakConfig, private _snapshotCb: SnapshotCb) {
+  constructor(config: BLeakConfig, private _snapshotCb: SnapshotCb, private _flushResults: (results: BLeakResults) => void) {
     super();
     this.children.push(
       new ConfigureProxyOperation({
@@ -329,6 +329,7 @@ class FindLeaks extends CompositeOperation {
     return opSt.progressBar.timeEvent(OperationType.LEAK_IDENTIFICATION_AND_RANKING, async () => {
       await super._run(opSt);
       opSt.results = new BLeakResults(this._growthTracker.findLeakPaths(opSt.progressBar), undefined, undefined, this._heapSnapshotSizeStats);
+      this._flushResults(opSt.results);
     });
   }
 }
@@ -584,10 +585,10 @@ export class EvaluateRankingMetricsOperation extends CompositeOperation {
 }
 
 export class FindAndDiagnoseLeaks extends CompositeOperation {
-  constructor(config: BLeakConfig, snapshotCb: SnapshotCb) {
+  constructor(config: BLeakConfig, flushResults: (results: BLeakResults) => void, snapshotCb: SnapshotCb) {
     super();
     this.children.push(
-      new FindLeaks(config, snapshotCb),
+      new FindLeaks(config, snapshotCb, flushResults),
       new DiagnoseLeaks(config, true)
     );
   }

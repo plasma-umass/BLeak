@@ -100,7 +100,11 @@ const Run: CommandModule = {
         shutDown();
       });
       let i = 0;
-      BLeak.FindLeaks(configFileSource, progressBar, chromeDriver, (sn) => {
+      BLeak.FindLeaks(configFileSource, progressBar, chromeDriver, (results) => {
+        writeFileSync(bleakResultsOutput, JSON.stringify(results));
+        const resultsLog = TextReporter(results);
+        writeFileSync(join(args.out, 'bleak_report.log'), resultsLog);
+      }, (sn) => {
         if (args.snapshot) {
           const str = createWriteStream(join(args.out, 'snapshots', 'leak_detection', `snapshot_${i}.heapsnapshot.gz`));
           i++;

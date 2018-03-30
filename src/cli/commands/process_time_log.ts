@@ -3,6 +3,7 @@ import {CommandModule} from 'yargs';
 import {OperationType} from '../../common/interfaces';
 import {TimeLogEntry} from '../../common/time_log';
 import {notEqual as assertNotEqual, equal as assertEqual} from 'assert';
+import {basename} from 'path';
 
 interface CommandLineArgs {
   log: string;
@@ -112,14 +113,18 @@ const ProcessTimeLog: CommandModule = {
     // (WAIT_FOR_PAGE + NAVIGATE + SLEEP) - ProxyRunning
 
     console.log(`------------------------------------`);
-    console.log(`activity,duration`);
+    console.log(`benchmark,activity,duration,durationPercent`);
+    let bmName = basename(args.log);
+    bmName = bmName.slice(0, bmName.lastIndexOf('.'));
     function printColumn(activity: string, duration: number): void {
-      console.log(`${activity},${duration}`);
+      console.log(`${bmName},${activity},${duration},${(duration/runtime)*100}`);
     }
+    printColumn('Runtime', runtime);
     printColumn('Waiting', waiting-proxyRunning);
     printColumn('Proxy', proxyRunning);
     printColumn('Parsing heap snapshot', heapSnapshotTransmission);
-    printColumn('PropgateGrowth', propagateGrowth);
+    printColumn('Algorithms', propagateGrowth + calculateMetrics + findLeakPaths);
+    printColumn('PropagateGrowth', propagateGrowth);
     printColumn('Calculating metrics', calculateMetrics);
     printColumn('FindLeakPaths', findLeakPaths);
     printColumn('GetGrowthStacks', getGrowthStacks);
