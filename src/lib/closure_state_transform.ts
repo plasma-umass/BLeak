@@ -372,7 +372,7 @@ function getScopeAssignment(functionVarName: string, scopeVarName: string): Expr
         computed: false,
         object: {
           type: "Identifier",
-          name: "Object"
+          name: "$$$OBJECT$$$"
         },
         property: {
           type: "Identifier",

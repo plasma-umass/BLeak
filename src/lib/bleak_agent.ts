@@ -37,6 +37,7 @@ interface Window {
   $$$CREATE_WITH_SCOPE$$$(withObj: Object, scope: Scope): Scope;
   $$$SERIALIZE_DOM$$$(): void;
   $$$DOM$$$: MirrorNode;
+  $$$OBJECT$$$: typeof Object;
 }
 
 interface ListenerInfo {
@@ -94,6 +95,8 @@ declare function importScripts(s: string): void;
   ROOT.$$$OBJECT_EXPRESSION$$$ = $$$OBJECT_EXPRESSION$$$;
   ROOT.$$$CREATE_WITH_SCOPE$$$ = $$$CREATE_WITH_SCOPE$$$;
   ROOT.$$$SERIALIZE_DOM$$$ = $$$SERIALIZE_DOM$$$;
+  // Some programs define local variables named 'Object'.
+  ROOT.$$$OBJECT$$$ = Object;
 
   const r = /'/g;
   // Some websites overwrite console.log, so grab a reference for debug logging.

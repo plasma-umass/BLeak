@@ -494,6 +494,22 @@ describe('Transformations', function() {
       assertEqual(module.fcn()(), 3);
     });
 
+    it(`works with local variables named Object`, function() {
+      const module = instrumentModule<{fcn: () => any, assign: (v: any) => any}>(`
+        exports.fcn = function foo() {
+          // Define a variable named Object (does not escape)
+          var Object = undefined;
+          // Close over at least one variable to create a scope object..
+          var foo = 3;
+          // Hoist.
+          function rv() {
+            return foo;
+          }
+          return rv;
+        };`);
+      assertEqual(module.fcn()(), 3);
+    });
+
     // instrument a global variable and get stack traces
     // with() with undefined / null / zeroish values.
 
