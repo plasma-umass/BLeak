@@ -67,7 +67,7 @@ async function main(): Promise<void> {
 			promises.push(copyDir(htmlFolder, path.join(distFolder, 'viewer')));
 
 			const viewerSrcFolder = path.join(buildFolder, 'browser');
-			['viewer.js', 'viewer.js.map'].forEach((file) => {
+			['viewer.js', 'viewer.js.map', 'viewer.min.js', 'viewer.min.js.map'].forEach((file) => {
 				promises.push(copy(path.join(viewerSrcFolder, file), path.join(distFolder, 'viewer', file)));
 			});
 			promises.push(copy(path.resolve('node_modules', 'd3', 'build', 'd3.min.js'), path.join(distFolder, 'viewer', 'd3.min.js')));

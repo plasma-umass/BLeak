@@ -41,6 +41,70 @@ export default class App extends React.Component<{}, AppState> {
     };
   }
 
+  private async _tryDisplayFile(result: string, startingPercent: number): Promise<void> {
+    const bleakResults = BLeakResults.FromJSON(JSON.parse(result));
+    const sourceFileManager = await SourceFileManager.FromBLeakResults(bleakResults, (completed, total) => {
+      const percent = startingPercent + (completed / total) * (100 - startingPercent);
+      this.setState({
+        progress: percent,
+        progressMessage: `${completed} of ${total} source files formatted...`
+      });
+    });
+    const sourceFiles = sourceFileManager.getSourceFiles();
+    const stackTraces = StackTraceManager.FromBLeakResults(sourceFileManager, bleakResults);
+    this.setState({
+      state: ViewState.DISPLAYING_FILE,
+      bleakResults,
+      sourceFileManager,
+      stackTraces,
+      selectedLocation: new Location(sourceFiles[0], 1, 1, true)
+    });
+  }
+
+  private _loadFromUrl(url: string): void {
+    this.setState({
+      state: ViewState.PROCESSING_FILE,
+      progress: 10,
+      progressMessage: "Downloading results file ...",
+      errorMessage: null
+    });
+    // 40%
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url);
+    xhr.onprogress = (e) => {
+      const p = e.loaded / e.total;
+      this.setState({ progress: 10 + (p * 40) });
+    };
+    xhr.onload = async (e) => {
+      try {
+        this.setState({ progress: 50 });
+        this._tryDisplayFile(xhr.responseText, 50);
+      } catch (e) {
+        this.setState({
+          state: ViewState.WAIT_FOR_FILE,
+          errorMessage: `${e}`
+        });
+      }
+    };
+    xhr.onerror = (e) => {
+      this.setState({
+        state: ViewState.WAIT_FOR_FILE,
+        errorMessage: `${e}`
+      });
+    };
+    xhr.send();
+  }
+
+  public componentDidMount() {
+    // Check for url parameter.
+    const hash = window.location.hash;
+    const urlIndex = hash.indexOf('url=');
+    if (urlIndex !== -1) {
+      const url = hash.slice(urlIndex + 4);
+      this._loadFromUrl(url);
+    }
+  }
+
   private _onFileSelect() {
     const input = this.refs['file_select'] as HTMLInputElement;
     const files = input.files;
@@ -55,23 +119,7 @@ export default class App extends React.Component<{}, AppState> {
       const reader = new FileReader();
       reader.onload = async (e) => {
         try {
-          const bleakResults = BLeakResults.FromJSON(JSON.parse((e.target as FileReader).result as string));
-          const sourceFileManager = await SourceFileManager.FromBLeakResults(bleakResults, (completed, total) => {
-            const percent = 10 + (completed / total) * 90;
-            this.setState({
-              progress: percent,
-              progressMessage: `${completed} of ${total} source files formatted...`
-            });
-          });
-          const sourceFiles = sourceFileManager.getSourceFiles();
-          const stackTraces = StackTraceManager.FromBLeakResults(sourceFileManager, bleakResults);
-          this.setState({
-            state: ViewState.DISPLAYING_FILE,
-            bleakResults,
-            sourceFileManager,
-            stackTraces,
-            selectedLocation: new Location(sourceFiles[0], 1, 1, true)
-          });
+          this._tryDisplayFile((e.target as FileReader).result as string, 10);
         } catch (e) {
           this.setState({
             state: ViewState.WAIT_FOR_FILE,

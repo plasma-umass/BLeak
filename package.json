@@ -6,16 +6,18 @@
     "bleak": "./dist/node/cli/bleak.js"
   },
   "scripts": {
-    "build": "npm-run-all -p build:node build:viewer -s rollup:viewer make_dist",
+    "build": "npm-run-all -p build:node build:viewer -s rollup:viewer rollup:viewer:production make_dist",
     "build:node": "tsc -p tsconfig.node.json",
     "build:viewer": "tsc",
     "rollup:viewer": "rollup -c",
+    "rollup:viewer:production": "rollup -c --environment BUILD:production",
     "test": "npm-run-all -s build nyc:test",
     "nyc:test": "nyc mocha --require source-map-support/register build/node/test",
-    "watch": "npm-run-all -s build -p tsc:viewer:watch tsc:watch rollup:viewer:watch make_dist:watch",
+    "watch": "npm-run-all -s build -p tsc:viewer:watch tsc:watch rollup:viewer:watch rollup:viewer:production:watch make_dist:watch",
     "tsc:watch": "tsc -w",
     "tsc:viewer:watch": "tsc -w -p tsconfig.node.json",
     "rollup:viewer:watch": "rollup -w -c",
+    "rollup:viewer:production:watch": "rollup -w -c --environment BUILD:production",
     "benchmark": "npm-run-all build:node -s run:benchmark",
     "run:benchmark": "node --max-old-space-size=8192 build/node/benchmarks/benchmark.js",
     "make_dist": "node build/node/scripts/make_dist.js",
@@ -80,6 +82,7 @@
     "rollup-plugin-node-resolve": "^3.0.2",
     "rollup-plugin-replace": "^2.0.0",
     "rollup-plugin-sourcemaps": "^0.4.2",
+    "rollup-plugin-uglify": "^3.0.0",
     "source-map-support": "^0.5.3",
     "typescript": "^2.7.1"
   },
