@@ -359,12 +359,15 @@ declare function importScripts(s: string): void;
    */
   function $$$OBJECT_EXPRESSION$$$(obj: object, scope: Scope): object {
     const props = Object.getOwnPropertyDescriptors(obj);
-    for (const prop of props) {
-      if (prop.get) {
-        $$$FUNCTION_EXPRESSION$$$(prop.get, scope);
-      }
-      if (prop.set) {
-        $$$FUNCTION_EXPRESSION$$$(prop.set, scope);
+    for (const propName in props) {
+      if (props.hasOwnProperty(propName)) {
+        const prop = props[propName];
+        if (prop.get) {
+          $$$FUNCTION_EXPRESSION$$$(prop.get, scope);
+        }
+        if (prop.set) {
+          $$$FUNCTION_EXPRESSION$$$(prop.set, scope);
+        }
       }
     }
     return obj;

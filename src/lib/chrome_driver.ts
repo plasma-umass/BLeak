@@ -5,7 +5,7 @@ import {HeapProfiler as ChromeHeapProfiler, Network as ChromeNetwork, Console as
 import {accessSync} from 'fs';
 import {join} from 'path';
 import * as repl from 'repl';
-import {parse as parseJavaScript} from 'esprima';
+import {parseScript as parseJavaScript} from 'esprima';
 import * as childProcess from 'child_process';
 import MITMProxy from 'mitmproxy';
 import {platform} from 'os';
@@ -49,7 +49,9 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: nu
   };
   switch (platform()) {
     case 'darwin':
-      return session.spawnBrowser("system", baseOptions);
+      return session.spawnBrowser(Object.assign({
+        browserType: "system" as "system"
+       }, baseOptions));
     case 'freebsd':
     case 'linux':
     case 'openbsd': {
@@ -63,7 +65,8 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: nu
       if (chromePath === "") {
         return Promise.reject(`Unable to find a Google Chrome or Chromium installation.`)
       }
-      return session.spawnBrowser("exact", Object.assign({
+      return session.spawnBrowser(Object.assign({
+        browserType: "exact" as "exact",
         executablePath: chromePath
       }, baseOptions));
     }
@@ -76,7 +79,8 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: nu
         try {
           let chromeLocation = join(prefix, suffix);
           accessSync(chromeLocation);
-          return session.spawnBrowser("exact", Object.assign({
+          return session.spawnBrowser(Object.assign({
+            browserType: "exect" as "exact",
             executablePath: chromeLocation
           }, baseOptions));
         } catch (e) {}

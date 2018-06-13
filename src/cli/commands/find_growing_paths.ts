@@ -11,7 +11,10 @@ import ConsoleLog from '../../common/console_log';
 
 function getHeapSnapshotParser(file: string): HeapSnapshotParser {
   const parser = new HeapSnapshotParser();
-  const stream = createReadStream(file).pipe(createGunzip());
+  let stream: NodeJS.ReadableStream = createReadStream(file);
+  if (file.endsWith('.gz')) {
+    stream = stream.pipe(createGunzip());
+  }
   stream.on('data', function(d) {
     parser.addSnapshotChunk(d.toString());
   });

@@ -1,5 +1,5 @@
 import {Node, BaseStatement, Statement, Program, EmptyStatement, BlockStatement, ExpressionStatement, IfStatement, LabeledStatement, BreakStatement, ContinueStatement, WithStatement, SwitchStatement, ReturnStatement, ThrowStatement, TryStatement, WhileStatement, DoWhileStatement, ForStatement, ForInStatement, DebuggerStatement, ForOfStatement, FunctionDeclaration, VariableDeclaration, VariableDeclarator, ThisExpression, ArrayExpression, ObjectExpression, Property, FunctionExpression, SequenceExpression, UnaryExpression, BinaryExpression, AssignmentExpression, UpdateExpression, LogicalExpression, ConditionalExpression, NewExpression, CallExpression, MemberExpression, SwitchCase, CatchClause, Identifier, Literal, Super, SpreadElement, ArrowFunctionExpression, YieldExpression, TemplateElement, TemplateLiteral, TaggedTemplateExpression, ObjectPattern, ArrayPattern, RestElement, AssignmentPattern, ClassBody, ClassDeclaration, ClassExpression, MethodDefinition, MetaProperty, ImportDeclaration, ImportDefaultSpecifier, ImportNamespaceSpecifier, ImportSpecifier, ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration, ExportSpecifier, AwaitExpression} from 'estree';
-import {parse as parseJavaScript} from 'esprima';
+import {parseScript as parseJavaScript} from 'esprima';
 import {generate as generateJavaScript} from 'astring';
 import {SourceMapGenerator, SourceMapConsumer, RawSourceMap} from 'source-map';
 import {transform as buble} from 'buble';
@@ -36,7 +36,7 @@ function getPolyfillInsertion(url: string): IfStatement {
     test: {
       type: "BinaryExpression",
       operator: "===",
-      left: {
+      left: ({
         type: "UnaryExpression",
         operator: "typeof",
         argument: {
@@ -44,7 +44,7 @@ function getPolyfillInsertion(url: string): IfStatement {
           name: "regeneratorRuntime"
         },
         prefix: true
-      },
+      } as UnaryExpression),
       right: {
         type: "Literal",
         value: "undefined",
@@ -79,7 +79,7 @@ function getAgentInsertion(url: string): IfStatement {
     test: {
       type: "BinaryExpression",
       operator: "===",
-      left: {
+      left: ({
         type: "UnaryExpression",
         operator: "typeof",
         argument: {
@@ -87,7 +87,7 @@ function getAgentInsertion(url: string): IfStatement {
           name: "$$$CREATE_SCOPE_OBJECT$$$"
         },
         prefix: true
-      },
+      } as UnaryExpression),
       right: {
         type: "Literal",
         value: "undefined",
@@ -326,7 +326,6 @@ function getProgramPrelude(statements: IfStatement[]): ExpressionStatement {
           }]).concat(statements)
         },
         generator: false,
-        expression: false,
         async: false
       },
       arguments: []
@@ -1980,9 +1979,9 @@ class ScopeCreationVisitor extends Visitor {
     // Cannot have statements on the left of a `for in` or `for of`.
     // Unwrap into an expression.
     if ((<any> left).type === "ExpressionStatement") {
-      rv.left = (<ExpressionStatement><any> left).expression;
-      if (rv.left.type === "AssignmentExpression") {
-        rv.left = rv.left.left as MemberExpression;
+      rv.left = (<any> left).expression;
+      if ((rv.left as any).type === "AssignmentExpression") {
+        rv.left = (rv.left as any as AssignmentExpression).left as MemberExpression;
       }
     }
     return rv;

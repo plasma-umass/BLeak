@@ -116,7 +116,7 @@ describe('Proxy', function() {
       if (e) {
         done(e);
       } else {
-        proxy.shutdown().then(done).catch(done);
+        proxy.shutdown().then(done, done);
       }
     });
   });

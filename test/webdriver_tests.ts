@@ -30,6 +30,10 @@ describe("Chrome Driver", function() {
   });
 
   after(async function() {
-    await Promise.all([chromeDriver.shutdown(), httpServer.close]);
+    return new Promise<void>((resolve, reject) => {
+      httpServer.close(function() {
+        chromeDriver.shutdown().then(resolve, reject);
+      });
+    });
   });
 });

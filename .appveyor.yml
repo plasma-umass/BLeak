@@ -22,8 +22,8 @@ install:
   - pip --version
   - node --version
   - yarn --version
-  - pip install --disable-pip-version-check --user --upgrade pip
-  - pip install mitmproxy==2.0.2
+  #- pip install --disable-pip-version-check --user --upgrade pip
+  - pip install mitmproxy==4.0.1
   - yarn install
 test_script:
   - yarn test

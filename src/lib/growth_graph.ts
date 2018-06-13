@@ -35,6 +35,15 @@ function edgePathToPath(edges: Edge[]): IPath {
  * @param edge
  */
 function isNotHidden(edge: Edge): boolean {
+  // window.self is a special property in Chrome's heap snapshots that
+  // contains a variety of native objects, including the DOM. Failing
+  // to ignore it prevents BLeak from finding DOM leaks.
+  /*if (edge.indexOrName === "self" && edge.to.name === "Window" && edge.to.type === SnapshotNodeType.Native) {
+    return false;
+  }*/
+  if (edge.snapshotType === SnapshotEdgeType.Element && edge.to.type === SnapshotNodeType.Native) {
+    return false;
+  }
   switch(edge.snapshotType) {
     case SnapshotEdgeType.Internal:
       // Keep around closure edges so we can convert them to __scope__.
