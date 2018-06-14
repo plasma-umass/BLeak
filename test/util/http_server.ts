@@ -31,7 +31,7 @@ export default function createSimpleServer(files: {[path: string]: TestFile}, po
       // Handle error events so ECONNRESETs do not cause program to
       // crash.
       res.on('error', (e) => {
-        if (e.name !== "ECONNRESET") {
+        if ((e as any).code !== "ECONNRESET") {
           throw e;
         }
       });
