@@ -239,6 +239,12 @@ export default class ChromeDriver {
   }
   public async shutdown(): Promise<void> {
     this._shutdown = true;
-    await Promise.all([this._process.dispose(), this.mitmProxy.shutdown()]);
+    try {
+      console.log(`Shutting down MITMProxy`);
+      await this.mitmProxy.shutdown();
+    } finally {
+      console.log(`Shutting down Chrome`);
+      await this._process.dispose();
+    }
   }
 }
