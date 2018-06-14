@@ -356,11 +356,13 @@ describe('End-to-end Tests', function() {
     // Shutdown both HTTP server and proxy.
     let e: any = null;
     function wrappedDone() {
+      console.log(`Done with error: ${e}`);
       done(e);
     }
 
     function shutdownProxy() {
       if (driver) {
+        console.log(`Shutting down proxy`);
         driver.shutdown().then(wrappedDone, (localE) => {
           e = localE;
           wrappedDone();
@@ -372,7 +374,9 @@ describe('End-to-end Tests', function() {
 
     function shutdownHTTPServer() {
       if (httpServer) {
+        console.log("Shutting down HTTP server.");
         httpServer.close((localE: any) => {
+          console.log(`HTTP server shutdown. Error: ${localE}`);
           e = localE;
           shutdownProxy();
         });
