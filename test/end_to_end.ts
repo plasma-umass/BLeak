@@ -361,12 +361,12 @@ describe('End-to-end Tests', function() {
 
     function shutdownProxy() {
       if (driver) {
-        driver.shutdown().then(wrappedDone).catch((localE) => {
+        driver.shutdown().then(wrappedDone, (localE) => {
           e = localE;
           wrappedDone();
         });
       } else {
-        done();
+        wrappedDone();
       }
     }
 
@@ -376,6 +376,8 @@ describe('End-to-end Tests', function() {
           e = localE;
           shutdownProxy();
         });
+      } else {
+        shutdownProxy();
       }
     }
     DEBUG ? setTimeout(shutdownHTTPServer, 99999999) : shutdownHTTPServer();
