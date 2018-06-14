@@ -15,6 +15,10 @@ interface TestFile {
   data: Buffer;
 }
 
+process.on('uncaughtException', (err) => {
+  console.log(`Uncaught exception: ${err}`);
+});
+
 function getHTMLDoc(docStr: string): { mimeType: string, data: Buffer } {
   return {
     mimeType: 'text/html',
