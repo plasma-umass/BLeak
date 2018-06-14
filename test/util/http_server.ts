@@ -54,5 +54,8 @@ export default function createSimpleServer(files: {[path: string]: TestFile}, po
       }
     });
     httpServer.on('error', ignoreEconnReset);
+    httpServer.on('connection', (socket) => {
+      socket.on('error', ignoreEconnReset);
+    });
   });
 }
