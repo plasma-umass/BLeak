@@ -18,6 +18,12 @@ function sendResponse(res: ServerResponse, testFile: TestFile): void {
   res.end();
 }
 
+function ignoreEconnReset(e: any): void {
+  if ((e as any).code !== "ECONNRESET") {
+    throw e;
+  }
+}
+
 
 /**
  * Creates a test HTTP server that serves up static in-memory "files".
@@ -30,11 +36,8 @@ export default function createSimpleServer(files: {[path: string]: TestFile}, po
     const httpServer = createHTTPServer(function(req, res) {
       // Handle error events so ECONNRESETs do not cause program to
       // crash.
-      res.on('error', (e) => {
-        if ((e as any).code !== "ECONNRESET") {
-          throw e;
-        }
-      });
+      res.on('error', ignoreEconnReset);
+      req.on('error', ignoreEconnReset);
       const url = req.url.toLowerCase();
       const testFile = files[url] || files['/'];
       if (testFile) {
