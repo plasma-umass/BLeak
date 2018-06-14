@@ -98,7 +98,7 @@
     "esprima": "~4.0.0",
     "express": "~4.16.3",
     "htmlparser2": "~3.9.2",
-    "mitmproxy": "~2.0.2",
+    "mitmproxy": "~2.0.3",
     "progress": "~2.0.0",
     "source-map": "~0.6.1",
     "tslib": "~1.9.0",

@@ -31,9 +31,21 @@ describe("Chrome Driver", function() {
 
   after(async function() {
     return new Promise<void>((resolve, reject) => {
-      httpServer.close(function() {
-        chromeDriver.shutdown().then(resolve, reject);
-      });
+      function closeChrome() {
+        if (chromeDriver) {
+          chromeDriver.shutdown().then(resolve, reject);
+        } else {
+          resolve();
+        }
+      }
+      function closeHttpServer() {
+        if (httpServer) {
+          httpServer.close(closeChrome);
+        } else {
+          closeChrome();
+        }
+      }
+      closeHttpServer();
     });
   });
 });

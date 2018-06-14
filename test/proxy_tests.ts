@@ -112,12 +112,33 @@ describe('Proxy', function() {
 
   after(function(done) {
     // Shutdown both HTTP server and proxy.
-    httpServer.close((e: any) => {
-      if (e) {
-        done(e);
+    let e: any;
+    function wrappedDone() {
+      done(e);
+    }
+
+    function closeProxy() {
+      if (proxy) {
+        proxy.shutdown().then(wrappedDone, (localE) => {
+          e = localE;
+          wrappedDone();
+        });
       } else {
-        proxy.shutdown().then(done, done);
+        wrappedDone();
       }
-    });
+    }
+
+    function closeHttpServer() {
+      if (httpServer) {
+        httpServer.close((localE: any) => {
+          e = localE;
+          closeProxy();
+        });
+      } else {
+        closeProxy();
+      }
+    }
+
+    closeHttpServer();
   });
 });

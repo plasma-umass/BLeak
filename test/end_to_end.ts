@@ -354,18 +354,31 @@ describe('End-to-end Tests', function() {
   after(function(done) {
     //setTimeout(function() {
     // Shutdown both HTTP server and proxy.
-    function finish() {
-      httpServer.close((e: any) => {
-        if (e) {
-          done(e);
-        } else {
-          driver.shutdown().then(() => {
-            done();
-          }).catch(done);
-        }
-      });
+    let e: any = null;
+    function wrappedDone() {
+      done(e);
     }
-    DEBUG ? setTimeout(finish, 99999999) : finish();
+
+    function shutdownProxy() {
+      if (driver) {
+        driver.shutdown().then(wrappedDone).catch((localE) => {
+          e = localE;
+          wrappedDone();
+        });
+      } else {
+        done();
+      }
+    }
+
+    function shutdownHTTPServer() {
+      if (httpServer) {
+        httpServer.close((localE: any) => {
+          e = localE;
+          shutdownProxy();
+        });
+      }
+    }
+    DEBUG ? setTimeout(shutdownHTTPServer, 99999999) : shutdownHTTPServer();
     //}, 99999999);
   });
 });

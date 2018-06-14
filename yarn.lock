@@ -3103,9 +3103,9 @@ minimist@~0.0.1:
   version "0.0.10"
   resolved "https://registry.yarnpkg.com/minimist/-/minimist-0.0.10.tgz#de3f98543dbf96082be48ad1a0c7cda836301dcf"
 
-mitmproxy@~2.0.2:
-  version "2.0.2"
-  resolved "https://registry.yarnpkg.com/mitmproxy/-/mitmproxy-2.0.2.tgz#160f5854b5ba2d7fb609f8375650956b9673db8e"
+mitmproxy@~2.0.3:
+  version "2.0.3"
+  resolved "https://registry.yarnpkg.com/mitmproxy/-/mitmproxy-2.0.3.tgz#883831bea86ba0dd51c862c82ba835da5b26c3e4"
   dependencies:
     "@types/node" "^7.0.44"
     "@types/ws" "^3.2.0"
