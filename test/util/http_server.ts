@@ -24,7 +24,6 @@ function ignoreEconnReset(e: any): void {
   }
 }
 
-
 /**
  * Creates a test HTTP server that serves up static in-memory "files".
  * @param files Map from server path to file data.
@@ -54,5 +53,6 @@ export default function createSimpleServer(files: {[path: string]: TestFile}, po
         res(httpServer);
       }
     });
+    httpServer.on('error', ignoreEconnReset);
   });
 }
