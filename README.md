@@ -9,7 +9,7 @@
 
 BLeak uses a short developer-provided script to drive the application in a loop through specific visual states (e.g., the inbox view and email view of a mail client) as an oracle to find memory leaks. In our experience, BLeak's precision is often **100%** (e.g., no false positives), and fixing the leaks it finds reduces heap growth by **94%** on average on a corpus of real production web apps.
 
-For more information please see [the BLeak website](http://bleak-detector.org/) and the [preprint of our academic paper](https://github.com/plasma-umass/BLeak/blob/master/paper.pdf), which will appear at PLDI 2018.
+For more information please see [the BLeak website](http://bleak-detector.org/) and the [our academic paper](https://github.com/plasma-umass/BLeak/blob/master/paper.pdf), which appeared at PLDI 2018.
 
 ## Prerequisites
 
