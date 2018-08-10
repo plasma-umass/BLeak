@@ -36,12 +36,26 @@ function exceptionDetailsToString(e: ChromeRuntime.ExceptionDetails): string {
 /**
  * Spawns a chrome instance with a tmp user data and the debugger open to an ephemeral port
  */
-function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: number, height: number): Promise<ChromeProcess> {
-  const additionalChromeArgs = [`--proxy-server=127.0.0.1:8080`, `--disable-background-timer-throttling`, `--disable-renderer-backgrounding`, `--disable-renderer-priority-management`];
+function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: number, height: number, chromeArgs: string[] = []): Promise<ChromeProcess> {
+
+  const additionalChromeArgs = [
+    `--proxy-server=127.0.0.1:8080`,
+    `--disable-background-timer-throttling`,
+    `--disable-renderer-backgrounding`,
+    `--disable-renderer-priority-management`
+  ].concat(chromeArgs)
+
   if (headless) {
+    if (additionalChromeArgs.indexOf('--headless') === -1) {
+      additionalChromeArgs.push('--headleass');
+    }
+
     // --disable-gpu required for Windows
-    additionalChromeArgs.push(`--headless`, `--disable-gpu`);
+    if (additionalChromeArgs.indexOf('--disable-gpu') === -1) {
+      additionalChromeArgs.push('--disable-gpu');
+    }
   }
+
   const baseOptions = {
     // additionalArguments: ['--headless'],
     windowSize: { width: width, height: height },
@@ -94,12 +108,12 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: nu
 }
 
 export default class ChromeDriver {
-  public static async Launch(log: Log, headless: boolean, width: number, height: number, interceptPaths: string[] = [], quiet: boolean = true): Promise<ChromeDriver> {
+  public static async Launch(log: Log, headless: boolean, width: number, height: number, interceptPaths: string[] = [], quiet: boolean = true, chromeArgs: string[] = []): Promise<ChromeDriver> {
     const mitmProxy = await MITMProxy.Create(undefined, interceptPaths, quiet);
     // Tell mitmProxy to stash data requested through the proxy.
     mitmProxy.stashEnabled = true;
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));
-    let chromeProcess: ChromeProcess = await spawnChromeBrowser(session, headless, width, height);
+    let chromeProcess: ChromeProcess = await spawnChromeBrowser(session, headless, width, height, chromeArgs);
     // open the REST API for tabs
     const client = session.createAPIClient("localhost", chromeProcess.remoteDebuggingPort);
     const tabs = await client.listTabs();
