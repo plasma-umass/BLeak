@@ -18,6 +18,7 @@ interface CommandLineArgs {
   'take-screenshots': number;
   chromeSize: string;
   'produce-time-log': boolean;
+  'chrome-args': string[];
 }
 
 const Run: CommandModule = {
@@ -49,6 +50,10 @@ const Run: CommandModule = {
       }
     }
 
+    const chromeArgs = args['chrome-args'].map((arg) => {
+      return '--' + arg;
+    });
+
     const progressBar = new ProgressProgressBar(args.debug, args['produce-time-log']);
     // Add stack traces to Node warnings.
     // https://stackoverflow.com/a/38482688
@@ -67,7 +72,7 @@ const Run: CommandModule = {
         }
       }
       writeFileSync(join(args.out, 'config.js'), configFileSource);
-      let chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, ['/eval', DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL], !args.debug);
+      let chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, ['/eval', DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL], !args.debug, chromeArgs);
 
       let screenshotTimer: NodeJS.Timer | null = null;
       if (args['take-screenshots'] > -1) {
@@ -175,6 +180,11 @@ const Run: CommandModule = {
       type: 'boolean',
       default: false,
       describe: '[DEBUG] If set, produces a JSON time log to measure BLeak\'s overhead.'
+    },
+    'chrome-args': {
+      type: 'array',
+      default: [],
+      describe: 'Args that should be passed to chrome without the leading --. ex `no-sandbox`'
     }
   }
 };
