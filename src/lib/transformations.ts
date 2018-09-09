@@ -114,6 +114,7 @@ export function injectIntoHead(filename: string, source: string, injection: HTML
   inlineScripts.forEach((n, i) => {
     if (!n.children || n.children.length !== 1) {
       console.log(`Weird! Found JS node with the following children: ${JSON.stringify(n.children)}`);
+      return;
     }
     n.children[0].data = jsTransform(`${filename}-inline${i}.js`, n.children[0].data);
   });
