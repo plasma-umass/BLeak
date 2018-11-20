@@ -25,7 +25,7 @@ The following must be installed for BLeak to work:
 npm install -g bleak-detector
 ```
 
-After installing, you should be able to run `bleak` from the commandl ine.
+After installing, you should be able to run `bleak` from the command line.
 
 
 ## Using
