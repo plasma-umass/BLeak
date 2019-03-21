@@ -7,6 +7,7 @@ import TransformJavaScript from './commands/transform_javascript';
 import Viewer from './commands/viewer';
 import EvaluateMetrics from './commands/evaluate-metrics';
 import ProcessTimeLog from './commands/process_time_log';
+import ProduceHeapGraph from './commands/produce_heap_graph';
 
 yargs.command(RunCommand)
      .command(FindGrowingPaths)
@@ -15,5 +16,6 @@ yargs.command(RunCommand)
      .command(Viewer)
      .command(EvaluateMetrics)
      .command(ProcessTimeLog)
+     .command(ProduceHeapGraph)
      .demandCommand(1)
      .help('help').argv;
