@@ -25,7 +25,13 @@ interface ChildNodes {
 interface Window {
   $$$INSTRUMENT_PATHS$$$(p: IPathTrees): void;
   $$$GET_STACK_TRACES$$$(): GrowingStackTraces;
-  $$$CREATE_SCOPE_OBJECT$$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope;
+  $$$CREATE_SCOPE_OBJECT$$$(
+    parentScopeObject: Scope,
+    movedVariables: string[],
+    unmovedVariables: PropertyDescriptorMap,
+    args: string[],
+    argValues: any[]
+  ): Scope;
   $$$SEQ$$$(a: any, b: any): boolean;
   $$$EQ$$$(a: any, b: any): boolean;
   $$$SHOULDFIX$$$(n: number): boolean;
@@ -46,7 +52,7 @@ interface ListenerInfo {
 }
 
 interface EventTarget {
-  $$listeners?: {[type: string]: ListenerInfo[]};
+  $$listeners?: { [type: string]: ListenerInfo[] };
   // Note: Needs to be a string so it shows up in the snapshot.
   $$id?: string;
 }
@@ -74,9 +80,9 @@ declare function importScripts(s: string): void;
  */
 (function() {
   // Global variables.
-  const IS_WINDOW = typeof(window) !== "undefined";
-  const IS_WORKER = typeof(importScripts) !== "undefined";
-  const ROOT = <Window> (IS_WINDOW ? window : IS_WORKER ? self : global);
+  const IS_WINDOW = typeof window !== "undefined";
+  const IS_WORKER = typeof importScripts !== "undefined";
+  const ROOT = <Window>(IS_WINDOW ? window : IS_WORKER ? self : global);
   // Avoid installing self twice.
   if (ROOT.$$$INSTRUMENT_PATHS$$$) {
     return;
@@ -125,6 +131,9 @@ declare function importScripts(s: string): void;
     return s.replace(r, "\\'");
   }
 
+  // Some websites overwrite Object.create.
+  const objectCreate = Object.create;
+
   /**
    * Creates a scope object.
    * @param parentScopeObject The scope object for the enclosing scope.
@@ -133,8 +142,14 @@ declare function importScripts(s: string): void;
    * @param args The name of the function's arguments.
    * @param argValues The values of the function's arguments.
    */
-  function $$$CREATE_SCOPE_OBJECT$$$(parentScopeObject: Scope, movedVariables: string[], unmovedVariables: PropertyDescriptorMap, args: string[], argValues: any[]): Scope {
-    movedVariables.concat(args).forEach((varName) => {
+  function $$$CREATE_SCOPE_OBJECT$$$(
+    parentScopeObject: Scope,
+    movedVariables: string[],
+    unmovedVariables: PropertyDescriptorMap,
+    args: string[],
+    argValues: any[]
+  ): Scope {
+    movedVariables.concat(args).forEach(varName => {
       unmovedVariables[varName] = {
         value: undefined,
         enumerable: true,
@@ -148,7 +163,7 @@ declare function importScripts(s: string): void;
       unmovedVariables[argName].value = argValues[i];
     });
 
-    return Object.create(parentScopeObject, unmovedVariables);
+    return objectCreate(parentScopeObject, unmovedVariables);
   }
 
   /**
@@ -173,8 +188,10 @@ declare function importScripts(s: string): void;
     if (a === b) {
       return true;
     } else if (isProxyable(a) && isProxyable(b)) {
-      return (a.hasOwnProperty('$$$PROXY$$$') && a.$$$PROXY$$$ === b) ||
-        (b.hasOwnProperty("$$$PROXY$$$") && b.$$$PROXY$$$ === a);
+      return (
+        (a.hasOwnProperty("$$$PROXY$$$") && a.$$$PROXY$$$ === b) ||
+        (b.hasOwnProperty("$$$PROXY$$$") && b.$$$PROXY$$$ === a)
+      );
     }
     return false;
   }
@@ -236,7 +253,11 @@ declare function importScripts(s: string): void;
    * @param key
    * @param value
    */
-  function applyWriteNonStrict(target: Scope, key: string, value: any): boolean {
+  function applyWriteNonStrict(
+    target: Scope,
+    key: string,
+    value: any
+  ): boolean {
     if (applyWrite(target, key, value)) {
       return true;
     } else {
@@ -263,21 +284,25 @@ declare function importScripts(s: string): void;
   }
 
   // Reuseable eval() function. Does not have a polluted scope.
-  const EVAL_FCN = new Function('scope', '$$$SRC$$$', 'return eval($$$SRC$$$);');
+  const EVAL_FCN = new Function(
+    "scope",
+    "$$$SRC$$$",
+    "return eval($$$SRC$$$);"
+  );
   // Caches compiled eval statements from server to reduce synchronous XHRs.
-  const NONSTRICT_EVAL_CACHE = new Map<string, { e: string, ts: number }>();
+  const NONSTRICT_EVAL_CACHE = new Map<string, { e: string; ts: number }>();
   const NONSTRICT_EVAL_CACHE_LIMIT = 100;
-  const STRICT_EVAL_CACHE = new Map<string, { e: string, ts: number }>();
+  const STRICT_EVAL_CACHE = new Map<string, { e: string; ts: number }>();
   const STRICT_EVAL_CACHE_LIMIT = 100;
 
   /**
    * Removes the 10 items from EVAL_CACHE that were least recently used.
    */
-  function trimEvalCache(evalCache: Map<string, { e: string, ts: number }>) {
-    const items: {e: string, ts: number}[] = [];
-    evalCache.forEach((i) => items.push(i));
+  function trimEvalCache(evalCache: Map<string, { e: string; ts: number }>) {
+    const items: { e: string; ts: number }[] = [];
+    evalCache.forEach(i => items.push(i));
     items.sort((a, b) => a.ts - b.ts);
-    items.slice(0, 10).forEach((i) => {
+    items.slice(0, 10).forEach(i => {
       evalCache.delete(i.e);
     });
   }
@@ -289,13 +314,19 @@ declare function importScripts(s: string): void;
    * @param strictMode If true, the eval was called in a strict mode context.
    * @param text The JavaScript code to eval.
    */
-  function $$$REWRITE_EVAL$$$(scope: any, strictMode: boolean, source: string): any {
+  function $$$REWRITE_EVAL$$$(
+    scope: any,
+    strictMode: boolean,
+    source: string
+  ): any {
     const evalCache = strictMode ? STRICT_EVAL_CACHE : NONSTRICT_EVAL_CACHE;
-    const evalCacheLimit = strictMode ? STRICT_EVAL_CACHE_LIMIT : NONSTRICT_EVAL_CACHE_LIMIT;
+    const evalCacheLimit = strictMode
+      ? STRICT_EVAL_CACHE_LIMIT
+      : NONSTRICT_EVAL_CACHE_LIMIT;
     let cache = evalCache.get(source);
     if (!cache) {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/eval', false);
+      xhr.open("POST", "/eval", false);
       xhr.setRequestHeader("Content-type", "application/json");
       xhr.send(JSON.stringify({ scope: "scope", source, strictMode }));
       cache = { e: xhr.responseText, ts: 0 };
@@ -306,11 +337,14 @@ declare function importScripts(s: string): void;
     }
     // Update timestamp
     cache.ts = Date.now();
-    return EVAL_FCN(new Proxy(scope, {
-      // Appropriately relay writes to first scope with the given variable name.
-      // Otherwise, it'll overwrite the property on the outermost scope!
-      set: strictMode ? applyWrite : applyWriteNonStrict
-    }), cache.e);
+    return EVAL_FCN(
+      new Proxy(scope, {
+        // Appropriately relay writes to first scope with the given variable name.
+        // Otherwise, it'll overwrite the property on the outermost scope!
+        set: strictMode ? applyWrite : applyWriteNonStrict
+      }),
+      cache.e
+    );
   }
 
   /**
@@ -343,7 +377,7 @@ declare function importScripts(s: string): void;
    * Assigns the given scope to the given function object.
    */
   function $$$FUNCTION_EXPRESSION$$$(fcn: Function, scope: Scope): Function {
-    Object.defineProperty(fcn, '__scope__', {
+    Object.defineProperty(fcn, "__scope__", {
       get: function() {
         return scope;
       },
@@ -372,8 +406,6 @@ declare function importScripts(s: string): void;
     }
     return obj;
   }
-
-
 
   // Used to store child nodes as properties on an object rather than in an array to facilitate
   // leak detection.
@@ -414,7 +446,7 @@ declare function importScripts(s: string): void;
    * @param a
    */
   function isProxyable(a: any): boolean {
-    switch (typeof(a)) {
+    switch (typeof a) {
       case "object":
       case "function":
         return a !== null; // && !(a instanceof Node);
@@ -489,7 +521,11 @@ declare function importScripts(s: string): void;
    * @param map
    * @param property
    */
-  function _addStackTrace(map: GrowthObjectStackTraces, property: string | number | symbol, stack = _getStackTrace()): void {
+  function _addStackTrace(
+    map: GrowthObjectStackTraces,
+    property: string | number | symbol,
+    stack = _getStackTrace()
+  ): void {
     let set = map.get(property);
     if (!set) {
       set = new Set<string>();
@@ -502,7 +538,10 @@ declare function importScripts(s: string): void;
    * @param map
    * @param property
    */
-  function _removeStacks(map: GrowthObjectStackTraces, property: string | number | symbol): void {
+  function _removeStacks(
+    map: GrowthObjectStackTraces,
+    property: string | number | symbol
+  ): void {
     if (map.has(property)) {
       map.delete(property);
     }
@@ -513,7 +552,11 @@ declare function importScripts(s: string): void;
    * @param from
    * @param to
    */
-  function _copyStacks(map: GrowthObjectStackTraces, from: string | number | symbol, to: string | number | symbol): void {
+  function _copyStacks(
+    map: GrowthObjectStackTraces,
+    from: string | number | symbol,
+    to: string | number | symbol
+  ): void {
     if (map.has(from)) {
       map.set(to, map.get(from));
     }
@@ -525,11 +568,15 @@ declare function importScripts(s: string): void;
    * @param from
    * @param to
    */
-  function _combineStacks(map: GrowthObjectStackTraces, from: string | number | symbol, to: symbol | number | string): void {
+  function _combineStacks(
+    map: GrowthObjectStackTraces,
+    from: string | number | symbol,
+    to: symbol | number | string
+  ): void {
     if (map.has(from) && map.has(to)) {
       const fromStacks = map.get(from);
       const toStacks = map.get(to);
-      fromStacks.forEach((s) => {
+      fromStacks.forEach(s => {
         toStacks.add(s);
       });
     }
@@ -538,8 +585,12 @@ declare function importScripts(s: string): void;
   /**
    * Initialize a map to contain stack traces for all of the properties of the given object.
    */
-  function _initializeMap(obj: any, map: GrowthObjectStackTraces, trace: string): GrowthObjectStackTraces {
-    Object.keys(obj).forEach((k) => {
+  function _initializeMap(
+    obj: any,
+    map: GrowthObjectStackTraces,
+    trace: string
+  ): GrowthObjectStackTraces {
+    Object.keys(obj).forEach(k => {
       _addStackTrace(map, k, trace);
     });
     return map;
@@ -549,16 +600,20 @@ declare function importScripts(s: string): void;
    * Returns a proxy object for the given object, if applicable. Creates a new object if the object
    * is not already proxied.
    */
-  function getProxy(accessStr: string, obj: any, stackTrace: string = null): any {
+  function getProxy(
+    accessStr: string,
+    obj: any,
+    stackTrace: string = null
+  ): any {
     if (!isProxyable(obj)) {
       // logToConsole(`[PROXY ERROR]: Cannot create proxy for ${obj} at ${accessStr}.`);
       return obj;
-    } else if (!obj.hasOwnProperty('$$$PROXY$$$')) {
+    } else if (!obj.hasOwnProperty("$$$PROXY$$$")) {
       const map = new Map<string | number | symbol, Set<string>>();
       if (stackTrace !== null) {
         _initializeMap(obj, map, stackTrace);
       }
-      Object.defineProperty(obj, '$$$ORIGINAL$$$', {
+      Object.defineProperty(obj, "$$$ORIGINAL$$$", {
         value: obj,
         writable: false,
         enumerable: false,
@@ -571,36 +626,41 @@ declare function importScripts(s: string): void;
         configurable: false
       });
       //function LOG(s: string) {
-        // logToConsole(`${accessStr}: ${s}`);
+      // logToConsole(`${accessStr}: ${s}`);
       //}
-      Object.defineProperty(obj, '$$$PROXY$$$', { value: new Proxy(obj, {
-        defineProperty: function(target, property, descriptor): boolean {
-          if (!disableProxies) {
-            // Capture a stack trace.
-            _addStackTrace(getProxyStackTraces(target), property);
-          }
-          // LOG(`defineProperty`);
-          return Reflect.defineProperty(target, property, descriptor);
-        },
-        set: function(target, property, value, receiver): boolean {
-          if (!disableProxies) {
-            if (!target.hasOwnProperty(property)) {
+      Object.defineProperty(obj, "$$$PROXY$$$", {
+        value: new Proxy(obj, {
+          defineProperty: function(target, property, descriptor): boolean {
+            if (!disableProxies) {
               // Capture a stack trace.
               _addStackTrace(getProxyStackTraces(target), property);
             }
+            // LOG(`defineProperty`);
+            return Reflect.defineProperty(target, property, descriptor);
+          },
+          set: function(target, property, value, receiver): boolean {
+            if (!disableProxies) {
+              if (!target.hasOwnProperty(property)) {
+                // Capture a stack trace.
+                _addStackTrace(getProxyStackTraces(target), property);
+              }
+            }
+            // LOG(`set`);
+            return Reflect.set(target, property, value, target);
+          },
+          deleteProperty: function(target, property): boolean {
+            if (!disableProxies) {
+              // Remove stack traces that set this property.
+              _removeStacks(getProxyStackTraces(target), property);
+            }
+            // LOG(`deleteProperty`);
+            return Reflect.deleteProperty(target, property);
           }
-          // LOG(`set`);
-          return Reflect.set(target, property, value, target);
-        },
-        deleteProperty: function(target, property): boolean {
-          if (!disableProxies) {
-            // Remove stack traces that set this property.
-            _removeStacks(getProxyStackTraces(target), property);
-          }
-          // LOG(`deleteProperty`);
-          return Reflect.deleteProperty(target, property);
-        }
-      }), enumerable: false, configurable: true, writable: true });
+        }),
+        enumerable: false,
+        configurable: true,
+        writable: true
+      });
     }
     return obj.$$$PROXY$$$;
   }
@@ -613,7 +673,10 @@ declare function importScripts(s: string): void;
     $$root: any;
   }
 
-  function updateAssignmentProxy(this: AssignmentProxy, stackTrace: string): void {
+  function updateAssignmentProxy(
+    this: AssignmentProxy,
+    stackTrace: string
+  ): void {
     const root = this.$$root;
     const trees = this.$$trees;
     const rootAccessString = this.$$rootAccessString;
@@ -641,13 +704,19 @@ declare function importScripts(s: string): void;
     return thisObj[hiddenPropertyName(n)];
   }
 
-  function instrumentPath(rootAccessString: string, accessString: string, root: any, tree: IPathTree, stackTrace: string = null): void {
+  function instrumentPath(
+    rootAccessString: string,
+    accessString: string,
+    root: any,
+    tree: IPathTree,
+    stackTrace: string = null
+  ): void {
     let setProxy: AssignmentProxy;
     //logToConsole(`Instrumenting ${accessString} at ${rootAccessString}`);
     const prop = Object.getOwnPropertyDescriptor(root, tree.indexOrName);
-    if (prop && prop.set && Array.isArray((<any> prop.set)['$$trees'])) {
+    if (prop && prop.set && Array.isArray((<any>prop.set)["$$trees"])) {
       //logToConsole(`It's already instrumented!`);
-      setProxy = <any> prop.set;
+      setProxy = <any>prop.set;
     } else {
       //logToConsole(`New instrumentation.`);
       // let hiddenValue = root[tree.indexOrName];
@@ -658,14 +727,21 @@ declare function importScripts(s: string): void;
         //logToConsole(`Converting the hidden value into a proxy.`)
         const proxy = getProxy(accessString, getHiddenValue(root, indexOrName));
         setHiddenValue(root, indexOrName, proxy);
-        if (stackTrace !== null && getProxyStatus(proxy) === ProxyStatus.IS_PROXY) {
+        if (
+          stackTrace !== null &&
+          getProxyStatus(proxy) === ProxyStatus.IS_PROXY
+        ) {
           const map: GrowthObjectStackTraces = getProxyStackTraces(proxy);
           _initializeMap(proxy, map, stackTrace);
         }
       }
-      setProxy = <any> function(this: any, v: any): boolean {
+      setProxy = <any>function(this: any, v: any): boolean {
         const trace = _getStackTrace();
-        setHiddenValue(this, indexOrName, isGrowing ? getProxy(accessString, v, trace) : v);
+        setHiddenValue(
+          this,
+          indexOrName,
+          isGrowing ? getProxy(accessString, v, trace) : v
+        );
         setProxy.$$update(trace);
         // logToConsole(`${rootAccessString}: Assignment`);
         return true;
@@ -701,7 +777,12 @@ declare function importScripts(s: string): void;
     }
   }
 
-  function instrumentDOMTree(rootAccessString: string, root: any, tree: IPathTree, stackTrace: string = null): void {
+  function instrumentDOMTree(
+    rootAccessString: string,
+    root: any,
+    tree: IPathTree,
+    stackTrace: string = null
+  ): void {
     // For now: Simply crawl to the node(s) and instrument regularly from there. Don't try to plant getters/setters.
     // $$DOM - - - - - -> root [regular subtree]
     let obj: any;
@@ -712,16 +793,18 @@ declare function importScripts(s: string): void;
         obj = document;
         accessString = "document";
         break;
-      case 'root':
+      case "root":
         switchToRegularTree = true;
         obj = root;
         break;
-      case 'childNodes':
-        obj = root['childNodes'];
+      case "childNodes":
+        obj = root["childNodes"];
         accessString += `['childNodes']`;
         break;
       default:
-        const modIndex = (<string> tree.indexOrName).slice(NODE_PROP_PREFIX.length);
+        const modIndex = (<string>tree.indexOrName).slice(
+          NODE_PROP_PREFIX.length
+        );
         obj = root[modIndex];
         accessString += `[${modIndex}]`;
         break;
@@ -754,7 +837,9 @@ declare function importScripts(s: string): void;
     // Capture writes of children.
     const children = tree.children;
     if (children) {
-      const instrumentFunction = switchToRegularTree ? instrumentTree : instrumentDOMTree;
+      const instrumentFunction = switchToRegularTree
+        ? instrumentTree
+        : instrumentDOMTree;
       const len = children.length;
       for (let i = 0; i < len; i++) {
         const child = children[i];
@@ -763,8 +848,14 @@ declare function importScripts(s: string): void;
     }
   }
 
-  function instrumentTree(rootAccessString: string, root: any, tree: IPathTree, stackTrace: string = null): void {
-    const accessString = rootAccessString + `[${safeString(`${tree.indexOrName}`)}]`;
+  function instrumentTree(
+    rootAccessString: string,
+    root: any,
+    tree: IPathTree,
+    stackTrace: string = null
+  ): void {
+    const accessString =
+      rootAccessString + `[${safeString(`${tree.indexOrName}`)}]`;
     //logToConsole(`access string: ${accessString}`);
     // Ignore roots that are not proxyable.
     if (!isProxyable(root)) {
@@ -804,14 +895,20 @@ declare function importScripts(s: string): void;
     instrumentedTrees = instrumentedTrees.concat(trees);
   }
 
-  function getStackTraces(root: any, path: IPathTree, stacksMap: {[id: number]: Set<string>}): void {
+  function getStackTraces(
+    root: any,
+    path: IPathTree,
+    stacksMap: { [id: number]: Set<string> }
+  ): void {
     const obj = root[path.indexOrName];
     if (isProxyable(obj)) {
       if (path.isGrowing && getProxyStatus(obj) === ProxyStatus.IS_PROXY) {
         const map = getProxyStackTraces(obj);
-        const stackTraces = stacksMap[path.id] ? stacksMap[path.id] : new Set<string>();
+        const stackTraces = stacksMap[path.id]
+          ? stacksMap[path.id]
+          : new Set<string>();
         map.forEach((v, k) => {
-          v.forEach((s) => stackTraces.add(s));
+          v.forEach(s => stackTraces.add(s));
         });
         stacksMap[path.id] = stackTraces;
       }
@@ -825,22 +922,26 @@ declare function importScripts(s: string): void;
     }
   }
 
-  function getDOMStackTraces(root: any, path: IPathTree, stacksMap: {[id: number]: Set<string>}): void {
+  function getDOMStackTraces(
+    root: any,
+    path: IPathTree,
+    stacksMap: { [id: number]: Set<string> }
+  ): void {
     let obj: any;
     let switchToRegularTree = false;
     switch (path.indexOrName) {
       case "$$$DOM$$$":
         obj = document;
         break;
-      case 'root':
+      case "root":
         switchToRegularTree = true;
         obj = root;
         break;
-      case 'childNodes':
+      case "childNodes":
         obj = root[path.indexOrName];
         break;
       default:
-        obj = root[(<string> path.indexOrName).slice(NODE_PROP_PREFIX.length)];
+        obj = root[(<string>path.indexOrName).slice(NODE_PROP_PREFIX.length)];
         break;
     }
 
@@ -848,9 +949,11 @@ declare function importScripts(s: string): void;
       const wrappedObj = wrapIfOriginal(obj);
       if (getProxyStatus(wrappedObj) === ProxyStatus.IS_PROXY) {
         const map = getProxyStackTraces(wrappedObj);
-        const stackTraces = stacksMap[path.id] ? stacksMap[path.id] : new Set<string>();
+        const stackTraces = stacksMap[path.id]
+          ? stacksMap[path.id]
+          : new Set<string>();
         map.forEach((v, k) => {
-          v.forEach((s) => stackTraces.add(s));
+          v.forEach(s => stackTraces.add(s));
         });
         stacksMap[path.id] = stackTraces;
       }
@@ -858,7 +961,9 @@ declare function importScripts(s: string): void;
 
     // Capture writes of children.
     const children = path.children;
-    const getStackTracesFunction = switchToRegularTree ? getStackTraces : getDOMStackTraces;
+    const getStackTracesFunction = switchToRegularTree
+      ? getStackTraces
+      : getDOMStackTraces;
     if (children) {
       const len = children.length;
       for (let i = 0; i < len; i++) {
@@ -869,7 +974,7 @@ declare function importScripts(s: string): void;
   }
 
   function $$$GET_STACK_TRACES$$$(): GrowingStackTraces {
-    const stacksMap: {[id: number]: Set<string>} = {};
+    const stacksMap: { [id: number]: Set<string> } = {};
     for (const tree of instrumentedTrees) {
       if (isDOMRoot(tree)) {
         getDOMStackTraces(ROOT.$$$GLOBAL$$$, tree, stacksMap);
@@ -884,9 +989,9 @@ declare function importScripts(s: string): void;
         const stacks = stacksMap[id];
         let i = 0;
         const stackArray = new Array<string>(stacks.size);
-        stacks.forEach((s) => {
+        stacks.forEach(s => {
           stackArray[i++] = s;
-        })
+        });
         jsonableStacksMap[id] = stackArray;
       }
     }
@@ -910,7 +1015,12 @@ declare function importScripts(s: string): void;
 
     const addEventListener = EventTarget.prototype.addEventListener;
     const removeEventListener = EventTarget.prototype.removeEventListener;
-    EventTarget.prototype.addEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean = false) {
+    EventTarget.prototype.addEventListener = function(
+      this: EventTarget,
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      useCapture: boolean = false
+    ) {
       addEventListener.apply(unwrapIfProxy(this), arguments);
       if (!this.$$listeners) {
         this.$$listeners = {};
@@ -920,7 +1030,12 @@ declare function importScripts(s: string): void;
         listeners = this.$$listeners[type] = [];
       }
       for (const listenerInfo of listeners) {
-        if (listenerInfo.listener === listener && (typeof(listenerInfo.useCapture) === 'boolean' ? listenerInfo.useCapture === useCapture : true)) {
+        if (
+          listenerInfo.listener === listener &&
+          (typeof listenerInfo.useCapture === "boolean"
+            ? listenerInfo.useCapture === useCapture
+            : true)
+        ) {
           return;
         }
       }
@@ -930,14 +1045,24 @@ declare function importScripts(s: string): void;
       });
     };
 
-    EventTarget.prototype.removeEventListener = function(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, useCapture: boolean | object = false) {
+    EventTarget.prototype.removeEventListener = function(
+      this: EventTarget,
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      useCapture: boolean | object = false
+    ) {
       removeEventListener.apply(unwrapIfProxy(this), arguments);
       if (this.$$listeners) {
         const listeners = this.$$listeners[type];
         if (listeners) {
           for (let i = 0; i < listeners.length; i++) {
             const lInfo = listeners[i];
-            if (lInfo.listener === listener && (typeof(lInfo.useCapture) === 'boolean' ? lInfo.useCapture === useCapture : true)) {
+            if (
+              lInfo.listener === listener &&
+              (typeof lInfo.useCapture === "boolean"
+                ? lInfo.useCapture === useCapture
+                : true)
+            ) {
               listeners.splice(i, 1);
               if (listeners.length === 0) {
                 delete this.$$listeners[type];
@@ -1026,7 +1151,12 @@ declare function importScripts(s: string): void;
     })(Array.prototype.shift);
 
     Array.prototype.splice = (function(splice) {
-      return function(this: Array<any>, start: number, deleteCount: number, ...items: any[]): any {
+      return function(
+        this: Array<any>,
+        start: number,
+        deleteCount: number,
+        ...items: any[]
+      ): any {
         try {
           disableProxies = true;
           if (getProxyStatus(this) === ProxyStatus.IS_PROXY) {
@@ -1050,7 +1180,10 @@ declare function importScripts(s: string): void;
             let actualDeleteCount = deleteCount | 0;
             // If deleteCount is omitted, or if its value is larger than array.length - start,
             //   then all of the elements beginning with start index on through the end of the array will be deleted.
-            if (deleteCount === undefined || actualDeleteCount > this.length - actualStart) {
+            if (
+              deleteCount === undefined ||
+              actualDeleteCount > this.length - actualStart
+            ) {
               actualDeleteCount = this.length - actualStart;
             }
             if (actualDeleteCount < 0) {
@@ -1067,13 +1200,21 @@ declare function importScripts(s: string): void;
             if (newItemCount > actualDeleteCount) {
               // Shift *upward*
               const delta = newItemCount - actualDeleteCount;
-              for (let i = this.length - 1; i >= actualStart + actualDeleteCount; i--) {
+              for (
+                let i = this.length - 1;
+                i >= actualStart + actualDeleteCount;
+                i--
+              ) {
                 _copyStacks(map, `${i}`, `${i + delta}`);
               }
             } else if (newItemCount < actualDeleteCount) {
               // Shift *downward*
               const delta = newItemCount - actualDeleteCount;
-              for (let i = actualStart + actualDeleteCount; i < this.length; i++) {
+              for (
+                let i = actualStart + actualDeleteCount;
+                i < this.length;
+                i++
+              ) {
                 _copyStacks(map, `${i}`, `${i + delta}`);
               }
               // Delete extra traces for removed indexes.
@@ -1096,7 +1237,11 @@ declare function importScripts(s: string): void;
       };
     })(Array.prototype.splice);
 
-    Array.prototype.indexOf = function(this: Array<any>, searchElement, fromIndexArg?: number): any {
+    Array.prototype.indexOf = function(
+      this: Array<any>,
+      searchElement,
+      fromIndexArg?: number
+    ): any {
       let fromIndex = fromIndexArg || 0;
       // If the provided index value is a negative number, it is taken as the offset from the end of the array.
       // The array is still searched from front to back.
@@ -1120,7 +1265,11 @@ declare function importScripts(s: string): void;
       return -1;
     };
 
-    Array.prototype.lastIndexOf = function(this: any[], searchElement: any, fromIndex = 0): number {
+    Array.prototype.lastIndexOf = function(
+      this: any[],
+      searchElement: any,
+      fromIndex = 0
+    ): number {
       if (this === void 0 || this === null) {
         throw new TypeError();
       }
@@ -1136,12 +1285,16 @@ declare function importScripts(s: string): void;
         n = Number(arguments[1]);
         if (n != n) {
           n = 0;
-        } else if (n != 0 && n != (1 / 0) && n != -(1 / 0)) {
+        } else if (n != 0 && n != 1 / 0 && n != -(1 / 0)) {
           n = (n > 0 ? 1 : -1) * Math.floor(Math.abs(n));
         }
       }
 
-      for (let k = n >= 0 ? Math.min(n, len - 1) : len - Math.abs(n); k >= 0; k--) {
+      for (
+        let k = n >= 0 ? Math.min(n, len - 1) : len - Math.abs(n);
+        k >= 0;
+        k--
+      ) {
         if (k in t && $$$SEQ$$$(t[k], searchElement)) {
           return k;
         }
@@ -1154,23 +1307,23 @@ declare function importScripts(s: string): void;
     // Deterministic Math.random(), so jQuery variable name is deterministic across runs.
     // From https://gist.github.com/mathiasbynens/5670917
     Math.random = (function() {
-      let seed = 0x2F6E2B1;
+      let seed = 0x2f6e2b1;
       return function() {
         // Robert Jenkins’ 32 bit integer hash function
-        seed = ((seed + 0x7ED55D16) + (seed << 12))  & 0xFFFFFFFF;
-        seed = ((seed ^ 0xC761C23C) ^ (seed >>> 19)) & 0xFFFFFFFF;
-        seed = ((seed + 0x165667B1) + (seed << 5))   & 0xFFFFFFFF;
-        seed = ((seed + 0xD3A2646C) ^ (seed << 9))   & 0xFFFFFFFF;
-        seed = ((seed + 0xFD7046C5) + (seed << 3))   & 0xFFFFFFFF;
-        seed = ((seed ^ 0xB55A4F09) ^ (seed >>> 16)) & 0xFFFFFFFF;
-        return (seed & 0xFFFFFFF) / 0x10000000;
+        seed = (seed + 0x7ed55d16 + (seed << 12)) & 0xffffffff;
+        seed = (seed ^ 0xc761c23c ^ (seed >>> 19)) & 0xffffffff;
+        seed = (seed + 0x165667b1 + (seed << 5)) & 0xffffffff;
+        seed = ((seed + 0xd3a2646c) ^ (seed << 9)) & 0xffffffff;
+        seed = (seed + 0xfd7046c5 + (seed << 3)) & 0xffffffff;
+        seed = (seed ^ 0xb55a4f09 ^ (seed >>> 16)) & 0xffffffff;
+        return (seed & 0xfffffff) / 0x10000000;
       };
-    }());
+    })();
 
     // Deterministic Date.now(), so YUI variable name is deterministic across runs.
     let dateNowCount = 0;
     Date.now = Date.prototype.getTime = function() {
-      return 1516992512425 + (dateNowCount++);
+      return 1516992512425 + dateNowCount++;
     };
 
     /**
@@ -1184,10 +1337,17 @@ declare function importScripts(s: string): void;
       try {
         Object.defineProperty(obj, property, {
           get: function() {
-            const value = original.get ? original.get.apply(unwrapIfProxy(this)) : original.value;
-            if (typeof(value) === "function") {
+            const value = original.get
+              ? original.get.apply(unwrapIfProxy(this))
+              : original.value;
+            if (typeof value === "function") {
               return function(this: any, ...args: any[]) {
-                return wrapIfOriginal(unwrapIfProxy(value).apply(unwrapIfProxy(this), args.map(unwrapIfProxy)));
+                return wrapIfOriginal(
+                  unwrapIfProxy(value).apply(
+                    unwrapIfProxy(this),
+                    args.map(unwrapIfProxy)
+                  )
+                );
               };
             } else {
               return wrapIfOriginal(value);
@@ -1216,11 +1376,14 @@ declare function importScripts(s: string): void;
      * @param obj
      * @param propName
      */
-    function interpositionEventListenerProperty(obj: object, propName: string): void {
+    function interpositionEventListenerProperty(
+      obj: object,
+      propName: string
+    ): void {
       const desc = Object.getOwnPropertyDescriptor(obj, propName);
       if (desc) {
-        delete desc['value'];
-        delete desc['writable'];
+        delete desc["value"];
+        delete desc["writable"];
         const set = desc.set;
         desc.set = function(this: any, val: any) {
           set.call(this, val);
@@ -1231,39 +1394,69 @@ declare function importScripts(s: string): void;
     }
 
     if (IS_WINDOW) {
-      [Document.prototype, Element.prototype, MediaQueryList.prototype, FileReader.prototype,
-        HTMLBodyElement.prototype, HTMLElement.prototype, HTMLFrameSetElement.prototype,
+      [
+        Document.prototype,
+        Element.prototype,
+        MediaQueryList.prototype,
+        FileReader.prototype,
+        HTMLBodyElement.prototype,
+        HTMLElement.prototype,
+        HTMLFrameSetElement.prototype,
         ApplicationCache.prototype, //EventSource.prototype, SVGAnimationElement.prototype,
-        SVGElement.prototype, XMLHttpRequest.prototype, //XMLHttpRequestEventTarget.prototype,
-        WebSocket.prototype, IDBDatabase.prototype, IDBOpenDBRequest.prototype,
-        IDBRequest.prototype, IDBTransaction.prototype, window].forEach((obj) => {
-          Object.keys(obj).filter((p) => p.startsWith("on")).forEach((p) => {
+        SVGElement.prototype,
+        XMLHttpRequest.prototype, //XMLHttpRequestEventTarget.prototype,
+        WebSocket.prototype,
+        IDBDatabase.prototype,
+        IDBOpenDBRequest.prototype,
+        IDBRequest.prototype,
+        IDBTransaction.prototype,
+        window
+      ].forEach(obj => {
+        Object.keys(obj)
+          .filter(p => p.startsWith("on"))
+          .forEach(p => {
             interpositionEventListenerProperty(obj, p);
           });
-        });
+      });
 
-      [[Node.prototype, "Node"], [Element.prototype, "Element"], [HTMLElement.prototype, "HTMLElement"],
-      [Document.prototype, "Document"], [HTMLCanvasElement.prototype, "HTMLCanvasElement"],
-      [NodeList.prototype, "NodeList"]]
-        .forEach((v) => Object.keys(v[0]).forEach((k) => proxyInterposition(v[0], k, `${v[1]}.${k}`)));
+      [
+        [Node.prototype, "Node"],
+        [Element.prototype, "Element"],
+        [HTMLElement.prototype, "HTMLElement"],
+        [Document.prototype, "Document"],
+        [HTMLCanvasElement.prototype, "HTMLCanvasElement"],
+        [NodeList.prototype, "NodeList"]
+      ].forEach(v =>
+        Object.keys(v[0]).forEach(k =>
+          proxyInterposition(v[0], k, `${v[1]}.${k}`)
+        )
+      );
 
       const $$$REINSTRUMENT$$$ = function(this: Node | NodeList): void {
         if (this.$$$TREE$$$) {
-          instrumentDOMTree(this.$$$ACCESS_STRING$$$, this, this.$$$TREE$$$, _getStackTrace());
+          instrumentDOMTree(
+            this.$$$ACCESS_STRING$$$,
+            this,
+            this.$$$TREE$$$,
+            _getStackTrace()
+          );
         }
       };
-      Object.defineProperty(Node.prototype, '$$$REINSTRUMENT$$$', {
+      Object.defineProperty(Node.prototype, "$$$REINSTRUMENT$$$", {
         value: $$$REINSTRUMENT$$$,
         configurable: true
       });
-      Object.defineProperty(NodeList.prototype, '$$$REINSTRUMENT$$$', {
+      Object.defineProperty(NodeList.prototype, "$$$REINSTRUMENT$$$", {
         value: $$$REINSTRUMENT$$$,
         configurable: true
       });
 
-      const textContent = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+      const textContent = Object.getOwnPropertyDescriptor(
+        Node.prototype,
+        "textContent"
+      );
       // textContent: Pass in a string. Replaces all children w/ a single text node.
-      Object.defineProperty(Node.prototype, 'textContent', {
+      Object.defineProperty(Node.prototype, "textContent", {
         get: textContent.get,
         set: function(this: Node, v: any) {
           const rv = textContent.set.call(this, v);
@@ -1281,7 +1474,10 @@ declare function importScripts(s: string): void;
       });
 
       const appendChild = Node.prototype.appendChild;
-      Node.prototype.appendChild = function<T extends Node>(this: Node, newChild: T): T {
+      Node.prototype.appendChild = function<T extends Node>(
+        this: Node,
+        newChild: T
+      ): T {
         /**
          * The Node.appendChild() method adds a node to the end of the list of children of a specified parent node.
          * If the given child is a reference to an existing node in the document,
@@ -1304,7 +1500,10 @@ declare function importScripts(s: string): void;
 
       const insertBefore = Node.prototype.insertBefore;
       // insertBefore: Takes Nodes. Modifies DOM.
-      Node.prototype.insertBefore = function<T extends Node>(newChild: T, refChild: Node): T {
+      Node.prototype.insertBefore = function<T extends Node>(
+        newChild: T,
+        refChild: Node
+      ): T {
         /**
          * The Node.insertBefore() method inserts the specified node before the reference
          * node as a child of the current node.
@@ -1400,7 +1599,10 @@ declare function importScripts(s: string): void;
       };
 
       const removeChild = Node.prototype.removeChild;
-      Node.prototype.removeChild = function<T extends Node>(this: Node, child: T): T {
+      Node.prototype.removeChild = function<T extends Node>(
+        this: Node,
+        child: T
+      ): T {
         const cn = this.childNodes;
         if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
           const stacks = getProxyStackTraces(cn);
@@ -1413,7 +1615,7 @@ declare function importScripts(s: string): void;
             }
           }
           if (i === len) {
-            logToConsole(`Invalid call to removeChild.`)
+            logToConsole(`Invalid call to removeChild.`);
           } else {
             for (let j = i + 1; j < len; j++) {
               _copyStacks(stacks, `${j}`, `${j - 1}`);
@@ -1424,11 +1626,15 @@ declare function importScripts(s: string): void;
         const rv = removeChild.call(this, child);
         cn.$$$REINSTRUMENT$$$();
         return rv;
-      }
+      };
 
       // replaceChild: Replaces a child.
       const replaceChild = Node.prototype.replaceChild;
-      Node.prototype.replaceChild = function<T extends Node>(this: Node, newChild: Node, oldChild: T): T {
+      Node.prototype.replaceChild = function<T extends Node>(
+        this: Node,
+        newChild: Node,
+        oldChild: T
+      ): T {
         const cn = this.childNodes;
         if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
           const stacks = getProxyStackTraces(cn);
@@ -1448,10 +1654,13 @@ declare function importScripts(s: string): void;
         const rv = replaceChild.call(this, newChild, oldChild);
         cn.$$$REINSTRUMENT$$$();
         return rv;
-      }
+      };
 
-      const innerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-      Object.defineProperty(Element.prototype, 'innerHTML', {
+      const innerHTML = Object.getOwnPropertyDescriptor(
+        Element.prototype,
+        "innerHTML"
+      );
+      Object.defineProperty(Element.prototype, "innerHTML", {
         get: innerHTML.get,
         set: function(this: Element, t: string): boolean {
           const rv = innerHTML.set.call(this, t);
@@ -1468,8 +1677,11 @@ declare function importScripts(s: string): void;
         enumerable: true
       });
 
-      const outerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'outerHTML');
-      Object.defineProperty(Element.prototype, 'outerHTML', {
+      const outerHTML = Object.getOwnPropertyDescriptor(
+        Element.prototype,
+        "outerHTML"
+      );
+      Object.defineProperty(Element.prototype, "outerHTML", {
         get: outerHTML.get,
         set: function(this: Element, v: string): boolean {
           const parent = this.parentNode;
@@ -1502,11 +1714,17 @@ declare function importScripts(s: string): void;
         enumerable: true
       });
 
-      function insertAdjacentHelper(e: Element, position: InsertPosition): void {
+      function insertAdjacentHelper(
+        e: Element,
+        position: InsertPosition
+      ): void {
         switch (position) {
-          case 'beforebegin':
-          case 'afterend': {
-            if (e.parentNode && getProxyStatus(e.parentNode.childNodes) === ProxyStatus.IS_PROXY) {
+          case "beforebegin":
+          case "afterend": {
+            if (
+              e.parentNode &&
+              getProxyStatus(e.parentNode.childNodes) === ProxyStatus.IS_PROXY
+            ) {
               const parent = e.parentNode;
               const siblings = parent.childNodes;
               const numSiblings = siblings.length;
@@ -1518,10 +1736,10 @@ declare function importScripts(s: string): void;
               }
               if (i !== numSiblings) {
                 // Does it shift things down before or after this element?
-                let start = position === 'beforebegin' ? i : i + 1;
+                let start = position === "beforebegin" ? i : i + 1;
                 const stacks = getProxyStackTraces(siblings);
                 for (i = numSiblings - 1; i >= start; i--) {
-                  _copyStacks(stacks, `${i}`, `${i + 1}`)
+                  _copyStacks(stacks, `${i}`, `${i + 1}`);
                 }
                 _removeStacks(stacks, `${start}`);
                 _addStackTrace(stacks, `${start}`);
@@ -1529,13 +1747,13 @@ declare function importScripts(s: string): void;
             }
             break;
           }
-          case 'afterbegin':
-          case 'beforeend': {
+          case "afterbegin":
+          case "beforeend": {
             const cn = e.childNodes;
             if (getProxyStatus(cn) === ProxyStatus.IS_PROXY) {
               const numChildren = cn.length;
               const stacks = getProxyStackTraces(cn);
-              if (position === 'afterbegin') {
+              if (position === "afterbegin") {
                 for (let i = numChildren - 1; i >= 0; i--) {
                   _copyStacks(stacks, `${i}`, `${i + 1}`);
                 }
@@ -1551,7 +1769,10 @@ declare function importScripts(s: string): void;
       }
 
       const insertAdjacentElement = Element.prototype.insertAdjacentElement;
-      Element.prototype.insertAdjacentElement = function(position: InsertPosition, insertedElement: Element): Element {
+      Element.prototype.insertAdjacentElement = function(
+        position: InsertPosition,
+        insertedElement: Element
+      ): Element {
         /**
          * The insertAdjacentElement() method inserts a given element node at a given
          * position relative to the element it is invoked upon.
@@ -1559,7 +1780,7 @@ declare function importScripts(s: string): void;
         insertAdjacentHelper(this, position);
 
         const rv = insertAdjacentElement.call(this, position, insertedElement);
-        if (position === 'afterbegin' || position === 'beforeend') {
+        if (position === "afterbegin" || position === "beforeend") {
           this.childNodes.$$$REINSTRUMENT$$$();
         } else if (this.parentNode) {
           this.parentNode.childNodes.$$$REINSTRUMENT$$$();
@@ -1568,10 +1789,14 @@ declare function importScripts(s: string): void;
       };
 
       const insertAdjacentHTML = Element.prototype.insertAdjacentHTML;
-      Element.prototype.insertAdjacentHTML = function(this: Element, where: InsertPosition, html: string): void {
+      Element.prototype.insertAdjacentHTML = function(
+        this: Element,
+        where: InsertPosition,
+        html: string
+      ): void {
         insertAdjacentHelper(this, where);
         const rv = insertAdjacentHTML.call(this, where, html);
-        if (where === 'afterbegin' || where === 'beforeend') {
+        if (where === "afterbegin" || where === "beforeend") {
           this.childNodes.$$$REINSTRUMENT$$$();
         } else if (this.parentNode) {
           this.parentNode.childNodes.$$$REINSTRUMENT$$$();
@@ -1580,16 +1805,20 @@ declare function importScripts(s: string): void;
       };
 
       const insertAdjacentText = Element.prototype.insertAdjacentText;
-      Element.prototype.insertAdjacentText = function(this: Element, where: InsertPosition, text: string): void {
+      Element.prototype.insertAdjacentText = function(
+        this: Element,
+        where: InsertPosition,
+        text: string
+      ): void {
         insertAdjacentHelper(this, where);
         const rv = insertAdjacentText.call(this, where, text);
-        if (where === 'afterbegin' || where === 'beforeend') {
+        if (where === "afterbegin" || where === "beforeend") {
           this.childNodes.$$$REINSTRUMENT$$$();
         } else if (this.parentNode) {
           this.parentNode.childNodes.$$$REINSTRUMENT$$$();
         }
         return rv;
-      }
+      };
 
       const remove = Element.prototype.remove;
       Element.prototype.remove = function(this: Element): void {
