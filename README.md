@@ -19,6 +19,8 @@ The following must be installed for BLeak to work:
 * Python 3.6 or greater
   * Our mitmproxy plugin uses new Python async features
 
+Also be sure nothing is using port 8080 because it's gonna be used by mitmproxy software.
+
 ## Installing
 
 ```
