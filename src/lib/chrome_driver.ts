@@ -47,7 +47,7 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: nu
 
   if (headless) {
     if (additionalChromeArgs.indexOf('--headless') === -1) {
-      additionalChromeArgs.push('--headleass');
+      additionalChromeArgs.push('--headless');
     }
 
     // --disable-gpu required for Windows
