@@ -102,7 +102,7 @@
     "progress": "~2.0.0",
     "source-map": "~0.6.1",
     "tslib": "~1.9.0",
-    "ws": "~5.2.0",
+    "ws": "~7.4.6",
     "yargs": "~11.0.0"
   },
   "optionalDependencies": {
