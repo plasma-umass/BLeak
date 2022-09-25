@@ -109,7 +109,10 @@ function spawnChromeBrowser(session: ChromeSession, headless: boolean, width: nu
 
 export default class ChromeDriver {
   public static async Launch(log: Log, headless: boolean, width: number, height: number, interceptPaths: string[] = [], quiet: boolean = true, chromeArgs: string[] = []): Promise<ChromeDriver> {
+    console.log("=========== ChromeDriver entered: ", interceptPaths)
     const mitmProxy = await MITMProxy.Create(undefined, interceptPaths, quiet);
+    console.log("=========== MITMProxy created")
+
     // Tell mitmProxy to stash data requested through the proxy.
     mitmProxy.stashEnabled = true;
     const session = await new Promise<ChromeSession>((res, rej) => createSession(res));

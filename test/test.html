@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>test</title>
+</head>
+
+<body><button id="btn">Click Me</button>
+    <script>
+        var obj = {};
+        var i = 0;
+        var power = 2;
+        document.getElementById('btn').addEventListener('click', function () {
+            var top = Math.pow(2, power);
+            power++;
+            for (var j = 0; j < top; j++) {
+                obj[Math.random()] = Math.random();
+            }
+        });
+    </script>
+</body>
+
+</html>

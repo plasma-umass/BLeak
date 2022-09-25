@@ -181,3 +181,14 @@ yarn test
 ### Debugging Tips
 
 The bleak executable (runnable via `./bleak` once built) has a number of useful debug commands. For example, use `proxy-session` to debug issues with BLeak's proxy / diagnoses phase.
+
+### MITMProxy issue
+
+Solve:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+node index.js
+```

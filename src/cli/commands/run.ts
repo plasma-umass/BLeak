@@ -59,8 +59,34 @@ const Run: CommandModule = {
     // https://stackoverflow.com/a/38482688
     process.on('warning', (e: Error) => progressBar.error(e.stack));
 
+    let chromeDriver: ChromeDriver;
+    let screenshotTimer: NodeJS.Timer | null = null;
+
     async function main() {
       const configFileSource = readFileSync(args.config).toString();
+      console.log("=========== here 1")
+
+      let shuttingDown = false;
+      async function shutDown() {
+        if (shuttingDown) {
+          return;
+        }
+        shuttingDown = true;
+        if (screenshotTimer) {
+          clearInterval(screenshotTimer);
+        }
+        if (chromeDriver) {
+          await chromeDriver.shutdown();
+        }
+        // All sockets/subprocesses/resources *should* be closed, so we can just exit.
+        process.exit(0);
+      }
+      // Shut down gracefully on CTRL+C.
+      process.on('SIGINT', async function() {
+        console.log(`CTRL+C received.`);
+        shutDown();
+      });
+
       const bleakResultsOutput = join(args.out, 'bleak_results.json');
       let bleakResults: BLeakResults | null;
       if (existsSync(bleakResultsOutput)) {
@@ -71,10 +97,14 @@ const Run: CommandModule = {
           throw new Error(`File at ${bleakResultsOutput} exists, but is not a valid BLeak results file: ${e}`);
         }
       }
-      writeFileSync(join(args.out, 'config.js'), configFileSource);
-      let chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, ['/eval', DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL], !args.debug, chromeArgs);
 
-      let screenshotTimer: NodeJS.Timer | null = null;
+      writeFileSync(join(args.out, 'config.js'), configFileSource);
+      console.log("=========== here 2")
+
+      chromeDriver = await ChromeDriver.Launch(progressBar, args.headless, width, height, ['/eval', DEFAULT_AGENT_URL, DEFAULT_BABEL_POLYFILL_URL, DEFAULT_AGENT_TRANSFORM_URL], !args.debug, chromeArgs);
+
+      console.log("=========== here 3 ChromeDriver launched")
+
       if (args['take-screenshots'] > -1) {
         screenshotTimer = setInterval(async function() {
           const time = Date.now();
@@ -86,24 +116,6 @@ const Run: CommandModule = {
         }, args['take-screenshots'] * 1000);
       }
 
-      let shuttingDown = false;
-      async function shutDown() {
-        if (shuttingDown) {
-          return;
-        }
-        shuttingDown = true;
-        if (screenshotTimer) {
-          clearInterval(screenshotTimer);
-        }
-        await chromeDriver.shutdown();
-        // All sockets/subprocesses/resources *should* be closed, so we can just exit.
-        process.exit(0);
-      }
-      // Shut down gracefully on CTRL+C.
-      process.on('SIGINT', async function() {
-        console.log(`CTRL+C received.`);
-        shutDown();
-      });
       let i = 0;
       BLeak.FindLeaks(configFileSource, progressBar, chromeDriver, (results) => {
         writeFileSync(bleakResultsOutput, JSON.stringify(results));
