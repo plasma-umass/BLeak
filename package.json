@@ -96,7 +96,7 @@
     "chrome-devtools-frontend": "~1.0.533100",
     "error-stack-parser": "~2.0.1",
     "esprima": "~4.0.0",
-    "express": "~4.16.3",
+    "express": "~4.17.3",
     "htmlparser2": "~3.9.2",
     "mitmproxy": "~2.1.1",
     "progress": "~2.0.0",
